@@ -1,0 +1,26 @@
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+**/.DS_Store
+
+# AI
+.omc
+.claude/settings.local.json
+.claude/worktrees/
+.playwright-mcp/
+CLAUDE.local.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+build/
+dist/
+
+# Dependencies
+node_modules
