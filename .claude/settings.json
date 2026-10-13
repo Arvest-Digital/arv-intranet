@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "claude-opus-5-5",
+  "effortLevel": "medium",
+  "showClearContextOnPlanAccept": true,
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm lint)",
+      "Bash(pnpm format)",
+      "Bash(pnpm typecheck)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm db:status*)",
+      "Bash(pnpm db:generate)",
+      "Bash(pnpm --filter @arv/api typecheck)",
+      "Bash(pnpm --filter @arv/web typecheck)",
+      "Bash(pnpm --filter @arv/contracts typecheck)",
+      "Bash(pnpm --filter @arv/db typecheck)",
+      "Bash(pnpm --filter @arv/e2e typecheck)",
+      "Bash(pnpm --filter @arv/api test*)",
+      "Bash(pnpm --filter @arv/web test*)",
+      "Bash(pnpm --filter @arv/contracts test*)",
+      "Bash(pnpm --filter @arv/e2e test*)",
+      "Bash(pnpm --filter @arv/api cf-typegen)",
+      "Bash(pnpm --filter @arv/web cf-typegen)",
+      "Bash(pnpm --filter @arv/api exec vitest *)",
+      "Bash(pnpm --filter @arv/web exec vitest *)",
+      "Bash(pnpm --filter @arv/contracts exec vitest *)",
+      "Bash(pnpm --filter @arv/e2e exec playwright test*)",
+      "Bash(pnpm exec biome *)",
+      "Bash(pnpm biome *)",
+      "Bash(pnpm why *)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker compose up -d*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(node --version)",
+      "Bash(node --help)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm --help)",
+      "Bash(git --version)",
+      "Bash(git --help)",
+      "Bash(docker --version)",
+      "Bash(docker --help)",
+      "Bash(docker compose --version)",
+      "Bash(docker compose --help)",
+      "Bash(gh --version)",
+      "Bash(gh --help)",
+      "Bash(pnpm exec turbo --version)",
+      "Bash(pnpm exec turbo --help)",
+      "Bash(pnpm exec wrangler --version)",
+      "Bash(pnpm exec wrangler --help)",
+      "Bash(pnpm exec tsc --version)",
+      "Bash(pnpm exec tsc --help)",
+      "Bash(pnpm exec vitest --version)",
+      "Bash(pnpm exec vitest --help)",
+      "Bash(pnpm exec playwright --version)",
+      "Bash(pnpm exec playwright --help)",
+      "Bash(pnpm exec drizzle-kit --version)",
+      "Bash(pnpm exec drizzle-kit --help)"
+    ],
+    "ask": [
+      "Bash(pnpm db:migrate*)",
+      "Bash(pnpm deploy*)",
+      "Bash(pnpm --filter * deploy*)",
+      "Bash(*wrangler deploy*)",
+      "Bash(*wrangler hyperdrive*)",
+      "Bash(*wrangler secret*)",
+      "Bash(docker compose stop*)",
+      "Bash(docker compose down*)",
+      "Bash(gh pr merge *)",
+      "Edit(packages/db/drizzle/**)"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(rm -rf *)",
+      "Bash(curl * | bash*)",
+      "Bash(curl * | sh*)",
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.*.local)",
+      "Read(**/.dev.vars*)",
+      "Read(**/credentials*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)"
+    ]
+  },
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "CLAUDE_CODE_NEW_INIT": "1"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; [ -n \"$f\" ] && cd \"$CLAUDE_PROJECT_DIR\" && pnpm exec biome format --write --files-ignore-unknown=true --no-errors-on-unmatched \"$f\" >/dev/null; } 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Formatting with Biome"
+          }
+        ]
+      }
+    ]
+  },
+  "companyAnnouncements": [
+    "Before committing: pnpm lint && pnpm typecheck && pnpm test"
+  ]
+}
