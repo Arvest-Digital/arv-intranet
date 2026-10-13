@@ -24,3 +24,12 @@ dist/
 
 # Dependencies
 node_modules
+
+# Tooling
+.turbo
+.wrangler
+.dev.vars
+.react-router/
+coverage/
+playwright-report/
+test-results/

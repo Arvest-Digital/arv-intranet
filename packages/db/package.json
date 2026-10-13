@@ -1,0 +1,31 @@
+{
+  "name": "@arv/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./migrate": "./src/migrate.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:status": "node --disable-warning=ExperimentalWarning scripts/status.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "effect": "3.22.2",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@arv/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "typescript": "5.9.3"
+  }
+}

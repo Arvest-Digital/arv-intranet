@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "arv-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Private: reachable only through the web Worker's service binding.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // Create with: wrangler hyperdrive create arv-db --connection-string="<neon url>"
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://arv:arv@localhost:5432/arv"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "arv-intranet",
+  "private": true,
+  "packageManager": "pnpm@11.2.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "docker compose up -d --wait && turbo run dev --filter=@arv/web",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "test:e2e": "turbo run test:e2e",
+    "test:all": "pnpm test && pnpm test:integration && pnpm test:e2e",
+    "db:generate": "pnpm --filter @arv/db db:generate",
+    "db:migrate": "pnpm --filter @arv/db db:migrate",
+    "db:status": "pnpm --filter @arv/db db:status",
+    "db:studio": "pnpm --filter @arv/db db:studio",
+    "deploy": "turbo run deploy"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "turbo": "2.11.7",
+    "typescript": "5.9.3"
+  }
+}
