@@ -10,6 +10,7 @@ browser ──► web Worker ──service binding──► api Worker ──►
 
 - **web** is the only public Worker. **api** has no public URL (`workers_dev: false`), so only web can call it.
 - The Worker-to-Worker call stays inside Cloudflare and is typed end to end through `@arv/contracts`.
+- The api is a **modular monolith**: business modules under `modules/` (hexagonal: domain, application, adapters), composed by a thin host. **Read [`ARCHITECTURE.md`](ARCHITECTURE.md) before any structural change.**
 
 ## Contents
 
@@ -19,9 +20,11 @@ browser ──► web Worker ──service binding──► api Worker ──►
 - [Scripts](#scripts)
 - [Parts of the app](#parts-of-the-app)
   - [apps/web: frontend](#appsweb-frontend)
-  - [apps/api: backend](#appsapi-backend)
+  - [apps/api: host](#appsapi-host)
+  - [modules: business modules](#modules-business-modules)
   - [packages/contracts: shared schemas](#packagescontracts-shared-schemas)
-  - [packages/db: database](#packagesdb-database)
+  - [packages/kernel and packages/platform](#packageskernel-and-packagesplatform)
+  - [packages/db and packages/migrations: database](#packagesdb-and-packagesmigrations-database)
   - [packages/tsconfig](#packagestsconfig)
   - [e2e: end-to-end tests](#e2e-end-to-end-tests)
 - [Testing](#testing)
@@ -47,18 +50,28 @@ browser ──► web Worker ──service binding──► api Worker ──►
 arv-intranet/
 ├── apps/
 │   ├── web/              # Frontend Worker: React Router 7 (SSR)
-│   │   ├── app/          #   routes, components, typed API client
+│   │   ├── app/features/ #   one folder per module: routes, components, typed client
+│   │   ├── app/shared/   #   code shared by features
 │   │   └── workers/      #   Worker entry
-│   └── api/              # Backend Worker: Hono + Effect (private)
-│       ├── src/          #   http routes → services → repositories
-│       └── test/         #   integration tests (workerd + Postgres)
+│   └── api/              # Backend Worker (private): host only, composes the modules
+│       ├── src/          #   entry point, composition root, middleware
+│       └── test/         #   integration tests per module (workerd + Postgres)
+├── modules/
+│   ├── identity/         # Users; resolves the actor of each request
+│   └── _template/        # Copied by `pnpm new:module <name>`
 ├── packages/
 │   ├── contracts/        # Effect schemas + errors shared by api and web
-│   ├── db/               # Drizzle schema, migrations, Database service, test helpers
+│   ├── kernel/           # Shared branded IDs, Actor, ports (UnitOfWork, DomainEvents)
+│   ├── platform/         # HTTP plumbing for modules: runEffect, validate, error mapping
+│   ├── db/               # Database service, query(), test helpers. No tables.
+│   ├── migrations/       # drizzle-kit config, SQL migrations, db:* scripts
 │   └── tsconfig/         # Shared TypeScript config
 ├── e2e/                  # Playwright browser tests
+├── scripts/              # new-module, check-module-graph
+├── docs/adr/             # Architecture decision records
+├── ARCHITECTURE.md       # How the code is structured, and why
 ├── docker-compose.yml    # Local Postgres 18 (arv + arv_test)
-└── .github/workflows/    # CI
+└── .github/              # CI, CODEOWNERS
 ```
 
 Each part is described in more detail in [Parts of the app](#parts-of-the-app).
@@ -85,8 +98,10 @@ All scripts run from the repo root.
 |---|---|
 | `pnpm dev` | Starts Postgres and the web dev server. The api runs inside it as an auxiliary Worker |
 | `pnpm typecheck` | TypeScript across all packages |
-| `pnpm lint` / `pnpm format` | Biome check / Biome autofix |
-| `pnpm test` | Unit tests (contracts, api, web). No database needed |
+| `pnpm lint` / `pnpm format` | Biome check (including layer boundaries) + module graph check / Biome autofix |
+| `pnpm check:modules` | Checks module dependencies against the graph in `ARCHITECTURE.md` |
+| `pnpm new:module <name>` | Creates `modules/<name>` from the template |
+| `pnpm test` | Unit tests (modules, contracts, web). No database needed |
 | `pnpm test:integration` | API integration tests against `arv_test`. Needs Docker Postgres |
 | `pnpm test:e2e` | Playwright browser tests against the full stack. Needs Docker Postgres |
 | `pnpm test:all` | All three test levels in order |
@@ -103,90 +118,105 @@ All scripts run from the repo root.
 
 ### apps/web: frontend
 
-A React Router 7 app in framework mode, server-rendered on a Cloudflare Worker.
+A React Router 7 app in framework mode, server-rendered on a Cloudflare Worker. Code is grouped by module under `app/features/<module>/`.
 
 **How a request flows**
 
 1. `workers/app.ts` receives the request and passes `{ cloudflare: { env, ctx } }` as the loader context.
 2. React Router matches a route from `app/routes.ts` and runs its `loader` (GET) or `action` (form POST) on the server.
-3. The loader calls the API with `createApiClient(context.cloudflare.env.API)`.
-4. The response is decoded with a schema from `@arv/contracts`, for example to turn ISO strings back into `Date`s.
+3. The loader calls the feature's gateway, e.g. `identityGateway(context.cloudflare.env.API).listUsers()` from `features/identity/identity.server.ts`.
+4. The gateway calls the API with a typed client (`hc<IdentityRoutes>`), decodes the response with a schema from `@arv/contracts/<module>`, and returns an `ApiResult`: the value, or an error message ready for the UI.
 5. The component renders the data it receives as `loaderData` / `actionData` props.
 
 **Conventions**
 
-- **All data goes through the API.** Never import `@arv/db` in web; the API is the only thing that touches the database.
+- **All data goes through the API.** Web never imports `@arv/db`, `@arv/kernel`, `@arv/platform` or a module package (Biome enforces this).
+- **Features don't import each other.** Shared code goes in `app/shared/`.
 - **Server-only code** goes in files ending in `.server.ts`. React Router keeps them out of the browser bundle.
-- **Typed client.** `api.users.$get()` and `api.users.$post({ json })` are typed from the API's routes. Changing a route or schema in the API shows up as a type error here.
-- **Always decode responses** with the contract schema (`Schema.decodeUnknownSync(User)`) rather than trusting `res.json()`.
+- **Typed client per feature.** `hc<IdentityRoutes>` is typed from the identity module's routes, re-exported by `@arv/api`. Changing a route or schema in the API shows up as a type error here.
+- **Always decode responses** with the contract schema rather than trusting `res.json()`.
 - **Forms** use React Router's `<Form method="post">` plus an `action`. API error messages come back in `actionData.error`.
 - **Route types** (`./+types/<route>`) are generated by `react-router typegen`, which runs as part of `pnpm typecheck` and `pnpm dev`.
 
-**Adding a page:** create `app/routes/<name>.tsx`, register it in `app/routes.ts`, and add a `<name>.test.tsx` next to it.
+**Adding a page:** create `app/features/<module>/routes/<name>.tsx`, register it in `app/routes.ts`, and add a `<name>.test.tsx` next to it.
 
-### apps/api: backend
+### apps/api: host
 
-A Hono app on a private Worker. Business logic is written with Effect.
+A Hono app on a private Worker. It holds **no business logic**: it authenticates the request, builds the per-request Effect Layer from the module Layers, and mounts the module routers.
 
-**Layers, from outside in**
+| File | Responsibility |
+|---|---|
+| `src/index.ts` | Middleware, mounts module routers, re-exports route types (`IdentityRoutes`) for web |
+| `src/composition.ts` | The only place that knows every module: stacks module Layers in dependency order; `makeAppLayer(env, actor)` |
+| `src/middleware/authenticate.ts` | Resolves the actor through `IdentityApi.resolveActor` |
+| `src/middleware/provide-app-layer.ts` | Puts the app Layer on the Hono context, where `runEffect` reads it |
+| `src/env.ts` | Bindings (`HYPERDRIVE`), declared by hand because web type-imports this app and has its own global `Env`. Keep in sync with `wrangler.jsonc`. |
 
-| Layer | Location | Responsibility |
-|---|---|---|
-| Route | `src/http/routes/*.ts` | Validates input (`validate('json', Schema)`), calls a service, encodes output. No logic. |
-| `runEffect` | `src/http/effect-handler.ts` | Provides the per-request Layer, runs the Effect, maps the result to a JSON response |
-| Service | `src/services/*.ts` | Domain rules (e.g. "email must be unique"). Fails with typed errors. |
-| Repository | `src/repositories/*.ts` | Drizzle queries only, wrapped in `query()` so failures become `DbError` |
-| Database | `@arv/db` (`DatabaseLive`) | One `pg.Pool` per request on the Hyperdrive connection string |
+**Authentication** is not decided yet (see `docs/adr/0001-modular-monolith.md`). Every request currently gets an anonymous actor.
 
-**Error handling.** Services fail with tagged errors, and `toHttpError` in `src/http/errors.ts` maps them to HTTP responses. Every error response has the same shape: `{ error: { _tag, message } }` (`ApiErrorBody`).
+**Error responses** all have the same shape, `{ error: { _tag, message } }` (`ApiErrorBody`):
 
 | Error | Status |
 |---|---|
 | `ValidationError` (from `validate`) | 400 |
 | `NotFound` | 404 |
 | `Conflict` | 409 |
-| `DbError`, defects, uncaught exceptions | 500, details logged and never sent to the client |
+| Defects (database failures, bugs), uncaught exceptions | 500, details logged and never sent to the client |
 
-To add a new error: define it in `contracts/src/errors.ts`, add it to `AppError`, and handle it in `toHttpError`. The `switch` is exhaustive, so TypeScript reminds you.
+Modules map their own domain errors (e.g. `EmailTaken`) to these contract errors in their `http/presenter.ts`.
 
-**Dependency injection.** Services and repositories are `Context.Tag`s with `Layer` implementations. `src/layers.ts` wires them together for each request. Register a new service in both `makeAppLayer` and the `AppServices` type.
+### modules: business modules
 
-**Bindings.** `src/env.ts` declares the bindings (`HYPERDRIVE`) by hand. It isn't generated, because web type-imports this app and has its own global `Env`. Keep it in sync with `wrangler.jsonc`.
+Each module (`@arv/<name>`) owns one business capability end to end, from HTTP route to Postgres schema. Every module has the same layout:
+
+| Folder | Contents |
+|---|---|
+| `src/domain/` | Entities, domain errors, events. Pure: imports only `effect` and `@arv/kernel`. |
+| `src/application/` | `ports.ts` (repository tags), one file per use case, `<name>-api.ts` (facade for other modules) |
+| `src/infrastructure/` | `schema.ts` (`pgSchema('<name>')` tables) and Drizzle repositories implementing the ports |
+| `src/http/` | `routes.ts` (Hono sub-app) and `presenter.ts` (domain → DTO, domain error → contract error) |
+| `src/layer.ts`, `src/index.ts` | The module's Layer; its public API (facade tag) |
+
+A module exports only `.` (facade), `./http` (router + route type) and `./layer`. Other modules call it only through its facade, and only along edges listed in `ARCHITECTURE.md`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the import rules, the module graph and how-tos.
 
 ### packages/contracts: shared schemas
 
 The single source of truth for data that crosses the api ↔ web boundary. It ships as TypeScript source with no build step.
 
+- **Subpaths:** `@arv/contracts/shared` (`NotFound`, `Conflict`, `ApiErrorBody`) and one per module, e.g. `@arv/contracts/identity` (`User`, `CreateUserInput`, `UserIdParam`).
 - **Schemas** (`Schema.Struct`) describe both the runtime validation and the TypeScript type. `typeof User.Type` is the decoded value (e.g. `createdAt: Date`); `typeof User.Encoded` is the JSON on the wire (`createdAt: string`).
 - **The API** uses them to validate requests and encode responses. **The web app** uses them to decode responses.
-- **Errors** are `Schema.TaggedError` classes, so they're serializable and identified by `_tag`.
 
-Keep this package free of DB, Hono and React imports. It may only depend on `effect`.
+Keep this package free of DB, Hono and React imports, and of domain logic. It may only depend on `effect`.
 
-### packages/db: database
+### packages/kernel and packages/platform
 
-Drizzle schema, migrations and the Effect database service.
+- **`@arv/kernel`** (depends on `effect` only): branded IDs shared across modules (`UserId`), `Actor` and the `CurrentActor` tag, the `DomainEvent` base schema, and the `UnitOfWork` and `DomainEvents` ports. No implementations.
+- **`@arv/platform/http`**: `runEffect` (runs a route's Effect with the app Layer from the Hono context and maps the result to a response), `validate` (Hono validator backed by an Effect Schema), `toHttpError`, `errorBody`, and the `HttpEnv` type module routers use. It never imports a module or `apps/*`.
 
-- **`src/schema/`**: table definitions. They're the source of truth, and migrations are generated from them. Columns are camelCase in TypeScript and snake_case in SQL (`casing: 'snake_case'`).
-- **`src/database.ts`**:
-  - `Database`: an Effect Tag providing the Drizzle instance.
-  - `DatabaseLive(connectionString)`: a Layer that creates a lazy `pg.Pool`.
-  - `query(() => promise)`: turns Drizzle failures into `DbError`.
-- **`drizzle/`**: generated migrations. Commit them, and never edit one that has already been applied anywhere (`db:status` reports that as **Changed**).
-- **`src/testing/`**: helpers shared by integration and e2e tests:
-  - `connectDb`, `resetDatabase`: open a connection; truncate all tables.
-  - `makeUser`: a factory with unique defaults.
-  - `seedUsers`: inserts rows.
+### packages/db and packages/migrations: database
 
-  **When you add a table, add it to `resetDatabase`.**
+**`@arv/db`** is runtime only and defines no tables:
+
+- `Database`: an Effect Tag providing the Drizzle instance. `DatabaseLive(connectionString)`: a Layer that creates a lazy `pg.Pool`.
+- `query((db) => promise)`: runs a Drizzle query on the request's `Database` and turns failures into `DbError`. Repositories turn `DbError` into a defect with `Effect.orDie`.
+- `@arv/db/migrate`: applies migrations (test setup).
+- `@arv/db/testing`: helpers shared by integration and e2e tests:
+  - `connectDb`, `resetDatabase`: open a connection; truncate every application table (tables are discovered from `information_schema`, so there's nothing to register).
+  - `makeUser`, `seedUsers`: a factory with unique defaults, and inserts into `identity.users`.
+
+**Tables** live in each module's `src/infrastructure/schema.ts`, in the module's own Postgres schema (`pgSchema('identity')`). Columns are camelCase in TypeScript and snake_case in SQL (`casing: 'snake_case'`). No foreign keys or joins across module schemas.
+
+**`@arv/migrations`** owns `drizzle.config.ts`, the `drizzle/` SQL migrations and the `db:*` scripts. drizzle-kit loads `modules/*/src/infrastructure/schema.ts` by path, so no package depends on it. Commit migrations, and never edit one that has already been applied anywhere (`db:status` reports that as **Changed**).
 
 **IDs** are UUIDv7 (`default(sql\`uuidv7()\`)`, Postgres 18+). They're time-ordered, which keeps index inserts sequential.
 
 **Migration workflow**
 
 ```sh
-# 1. edit packages/db/src/schema/*.ts
-pnpm db:generate          # 2. writes drizzle/NNNN_<name>.sql. Review the SQL.
+# 1. edit modules/<name>/src/infrastructure/schema.ts
+#    (new module schema? add it to schemaFilter in packages/migrations/drizzle.config.ts)
+pnpm db:generate          # 2. writes packages/migrations/drizzle/NNNN_<name>.sql. Review the SQL.
 pnpm db:migrate           # 3. apply to your dev DB
 pnpm db:status            # 4. confirm everything shows "Ran"
 ```
@@ -221,10 +251,10 @@ There are four kinds of tests. Faster tests should catch most bugs; slower tests
 
 | Kind | Location | Runs in | Database | Speed | Command |
 |---|---|---|---|---|---|
-| Contract | `packages/contracts/src/*.test.ts` | Node | No | ms | `pnpm test` |
-| API unit | `apps/api/src/**/*.test.ts` | Node | No (mocked) | ms | `pnpm test` |
+| Contract | `packages/contracts/src/**/*.test.ts` | Node | No | ms | `pnpm test` |
+| Module unit | `modules/*/src/**/*.test.ts` | Node | No (in-memory ports) | ms | `pnpm test` |
 | Web | `apps/web/app/**/*.test.tsx` | jsdom | No (fake API) | ms | `pnpm test` |
-| API integration | `apps/api/test/integration/*.test.ts` | workerd | `arv_test` | seconds | `pnpm test:integration` |
+| API integration | `apps/api/test/integration/<module>/*.test.ts` | workerd | `arv_test` | seconds | `pnpm test:integration` |
 | E2E | `e2e/tests/*.spec.ts` | Chromium | `arv_test` | ~10 s | `pnpm test:e2e` |
 
 ### Which test should I write?
@@ -232,7 +262,8 @@ There are four kinds of tests. Faster tests should catch most bugs; slower tests
 | You changed… | Write or update |
 |---|---|
 | A schema in `contracts` with rules (patterns, lengths, transforms) | Contract test |
-| Business rules in a service | API unit test |
+| A use case or domain rule in a module | Module unit test |
+| How a module maps domain values or errors to the wire (`presenter.ts`) | Module unit test |
 | A repository query, table or migration | API integration test |
 | A route, its validation, or error → status mapping | API integration test |
 | A component | Web component test |
@@ -257,28 +288,27 @@ You don't need tests for plain `Schema.String` fields.
 pnpm --filter @arv/contracts exec vitest
 ```
 
-### API unit tests (`apps/api/src/**/*.test.ts`)
+### Module unit tests (`modules/*/src/**/*.test.ts`)
 
-**What:** service logic in isolation. Repositories are replaced by in-memory Layers (`Layer.succeed(UserRepo, {...})`), so there's no database, no HTTP and no Workers runtime.
+**What:** domain rules and use cases in isolation. Ports are replaced by in-memory Layers (`Layer.succeed(UserRepository, {...})`), so there's no database, no HTTP and no Workers runtime. Presenters (DTO encoding, error mapping) are tested here too.
 
 **Write when:**
-- You add or change a service method.
-- You add a business rule or a new failure path (`NotFound`, `Conflict`, …).
-- Cover the happy path and **every typed error the method can fail with**, including `DbError` propagation.
+- You add or change a use case or a domain rule.
+- You add a new failure path (a new domain error).
+- Cover the happy path and **every domain error the use case can fail with**. Database failures are defects, so there's nothing to cover for them here.
 
-**Pattern** (see `user-service.test.ts`):
+**Pattern** (see `modules/identity/src/application/users.test.ts`):
 
 ```ts
-const repo = makeRepo({ findByEmail: () => Effect.succeed(Option.some(ann)) });
-const result = await run(Effect.flatMap(UserService, (s) => s.create(input)), repo);
-expect(Either.isLeft(result) && result.left._tag).toBe('Conflict');
+const result = await run(createUser({ email: ann.email, name: 'Ann 2' }));
+expect(Either.isLeft(result) && result.left._tag).toBe('EmailTaken');
 ```
 
 **Run:** continuously while developing. They take milliseconds and need nothing running.
 
 ```sh
-pnpm --filter @arv/api exec vitest                                      # watch mode
-pnpm --filter @arv/api exec vitest run src/services/user-service.test.ts  # one file
+pnpm --filter @arv/identity exec vitest                                        # watch mode
+pnpm --filter @arv/identity exec vitest run src/application/users.test.ts       # one file
 ```
 
 ### Web tests (`apps/web/app/**/*.test.tsx`)
@@ -315,6 +345,7 @@ pnpm --filter @arv/web exec vitest
 - Migrations run once per test run (`test/global-setup.ts`).
 - Each test starts with empty tables (`beforeEach(resetDb)`).
 - Files run one at a time because they share the database.
+- Tests live in one folder per module: `test/integration/<module>/`.
 
 **Write when:**
 - You add an endpoint. Cover success, 400 (invalid input), 404/409 where they apply, and the response shape.
@@ -336,7 +367,7 @@ expect(res.status).toBe(409);
 ```sh
 docker compose up -d --wait
 pnpm test:integration
-pnpm --filter @arv/api exec vitest run --config vitest.integration.config.ts users  # one file
+pnpm --filter @arv/api exec vitest run --config vitest.integration.config.ts identity  # one module
 ```
 
 Point at another database with `TEST_DATABASE_URL`.
@@ -376,16 +407,17 @@ On the first run on a new machine, install the browser with `pnpm --filter @arv/
 
 ## Adding a feature
 
-Example: a "departments" resource.
+**New capability in an existing module** (example: deactivating a user in `identity`):
 
-1. **Contract:** `packages/contracts/src/department.ts` with `Department` and `CreateDepartmentInput` schemas. Export it from `index.ts`. Add a contract test if there are rules.
-2. **Table:** `packages/db/src/schema/departments.ts`, then export it from `schema/index.ts` and add the table to `resetDatabase`. Run `pnpm db:generate`, review the SQL, then run `pnpm db:migrate`.
-3. **Repository:** `apps/api/src/repositories/department-repo.ts` (Tag + `Layer.effect`, queries wrapped in `query()`).
-4. **Service:** `apps/api/src/services/department-service.ts`, plus a unit test with an in-memory repo.
-5. **Wiring:** add both Layers to `makeAppLayer`, and add the service to `AppServices` in `src/layers.ts`.
-6. **Routes:** `apps/api/src/http/routes/departments.ts`, mounted with `.route('/departments', departmentsRoutes)` in `src/index.ts`. Add an integration test.
-7. **Page:** `apps/web/app/routes/departments.tsx`, registered in `app/routes.ts`, with a route test.
-8. **E2E:** only if it's a critical flow.
+1. **Contract:** add the DTOs to `packages/contracts/src/identity/`. Add a contract test if there are rules.
+2. **Domain:** new rules and errors in `modules/identity/src/domain/`.
+3. **Use case:** `modules/identity/src/application/deactivate-user.ts`, plus a unit test with in-memory ports. Extend the port in `ports.ts` if needed.
+4. **Adapter:** implement new port methods in `infrastructure/`. New table or column? Edit `schema.ts`, then `pnpm db:generate`, review, `pnpm db:migrate`.
+5. **Route:** add it to `http/routes.ts` and map new domain errors in `presenter.ts`. Add an integration test in `apps/api/test/integration/identity/`.
+6. **Page:** `apps/web/app/features/identity/routes/<name>.tsx`, registered in `app/routes.ts`, with a route test. Add gateway functions to `identity.server.ts`.
+7. **E2E:** only if it's a critical flow.
+
+**New module** (example: `org`): run `pnpm new:module org` and follow the printed steps. The full checklist is in [ARCHITECTURE.md → How-to](ARCHITECTURE.md#how-to).
 
 ## Code style
 
@@ -396,16 +428,18 @@ Biome handles both linting and formatting:
 
 Run `pnpm format` before committing; CI runs `pnpm lint`. Non-null assertions (`!`) are allowed in test files only.
 
+`pnpm lint` also enforces the architecture: Biome overrides in `biome.json` forbid imports that cross a module layer (e.g. `hono` in `domain/`, `@arv/db` in `http/`, any module package in web), and `pnpm check:modules` checks module dependencies against the graph in `ARCHITECTURE.md`.
+
 ## Deploying
 
 1. Create a Neon project on **Postgres 18**. `uuidv7()` doesn't exist in older versions.
 2. Create the Hyperdrive config:
 
    ```sh
-   wrangler hyperdrive create arv-db --connection-string="<neon url>"
+   wrangler hyperdrive create arv-db --connection-string="<neon url>" --caching-disabled
    ```
 
-   Put the returned id in `apps/api/wrangler.jsonc`.
+   Query caching stays off so reads right after a write see it. Put the returned id in `apps/api/wrangler.jsonc`.
 3. Apply and check migrations against Neon's **direct** (non-pooled) URL:
 
    ```sh

@@ -16,12 +16,13 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@arv/contracts": "workspace:*",
     "@arv/db": "workspace:*",
-    "drizzle-orm": "0.45.4",
-    "pg": "8.23.1",
+    "@arv/identity": "workspace:*",
+    "@arv/kernel": "workspace:*",
+    "@arv/platform": "workspace:*",
     "effect": "3.22.2",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@arv/tsconfig": "workspace:*",

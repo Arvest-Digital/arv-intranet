@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/worker-configuration.d.ts", "!**/drizzle/meta"]
+    "includes": ["**", "!**/worker-configuration.d.ts", "!**/drizzle/meta", "!.claude"]
   },
   "formatter": {
     "enabled": true,
@@ -41,6 +41,173 @@
         "rules": {
           "style": {
             "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["modules/*/src/domain/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@arv/**",
+                      "!@arv/kernel",
+                      "hono",
+                      "hono/**",
+                      "drizzle-orm",
+                      "drizzle-orm/**"
+                    ],
+                    "message": "The domain imports only effect and @arv/kernel. See ARCHITECTURE.md \u2192 Module anatomy."
+                  },
+                  {
+                    "group": [
+                      "../application/**",
+                      "../infrastructure/**",
+                      "../http/**",
+                      "../events/**",
+                      "../layer"
+                    ],
+                    "message": "The domain must not import outer layers. See ARCHITECTURE.md \u2192 Module anatomy."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["modules/*/src/application/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "hono",
+                      "hono/**",
+                      "drizzle-orm",
+                      "drizzle-orm/**",
+                      "@arv/db",
+                      "@arv/db/**",
+                      "@arv/platform/**",
+                      "@arv/contracts/**",
+                      "@arv/*/http",
+                      "@arv/*/layer"
+                    ],
+                    "message": "The application layer uses ports and other modules' facades (root export) only. See ARCHITECTURE.md \u2192 Module anatomy."
+                  },
+                  {
+                    "group": ["../infrastructure/**", "../http/**", "../layer"],
+                    "message": "The application layer must not import adapters. See ARCHITECTURE.md \u2192 Module anatomy."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["modules/*/src/infrastructure/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@arv/**", "!@arv/kernel", "!@arv/db", "hono", "hono/**"],
+                    "message": "Adapters import only effect, @arv/kernel, @arv/db and drizzle. See ARCHITECTURE.md \u2192 Module anatomy."
+                  },
+                  {
+                    "group": ["../http/**", "../layer"],
+                    "message": "Adapters must not import the http layer. See ARCHITECTURE.md \u2192 Module anatomy."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["modules/*/src/http/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@arv/**",
+                      "!@arv/kernel",
+                      "!@arv/contracts/**",
+                      "!@arv/platform/http",
+                      "drizzle-orm",
+                      "drizzle-orm/**"
+                    ],
+                    "message": "The http layer imports only hono, @arv/contracts and @arv/platform/http. See ARCHITECTURE.md \u2192 Module anatomy."
+                  },
+                  {
+                    "group": ["../infrastructure/**", "../layer"],
+                    "message": "The http layer goes through use cases, never adapters. See ARCHITECTURE.md \u2192 Module anatomy."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["apps/web/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@arv/**", "!@arv/contracts/**", "!@arv/api"],
+                    "message": "Web uses @arv/contracts and `import type` from @arv/api only; all data goes through the api."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@arv/api", "@arv/api/**"],
+                    "message": "Packages never import apps."
+                  }
+                ]
+              }
+            }
           }
         }
       }

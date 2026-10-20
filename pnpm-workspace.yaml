@@ -1,5 +1,7 @@
 packages:
   - apps/*
+  - modules/*
+  - '!modules/_template'
   - packages/*
   - e2e
 allowBuilds:

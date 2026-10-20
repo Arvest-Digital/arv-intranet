@@ -1,0 +1,24 @@
+{
+  "name": "@arv/migrations",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:status": "node --disable-warning=ExperimentalWarning scripts/status.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@arv/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "@types/pg": "8.23.1",
+    "drizzle-kit": "0.31.11",
+    "typescript": "5.9.3"
+  }
+}
