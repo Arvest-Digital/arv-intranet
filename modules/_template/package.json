@@ -1,0 +1,29 @@
+{
+  "name": "@arv/skeleton",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http/routes.ts",
+    "./layer": "./src/layer.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@arv/contracts": "workspace:*",
+    "@arv/db": "workspace:*",
+    "@arv/kernel": "workspace:*",
+    "@arv/platform": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "effect": "3.22.2",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "@arv/tsconfig": "workspace:*",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

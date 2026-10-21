@@ -1,0 +1,9 @@
+# Owners review changes in their area. Add a line per module (see ARCHITECTURE.md → How-to).
+*                        @denbechka
+
+/ARCHITECTURE.md         @denbechka
+/docs/adr/               @denbechka
+/packages/               @denbechka
+/apps/api/               @denbechka
+
+/modules/identity/       @denbechka

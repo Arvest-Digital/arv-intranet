@@ -1,0 +1,22 @@
+{
+  "name": "@arv/platform",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./http": "./src/http/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@arv/contracts": "workspace:*",
+    "effect": "3.22.2",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "@arv/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "typescript": "5.9.3"
+  }
+}
