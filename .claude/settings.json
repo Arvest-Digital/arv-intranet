@@ -1,8 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "model": "claude-opus-5-5",
-  "effortLevel": "medium",
-  "showClearContextOnPlanAccept": true,
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",
+    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+    "CLAUDE_CODE_NEW_INIT": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(pnpm install)",
@@ -66,18 +68,6 @@
       "Bash(pnpm exec drizzle-kit --version)",
       "Bash(pnpm exec drizzle-kit --help)"
     ],
-    "ask": [
-      "Bash(pnpm db:migrate*)",
-      "Bash(pnpm deploy*)",
-      "Bash(pnpm --filter * deploy*)",
-      "Bash(*wrangler deploy*)",
-      "Bash(*wrangler hyperdrive*)",
-      "Bash(*wrangler secret*)",
-      "Bash(docker compose stop*)",
-      "Bash(docker compose down*)",
-      "Bash(gh pr merge *)",
-      "Edit(packages/db/drizzle/**)"
-    ],
     "deny": [
       "Bash(git push*)",
       "Bash(rm -rf *)",
@@ -90,13 +80,21 @@
       "Read(**/credentials*)",
       "Read(**/*.pem)",
       "Read(**/*.key)"
+    ],
+    "ask": [
+      "Bash(pnpm db:migrate*)",
+      "Bash(pnpm deploy*)",
+      "Bash(pnpm --filter * deploy*)",
+      "Bash(*wrangler deploy*)",
+      "Bash(*wrangler hyperdrive*)",
+      "Bash(*wrangler secret*)",
+      "Bash(docker compose stop*)",
+      "Bash(docker compose down*)",
+      "Bash(gh pr merge *)",
+      "Edit(packages/db/drizzle/**)"
     ]
   },
-  "env": {
-    "BASH_DEFAULT_TIMEOUT_MS": "300000",
-    "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
-    "CLAUDE_CODE_NEW_INIT": "1"
-  },
+  "model": "claude-opus-5-5",
   "hooks": {
     "PostToolUse": [
       {
@@ -112,7 +110,12 @@
       }
     ]
   },
+  "effortLevel": "medium",
+  "showClearContextOnPlanAccept": true,
   "companyAnnouncements": [
     "Before committing: pnpm lint && pnpm typecheck && pnpm test"
-  ]
+  ],
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true
+  }
 }
