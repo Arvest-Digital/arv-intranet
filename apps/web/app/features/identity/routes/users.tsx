@@ -1,4 +1,5 @@
 import { data, Form, useNavigation } from 'react-router';
+import { Button } from '~/shared/ui/button';
 import { UserList } from '../components/user-list';
 import { identityGateway } from '../identity.server';
 import type { Route } from './+types/users';
@@ -27,15 +28,32 @@ export default function Users({ loaderData, actionData }: Route.ComponentProps) 
 
   return (
     <main>
-      <h1>Users</h1>
-      <Form method="post" key={loaderData.users.length}>
-        <input name="name" placeholder="Name" aria-label="Name" required />
-        <input name="email" type="email" placeholder="Email" aria-label="Email" required />
-        <button type="submit" disabled={submitting}>
+      <h1 className="mb-4 text-2xl font-semibold">Users</h1>
+      <Form method="post" key={loaderData.users.length} className="mb-6 flex flex-wrap gap-2">
+        <input
+          name="name"
+          placeholder="Name"
+          aria-label="Name"
+          required
+          className="h-8 rounded-md border border-input bg-background px-3 text-sm"
+        />
+        <input
+          name="email"
+          type="email"
+          placeholder="Email"
+          aria-label="Email"
+          required
+          className="h-8 rounded-md border border-input bg-background px-3 text-sm"
+        />
+        <Button type="submit" disabled={submitting}>
           {submitting ? 'Adding…' : 'Add user'}
-        </button>
+        </Button>
       </Form>
-      {actionData?.error ? <p role="alert">{actionData.error}</p> : null}
+      {actionData?.error ? (
+        <p role="alert" className="mb-4 text-sm text-destructive">
+          {actionData.error}
+        </p>
+      ) : null}
       <UserList users={loaderData.users} />
     </main>
   );

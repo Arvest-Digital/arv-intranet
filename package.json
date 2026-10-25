@@ -11,6 +11,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "biome check . && pnpm check:modules",
     "check:modules": "node --disable-warning=ExperimentalWarning scripts/check-module-graph.mts",
+    "ui:add": "sh -c 'pnpm --filter @arv/web exec shadcn add \"$@\" && perl -pi -e \"s{from [\\x27\\\"]cn[\\x27\\\"]}{from \\x27~/shared/lib/utils\\x27}\" apps/web/app/shared/ui/*.tsx && biome check --write apps/web/app' --",
     "new:module": "node --disable-warning=ExperimentalWarning scripts/new-module.mts",
     "format": "biome check --write .",
     "test": "turbo run test",

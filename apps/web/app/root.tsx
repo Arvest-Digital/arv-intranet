@@ -21,8 +21,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
       </head>
-      <body>
-        <nav>
+      <body className="mx-auto max-w-3xl px-4 py-8">
+        <nav className="mb-6 flex gap-2 text-sm">
           <NavLink to="/">Home</NavLink> · <NavLink to="/users">Users</NavLink>
         </nav>
         {children}
@@ -44,7 +44,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   if (!isRouteErrorResponse(error)) console.error(error);
   return (
     <main>
-      <h1>Error</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Error</h1>
       <p>{message}</p>
     </main>
   );

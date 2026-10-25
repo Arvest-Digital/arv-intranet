@@ -1,7 +1,7 @@
 # Thin wrappers over the pnpm scripts in package.json; those stay the source of truth.
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev up down test test-integration test-e2e test-all check lint format typecheck build migrate db-generate db-status db-studio module
+.PHONY: help install dev up down test test-integration test-e2e test-all check lint format typecheck build migrate db-generate db-status db-studio ui module
 
 # Local DB is started only when no DATABASE_URL points elsewhere (e.g. Neon).
 LOCAL_DB := $(if $(DATABASE_URL),,up)
@@ -63,6 +63,10 @@ db-status: node_modules $(LOCAL_DB) ## Show applied/pending migrations
 
 db-studio: node_modules $(LOCAL_DB) ## Open Drizzle Studio
 	pnpm db:studio
+
+ui: node_modules ## Add shadcn/ui components to apps/web (make ui name="button card")
+	@test -n "$(name)" || { echo "Usage: make ui name=<component> [name=\"a b\"]"; exit 1; }
+	pnpm ui:add $(name)
 
 module: node_modules ## Scaffold a module from modules/_template (make module name=time-off)
 	@test -n "$(name)" || { echo "Usage: make module name=<kebab-case>"; exit 1; }

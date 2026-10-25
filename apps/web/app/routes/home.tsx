@@ -6,9 +6,11 @@ export const meta: Route.MetaFunction = () => [{ title: 'ARV Intranet' }];
 export default function Home() {
   return (
     <main>
-      <h1>ARV Intranet</h1>
+      <h1 className="mb-4 text-2xl font-semibold">ARV Intranet</h1>
       <p>
-        <Link to="/users">Browse users</Link>
+        <Link to="/users" className="underline underline-offset-4">
+          Browse users
+        </Link>
       </p>
     </main>
   );

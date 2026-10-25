@@ -50,4 +50,4 @@ The `Makefile` wraps these (`make` lists targets: `make dev`, `make test`, `make
   - `pnpm --filter @arv/api exec vitest run --config vitest.integration.config.ts users`
   - `pnpm --filter @arv/e2e exec playwright test` (first time: `pnpm --filter @arv/e2e exec playwright install chromium`)
 - DB: `pnpm db:generate` · `pnpm db:migrate` · `pnpm db:status` · `pnpm db:studio` (all run in `@arv/migrations`).
-- Scaffolding: `pnpm new:module <name>` · `pnpm check:modules`.
+- Scaffolding: `pnpm new:module <name>` · `pnpm check:modules` · `pnpm ui:add <component...>` (shadcn/ui into `apps/web/app/shared/ui`).

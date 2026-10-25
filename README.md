@@ -100,6 +100,7 @@ All scripts run from the repo root.
 | `pnpm typecheck` | TypeScript across all packages |
 | `pnpm lint` / `pnpm format` | Biome check (including layer boundaries) + module graph check / Biome autofix |
 | `pnpm check:modules` | Checks module dependencies against the graph in `ARCHITECTURE.md` |
+| `pnpm ui:add <component...>` | Adds shadcn/ui components to `apps/web/app/shared/ui` and formats them |
 | `pnpm new:module <name>` | Creates `modules/<name>` from the template |
 | `pnpm test` | Unit tests (modules, contracts, web). No database needed |
 | `pnpm test:integration` | API integration tests against `arv_test`. Needs Docker Postgres |
