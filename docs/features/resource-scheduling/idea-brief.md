@@ -3,7 +3,7 @@ status: Confirmed
 owner: "dmitro.b"
 reviewers: []
 updated_at: "2026-10-27"
-feature_size:                   # set by sdlc:classify-size, not here
+feature_size: M
 stage: "01"
 depth: hard
 ticket: ""
