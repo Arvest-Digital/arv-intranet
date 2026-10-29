@@ -501,14 +501,33 @@ Each top-3 goal from §1 expanded into a full scenario; numbers are quoted verba
 
 ## 12. Glossary
 
-<!-- 🎯 Навіщо: ⭐ СЛОВНИК ДОМЕНУ, який припиняє суперечки через рік («checkpoint —      -->
-<!--           weekly чи biweekly? Quarter — календарний чи фіскальний?»).                -->
-<!-- 📋 Що писати: таблиця термін / значення. Бізнес-терміни + технічні вперемішку.       -->
-<!--           Один термін може мати дві мови у заголовку: «Goal (Обʼєктив)».              -->
-<!-- 📌 Приклад: «Lesson | урок усередині курсу, що складається з блоків (text, video)». -->
+Domain terms are canonical in [`CONTEXT.md`](../../../CONTEXT.md); the definitions below are short reminders and CONTEXT wins on any difference. Terms marked † were introduced by this SAD and are not in CONTEXT yet — candidates for `/sdlc:fix-term`.
 
 | Term | Meaning |
 |---|---|
-| <e.g. Goal> | <quarterly intent in statement form> |
-| <e.g. KR> | <Key Result — measurable target linked to a Goal> |
-| <e.g. Checkpoint> | <bi-weekly progress update on a KR> |
+| Access role | A named bundle of permissions assigned to intranet users by the roles/permissions feature; not a job role. |
+| Allocation | A planned assignment of a resource to a project for a date range at a fixed number of hours per day or per week; not logged time, not project membership. Modelled as one aggregate of segments (ADR-0008). |
+| Allocation segment † | One effective-dated part of an allocation (from, to, hours per day or week); a change «from today» ends the current segment and starts a new one, so past segments never change. |
+| Availability | Capacity minus allocated hours over a period; the free list sums it over the chosen weeks, with an overbooked week counting as zero. |
+| Board viewer † | Diagram actor for a user holding view-whole-board but not edit-allocations: reads the board, free list and history. |
+| Capacity | Working hours in a period: contract hours spread over working days, minus public holidays, zero outside the employment period; leave is not subtracted (it is an allocation). |
+| Closed project | A project whose close date has passed; accepts no new, changed or removed allocations and is never reopened. |
+| Confirmation required † | The warn-then-confirm response (`ConfirmationRequired`): the server lists the consequences of an unconfirmed request; the client re-sends the same request with `confirm: true` and the server recomputes (ADR-0010). |
+| Contract hours | The fixed weekly working hours from a resource's employment contract, spread evenly over their working days; stored as integer minutes (ADR-0009). |
+| Employee record | The intranet's shared record of an employee (name, team, contract hours, working days, employment period, login link), owned by the `org` module. |
+| Employment period | From a resource's start date to their end date; outside it capacity is zero and no new allocations can be made. |
+| Incomplete record | An employee record missing contract hours or a start date, so capacity is unknown and the resource is left out of the free list. |
+| Leave | A resource's absence, booked in whole working days as an allocation to the leave-type project for its type; shown as «away» to viewers without see-leave-reasons, except to the resource themselves. |
+| Needing attention | The mark on an allocation that runs past its resource's employment end date (AC-21); visible only to holders of manage-employee-records or edit-allocations. |
+| Overbooking | A week in which allocated hours exceed capacity, judged on exact figures; allowed after the user confirms a warning. |
+| Permission | A named right to perform one scheduling action, granted through access roles; identified as `<module>:<name>` (§8). |
+| Project | Anything a resource's hours can be booked against — client, internal, bench, training, leave — owned by the `projects` module. |
+| Public holiday | A company-wide non-working date on the single holiday list, owned by the `org` module. |
+| Records maintainer † | Diagram actor for a user holding manage-employee-records, manage-projects and/or manage-holiday-list. |
+| Redaction † | Removing fields a viewer may not see (leave type, employment end date and what follows it) in the api, before the response is built (§8). |
+| Resource | An employee whose working hours can be allocated to projects; not a user (an intranet login). |
+| Team | A named group of resources under one team lead, owned by the `org` module; used to filter the board. |
+| Tick † | The internal unit of hour arithmetic: 1/420 of a minute, so any weekly amount spread over 1–7 working days is an exact integer (ADR-0009). |
+| User who plans | A user holding the edit-allocations permission (PMs, delivery managers, team leads in PRD §1). |
+| Week window † | The range of weeks one board view shows (by default the current week and the 11 following), carried in the URL (ADR-0002). |
+
