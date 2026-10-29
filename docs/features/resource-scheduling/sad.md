@@ -370,24 +370,38 @@ sequenceDiagram
 
 ## 7. Deployment view
 
-<!-- 🎯 Навіщо: ТОПОЛОГІЯ, яку DevOps має знати без читання Helm-чартів — скільки реплік,  -->
-<!--           де живе фоновий обробник, ПРИ ЯКИХ ЧИСЛАХ масштабуємось.                     -->
-<!-- 📋 Що писати: 2-3 речення про топологію + метрики + алерти + конкретні числа-пороги.   -->
-<!-- 📌 Приклад: «500 IC → партиціонування за кварталом» (не «при зростанні подумаємо»).    -->
-<!-- 🎯 Можна N/A для XS/S функцій, що переюзають існуюче розгортання без змін.            -->
+The feature ships inside the two existing Cloudflare Workers — serverless, scaled by Cloudflare per request, so there are no replicas or instance counts to manage. `arv-web` gains three feature folders and no new bindings. `arv-api` gains three modules, three Postgres schemas (`org`, `projects`, `scheduling`) and its **first Cron Trigger**: `triggers.crons = ["0 3 1 * *"]` (03:00 UTC on the 1st of each month) fires the `scheduled` handler, which calls `scheduling`'s purge of allocation history entries older than 12 months (ADR-0001). Hyperdrive (query caching off) and the `API` service binding are unchanged. Migrations for the three schemas are applied through `@arv/migrations` **before** the api deploy and are additive only (new schemas and tables), so a rollback of the Worker never needs a schema rollback.
 
-<Topology in 2-3 sentences. Where it runs (k8s / VM / serverless), replicas, scaling thresholds.>
+```mermaid
+flowchart LR
+  browser([Browser]) --> web
+  subgraph cf["Cloudflare"]
+    web["arv-web Worker<br/>features org · projects · scheduling"]
+    subgraph api["arv-api Worker"]
+      fetch["fetch handler<br/>authenticate → actor + permissions"]
+      sched["scheduled handler<br/>monthly history purge"]
+      mods["modules<br/>identity · org · projects · scheduling"]
+      fetch --> mods
+      sched --> mods
+    end
+    cron(["Cron Trigger<br/>0 3 1 * *"]) --> sched
+    hd[("Hyperdrive<br/>caching off")]
+  end
+  pg[("Neon Postgres 18<br/>schemas identity · org · projects · scheduling")]
+  web -- "service binding API" --> fetch
+  mods --> hd --> pg
+```
 
 **Monitoring:**
-- <Metrics — e.g. Prometheus `<metric_name>`>
-- <Alerts — e.g. "outbox lag > 10 min → page on-call">
-- <Tracing — e.g. OpenTelemetry HTTP spans>
+- **Request metrics** — the api host middleware writes one structured log line per request: route id, status, duration in ms, and no personal data (no names, dates or leave types). Workers Observability (already enabled in both `wrangler.jsonc`) computes p95 per route against the PRD §6 targets: open the schedule board ≤ 1500 ms, «who's free» ≤ 1000 ms, save an allocation ≤ 500 ms.
+- **Alerts** (thresholds are architect's estimates, not PRD numbers): p95 above its PRD target for 1 hour on any of the three routes; 5xx share above 1% over 15 minutes; the history purge fails, or deletes 0 entries on 2 consecutive runs once history is older than 12 months.
+- **Retention report** — each purge run logs the number of entries deleted and the oldest remaining entry's age; the monthly report PRD §6 asks for is that log line.
+- **Availability** — 99.5% monthly, measured by the intranet uptime monitor (PRD §6).
 
 **Scaling thresholds:**
-- <e.g. 500 IC × 5 goals × 26 checkpoints/Q = 65k rows/year — comfortable in one table>
-- <e.g. partitioning by quarter at >500k rows/year>
-
-<!-- For XS/S that doesn't change deployment: <!-- N/A: feature reuses existing deployment unit -->. -->
+- PRD scale (100 resources, 300 projects, 52 weeks ahead): a 12-week board window is ~100 × 84 ≈ 8,400 resource-days computed per request (ADR-0005); allocations, segments and history stay in the low thousands of rows per year — comfortable in single tables with ordinary indexes.
+- **Revisit compute-on-read** (ADR-0005 TODO) when resources exceed ~1,000 or when board CPU time per request approaches 50% of the Workers CPU limit; CPU time per board request is measured in the pre-launch load test seeded at 100 resources / 300 projects / 52 weeks (PRD §6).
+- The one-time import runs in one transaction bounded by the 2,000-row target (PRD §6, ADR-0006); a spreadsheet larger than that is rejected at preview rather than risking a long-held Hyperdrive connection.
 
 ## 8. Crosscutting concepts
 
