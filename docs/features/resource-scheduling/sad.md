@@ -425,17 +425,20 @@ flowchart LR
 
 ## 9. Architecture decisions
 
-<!-- 🎯 Навіщо: ЗВОРОТНИЙ ІНДЕКС на папку adr/. `ls adr/` дає файли, §9 дає семантику —    -->
-<!--           чому вони існують, до якого зрізу SAD привʼязані, у якому статусі.           -->
-<!-- 📋 Що писати: таблиця з 4 колонками. Один рядок на ADR. Mixed status — це OK.         -->
-<!-- 📌 Приклад: «0001 | Зберігати урок як таблицю блоків | Accepted | §4».                -->
-
 | # | Title | Status | Section |
 |---|---|---|---|
-| <NNNN> | <imperative — e.g. "Use sliding window for rate limiting"> | Accepted | §<N> |
-| <NNNN> | <imperative — e.g. "Co-locate outbox worker in API process"> | Accepted | §<N> |
+| [0001](./adr/0001-build-backend-service-and-web-frontend-surfaces.md) | Build resource scheduling as a backend service plus a web frontend | Accepted | §4 |
+| [0002](./adr/0002-render-board-ssr-with-week-window-in-url.md) | Render the board server-side with the week window in the URL | Accepted | §4 |
+| [0003](./adr/0003-split-into-org-projects-scheduling-modules.md) | Split the feature into `org`, `projects` and `scheduling` modules | Accepted | §4 |
+| [0004](./adr/0004-resolve-permissions-into-actor-per-request.md) | Resolve the actor's permissions on every request and carry them on `Actor` | Accepted | §4 |
+| [0005](./adr/0005-compute-capacity-and-availability-on-read.md) | Compute capacity, availability and overbooking on read in pure domain functions | Accepted | §4 |
+| [0006](./adr/0006-implement-unit-of-work-without-outbox.md) | Implement `UnitOfWork` now and keep the feature synchronous, without an outbox | Accepted | §4 |
+| [0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) | Invert the capacity-impact and project-closing checks through host-wired ports | Accepted | §5 |
+| [0008](./adr/0008-model-allocation-as-effective-dated-segments.md) | Model an allocation as one aggregate of effective-dated segments | Accepted | §5 |
+| [0009](./adr/0009-store-minutes-and-compute-in-1-420-minute-ticks.md) | Store hours as integer minutes and compute in integer ticks of 1/420 minute | Accepted | §8 |
+| [0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md) | Confirm by re-submitting the request, signalled by typed `ConfirmationRequired`, `Forbidden` and detailed `Conflict` errors | Accepted | §8 |
 
-ADR files live under `docs/features/<slug>/adr/NNNN-<title>.md`.
+ADR files live under `docs/features/resource-scheduling/adr/NNNN-<title>.md`. Repo-wide decisions this feature builds on: [ADR 0001 — modular monolith with hexagonal modules](../../adr/0001-modular-monolith.md).
 
 ## 10. Quality requirements
 
