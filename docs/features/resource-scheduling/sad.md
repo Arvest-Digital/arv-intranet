@@ -1,0 +1,1020 @@
+---
+status: Draft
+owner: "dmitro.b"
+reviewers: ["Tech Lead", "Security Lead"]
+updated_at: "2026-10-29"
+feature_size: M
+stage: "04-05"
+ticket: "TBD"
+target_surfaces: [backend-service, web-frontend]  # decided in §4 (ADR-0001) — subset of: backend-service | web-frontend | mobile-app | desktop-app | cli | worker | library-sdk. Read (never re-derived) by api-forge/complete-sequence-diagrams/break-tasks/plan-tests/review-feature → _shared/surfaces.md
+---
+
+# Software Architecture Document — resource-scheduling
+
+<!-- Stages 04-05 → see sdlc/plugin/skills/architecture-design/SKILL.md -->
+<!-- 12 Arc42 sections. Empty sections — <!-- N/A: <one-line reason> -->. -->
+<!-- C4 Context (L1) lives inline in §3. C4 Container (L2) lives inline in §5. -->
+<!-- §6 Runtime view seeds the primary flow(s) here; complete-sequence-diagrams (stage 06) then -->
+<!--    fills §6 with every critical flow / §5 AC — no cap. -->
+<!-- Numbers in §10 come VERBATIM from PRD §6 NFR — no inventing, no rounding. -->
+
+## 1. Introduction and goals
+
+**Intent.** We build the **Team Availability Board** (PRD §1, Approach C): a weekly board of resources by week showing allocated hours against capacity, a «free hours over the next N weeks» filter, leave booked as allocations to leave-type projects, one company-wide public-holiday list, employee records kept separate from scheduling so later intranet features reuse them, a one-time import of the planning spreadsheet, and a change history on allocations covering the last 12 months. It serves the ~5 users who plan (holders of the edit-allocations permission) and the ~30 resources whose weeks the plan decides. Who may do what is decided by six named permissions granted through the separate roles/permissions feature, not by job title. It is the first business feature on the intranet and the first to need shared employee and project records.
+
+**Top-3 quality goals (1-liners; full scenarios in §10):**
+
+1. **QG-1 Calculation correctness** — 100% of weekly figures match the proration rules (partial weeks, holidays, part-timers, employment period), computed without intermediate rounding, with overbooking judged on the exact figures (PRD §6).
+2. **QG-2 Confidentiality of personal data** — leave type and employment end date never reach a viewer without the matching permission, in any view (board, free list, history, project filter, import preview) (PRD §6.1).
+3. **QG-3 Board responsiveness at target scale** — board p95 ≤ 1500 ms, «who's free» p95 ≤ 1000 ms, allocation save p95 ≤ 500 ms, holding at 100 resources, 300 projects, 52 weeks ahead (PRD §6).
+
+**Stakeholders.**
+
+| Role | Interest | Sign-off owner? |
+|---|---|---|
+| Users who plan — holders of the edit-allocations permission (PMs, delivery managers, team leads) | One always-current board they trust enough to retire the planning spreadsheet | No |
+| Resources (~30 scheduled employees) | See their own allocations and leave week by week | No |
+| Holders of the manage-employee-records permission | Accurate employee records, so capacity is correct | No |
+| PM (PRD owner — dmitro.b) | Goals and KPIs hold; consulted on §10 quality goals and §11 severities | Yes (§10) |
+| Tech Lead | SAD approval, module graph, ADRs | Yes |
+| Security Lead | Security review: six new permissions, health-related leave data (PRD §6.1) | Yes |
+| Owner of the roles/permissions feature | Supplies the access roles that grant the six permissions | No |
+
+**Decision overrides.**
+
+- Decision override: no rate limiting in the MVP (PRD §6.1 abuse case «more than 120 allocation changes per minute by one user are refused») — rationale: removed from scope by the PRD owner during the architecture pass; attribution of every change in allocation history (AC-16) is the only control; the Security Lead confirms or reverses this at the mandatory security review before launch (§8, §11).
+
+## 2. Constraints
+
+**Technical** (pinned in the repo — see `ARCHITECTURE.md`, `package.json`, `apps/*/wrangler.jsonc`).
+- Runtime: Cloudflare Workers (`compatibility_date` 2026-10-01, `nodejs_compat`, Workers Paid plan limits on CPU time, subrequests and bundle size). Two deployables: `arv-web` (public) and `arv-api` (private — no public URL, reachable only through the web Worker's `API` service binding).
+- API: Hono 4.13.13 + Effect 3.22.2 (Effect is the dependency-injection mechanism: ports are `Context.Tag`s, adapters are `Layer`s).
+- Web: React Router 7.18.4 (SSR, loaders/actions), React 19.2, Tailwind CSS 4.3.3, shadcn 4.22.1 over Base UI 1.9.0 primitives in `apps/web/app/shared/ui`.
+- Language and tooling: TypeScript 5.9.3 (pinned below 7 for React Router 7), Vitest 4.1.11 (pinned for the Workers Vitest plugin), Playwright 1.64.0, Biome 2.5.15, pnpm 11.2.2, Turbo 2.11.7.
+- Data: Postgres 18 (Neon in production, docker locally) through the `HYPERDRIVE` binding, with query caching **disabled** on the main config so a read after a write sees it; Drizzle ORM 0.45.4, drizzle-kit 0.31.11, `pg` 8.23.1; IDs are UUIDv7 generated by Postgres.
+- Architecture: modular monolith with hexagonal modules (repo [ADR 0001](../../adr/0001-modular-monolith.md)) — one Postgres schema per module; no foreign keys, joins or queries across schemas; modules call each other only through facades; the module graph is checked by `pnpm check:modules`; transactions on Hyperdrive stay short and never await network calls.
+- Whether a new package may be added to parse the planning spreadsheet is open — see §11.
+
+**Organisational.**
+- Deadline, effort budget and team composition: **TBD by PM** — the PRD cuts scope «to fit the deadline» but names no date (risk in §11).
+- **Hard launch prerequisites** (scheduling launch waits for both, per PRD §8 default):
+  - **Authentication source** — still open in repo ADR 0001; today `IdentityApi.resolveActor` returns `Anonymous` for every request, so no permission can be granted to anyone.
+  - **The roles/permissions feature** — the separate feature that grants the six permissions through access roles; not built yet.
+- A sample of the real planning spreadsheet is owed by the PM (PRD §8); the import mapping is derived from it.
+
+**Conventions.**
+- [`CLAUDE.md`](../../../CLAUDE.md), [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) and `.claude/rules/*` (backend, frontend, infra) — layer imports enforced by Biome `noRestrictedImports`; every module edge declared in the module graph.
+- Errors: domain errors are `Schema.TaggedError`s mapped by the module's presenter to shared contract errors (`NotFound`, `Conflict`, …); database failures are defects (`Effect.orDie` → 500); every error body is `{ error: { _tag, message } }`.
+- Tests next to the code (`*.test.ts`); api integration tests in `apps/api/test/integration/<module>/` against workerd + the real `arv_test` database.
+- New module: `pnpm new:module <name>`, registered in `composition.ts`, `index.ts`, the module graph and `schemaFilter`. Conventional Commits scoped by module.
+
+**Regulatory / external.**
+- Data classification **confidential** (PRD §6.1): named employees' workload, employment dates and absences.
+- Sick leave is health-related, high-sensitivity data. Controls carried from PRD §6.1: leave type visible only to holders of the see-leave-reasons permission and to the resource themselves; employment end date visible only to holders of manage-employee-records or edit-allocations; allocation history deleted after 12 months; mandatory security review before launch.
+
+## 3. Context and scope
+
+<!-- brownfield: no docs/architecture-map.md yet — current architecture read from the authored ARCHITECTURE.md + repo ADR 0001 + a direct scan of apps/, modules/, packages/ (2026-10-29, HEAD d4b5993). Run /sdlc:map-architecture to persist a map. -->
+
+Planning today lives in a spreadsheet and tracker tickets. The ~5 users who plan cannot see a resource's allocations against their capacity, so «who is free in the next 2 weeks?» costs about an hour of chat. Resource scheduling puts that plan on the intranet. Users who plan maintain allocations and leave on a weekly board. Resources see their own weeks. The employee records, teams, projects and public-holiday list behind it become the intranet's first shared records. The trust boundary is the public web Worker: everything a browser sends (form fields, the uploaded spreadsheet) is untrusted until the private api validates it, and every action is authorised against the six permissions at the moment it happens.
+
+**External systems (in / out):**
+
+| Actor or system | Type | Interaction |
+|---|---|---|
+| User who plans (holds edit-allocations, which includes view-whole-board) | Person | Views the board and free list; creates, changes and removes allocations; books leave; runs the one-time import (with manage-employee-records + manage-projects) |
+| Board viewer (holds view-whole-board only) | Person | Views the board, the free list and allocation history; cannot edit |
+| Resource (with an intranet login linked to their employee record) | Person | Views their own schedule only, including their own leave type |
+| Records maintainer (holds manage-employee-records, manage-projects and/or manage-holiday-list) | Person | Maintains employee records and teams, projects, and the public-holiday list |
+| Identity provider (source still open — repo ADR 0001: Cloudflare Access JWT, SSO or own sessions) | System (external) | Authenticates the browser session; the api turns it into the request's actor |
+| Roles/permissions feature | System (internal, separate feature — not built yet) | Answers which of the six permissions an intranet user holds, checked at every action |
+| Planning spreadsheet | Data source (external file) | Uploaded once for preview and all-or-nothing import, then archived read-only |
+
+**C4 Context (L1):**
+
+```mermaid
+C4Context
+    title Resource scheduling — System Context
+
+    Person(planner, "User who plans", "Holds edit-allocations: plans allocations and leave, runs the one-time import")
+    Person(viewer, "Board viewer", "Holds view-whole-board: reads the board, free list and history")
+    Person(resource, "Resource", "Employee with an intranet login: sees only their own schedule")
+    Person(maintainer, "Records maintainer", "Holds manage-employee-records, manage-projects or manage-holiday-list")
+
+    System(intranet, "arv-intranet: Resource scheduling", "Weekly availability board, allocations, leave, employee records, projects, holiday list, history, import")
+
+    System_Ext(idp, "Identity provider", "Authentication source, still open (Access JWT, SSO or own sessions)")
+    System_Ext(roles, "Roles/permissions feature", "Separate intranet feature: grants the six permissions through access roles")
+    System_Ext(sheet, "Planning spreadsheet", "Current plan, imported once and then archived")
+
+    Rel(planner, intranet, "Plans allocations and leave, imports the spreadsheet", "HTTPS")
+    Rel(viewer, intranet, "Views board, free list, history", "HTTPS")
+    Rel(resource, intranet, "Views own schedule", "HTTPS")
+    Rel(maintainer, intranet, "Maintains records, projects, holidays", "HTTPS")
+    Rel(intranet, idp, "Authenticates each request", "HTTPS")
+    Rel(intranet, roles, "Checks permissions at each action", "in-process facade")
+    Rel(planner, sheet, "Exports and uploads once", "file")
+```
+
+## 4. Solution strategy
+
+**Target surface(s) (the first decision — what's being built):** `[backend-service, web-frontend]` — [ADR-0001](./adr/0001-build-backend-service-and-web-frontend-surfaces.md).
+
+- **backend-service** — the private `arv-api` Worker gains three business modules (`org`, `projects`, `scheduling`) that own the typed HTTP contract (Hono routes + `@arv/contracts/<module>` schemas). The monthly history-retention job runs as a `scheduled` (Cron Trigger) entry point on this same Worker — part of the backend surface, not a separate `worker` surface.
+- **web-frontend** — the public `arv-web` Worker gains feature folders that *consume* that contract through typed per-feature clients; it authors no contract of its own.
+
+**Top strategic choices (the seeds for ADRs):**
+
+1. **UI-architecture: server-rendered board with the week window in the URL** ([ADR-0002](./adr/0002-render-board-ssr-with-week-window-in-url.md)) — stay on React Router 7 SSR. The board's window and filters (`from`, `weeks`, `team`, `project`) are URL search params, so each view is one loader call that asks the api for exactly one bounded window (≤ 12 visible weeks), and every view is a shareable link. Scrolling back (≤ 12 months, view only) or forward (≤ 52 weeks) is a navigation to the next window. Edits are route actions; client JavaScript is used only for dialogs and the overbooking / project-close confirmations. Screens are composed from the existing `app/shared/ui` primitives (table, dialog, select, dropdown-menu, input, button) and the theme tokens — no new design system. Serves QG-3 (bounded payload per request) and keeps the api private (the browser never calls it).
+
+2. **Three modules: `org`, `projects`, `scheduling`** ([ADR-0003](./adr/0003-split-into-org-projects-scheduling-modules.md); resolves PRD §8 «is the employee record its own module» — yes). `org` owns employee records, the login link, teams and the public-holiday list (company facts other intranet features reuse) and calls `identity`. `projects` owns projects of every type (client, internal, bench, training, leave), open/closed state, close dates and name uniqueness. `scheduling` owns allocations (including leave), capacity/availability/overbooking, the board and free list, allocation history, the history-retention job and the one-time import, and calls `org` and `projects`. Two operations need the *called* module to ask the *caller* for data — capacity-changing edits in `org` must preview overbooking (AC-19c, AC-27) and closing a project in `projects` must preview and trim allocations (AC-25) — without creating a cycle in the module graph; §5 decides the mechanism.
+
+3. **Permissions resolved into the actor on every request** ([ADR-0004](./adr/0004-resolve-permissions-into-actor-per-request.md)) — the api host's authentication middleware builds the `Actor` from the identity provider *and* the permission set the roles/permissions feature grants that user, on every request; `Actor.User` in `@arv/kernel` gains that set. Each module's use cases check the named permissions they own; the rule «edit-allocations includes everything view-whole-board allows» lives in one `scheduling` policy. Visibility rules (leave type, employment end date) are enforced by redacting before any DTO leaves the api — the web never receives data the viewer may not see. Until the roles/permissions feature ships, a stub permission source serves development and tests; launch waits for the real one (§2). Serves QG-2 and AC-14 (checked at each action, not at sign-in).
+
+4. **Capacity, availability and overbooking computed on read in pure domain functions** ([ADR-0005](./adr/0005-compute-capacity-and-availability-on-read.md)) — no stored weekly aggregates. For a board window or free-list period, `scheduling` loads the allocations overlapping it, asks `org` for the employment terms of the resources in scope and for the holidays in the period, and computes every figure with side-effect-free functions in its `domain/`. One rule set serves the board, the free list, the overbooking warnings and the import preview. Serves QG-1 (figures can never drift from their inputs) and is cheap at the PRD scale (QG-3).
+
+5. **Synchronous and transactional; implement `UnitOfWork` now, no outbox in the MVP** ([ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md)) — implement the kernel's `UnitOfWork` port as `ARCHITECTURE.md` describes (one `db.transaction`, the transaction carried in a `CurrentTx` FiberRef that `query()` reads). Every allocation change and its history entry commit together; closing a project and capacity-changing `org` edits call the ports of ADR-0007 inside the owning module's unit of work, and the all-or-nothing import uses facade commands that join the caller's unit of work. No domain events, outbox, Cron relay or Queue in this feature — no use case needs eventual delivery. Serves the «0 lost updates» and atomic-import requirements (PRD §6, AC-31).
+
+Each tactical decision in later sections should be traceable to one of these strategic seeds. Tactical decisions that *contradict* a strategic choice are red flags — surface them in §11 Risks.
+
+## 5. Building block view
+
+The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001), with no divergence: three new modules generated from `modules/_template`, each with `domain/` (pure entities, policies, calculations) → `application/` (ports, use cases, facade) → `infrastructure/` (Drizzle adapters, its own `pgSchema`) → `http/` (Hono routes, presenter). Modules reach each other only through facades. The two operations that run against the module graph — an `org` edit that changes capacity must preview overbooking (AC-19c, AC-27), and closing a project in `projects` must preview and trim allocations (AC-25) — use **ports owned by the called module and implemented by `scheduling`**, wired in the api host's composition root ([ADR-0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md)): `org` defines `CapacityImpactCheck`, `projects` defines `ProjectClosingHook`, both exported from their facades; `scheduling` (which already depends on both) provides the Layers that implement them. The package graph stays `org → identity`, `scheduling → org`, `scheduling → projects`, with no cycle. An allocation is one aggregate holding **effective-dated segments**, so a change «from today» ends the current segment and starts a new one without rewriting the past ([ADR-0008](./adr/0008-model-allocation-as-effective-dated-segments.md)).
+
+**Internal decomposition:**
+
+```
+packages/kernel/src/
+├── actor.ts              Actor.User gains the permission set (ADR-0004); Permission identifier type
+└── …                     UnitOfWork / DomainEvents ports (unchanged)
+packages/db/src/
+└── unit-of-work.ts       UnitOfWorkLive: db.transaction + CurrentTx FiberRef read by query() (ADR-0006)
+
+modules/org/                         @arv/org — schema `org`; calls identity
+├── domain/               EmployeeRecord (contract hours, working days, employment period, team, login link),
+│                         Team (name + team lead), PublicHoliday, name-normalisation, validation rules (AC-20)
+├── application/          ports.ts (repositories + CapacityImpactCheck — implemented by scheduling),
+│                         use cases (create/edit record, link login, teams, holidays), org-api.ts (facade:
+│                         employment terms + holidays for a window, employee by login, import commands)
+├── infrastructure/       schema.ts (employee_records, teams, public_holidays), drizzle-*-repository.ts
+└── http/                 routes.ts, presenter.ts (redacts end date for viewers without the permission)
+
+modules/projects/                    @arv/projects — schema `projects`; calls no module
+├── domain/               Project (type: client | internal | bench | training | leave; open / close date),
+│                         name comparison ignoring case and surrounding spaces (AC-24)
+├── application/          ports.ts (repository + ProjectClosingHook — implemented by scheduling),
+│                         use cases (create, close with preview), projects-api.ts (facade: get / list
+│                         projects, is-open-on(date), import commands)
+├── infrastructure/       schema.ts (projects), drizzle-project-repository.ts
+└── http/                 routes.ts, presenter.ts
+
+modules/scheduling/                  @arv/scheduling — schema `scheduling`; calls org, projects
+├── domain/               Allocation (aggregate of effective-dated segments, version), capacity calendar
+│                         and proration (pure, ADR-0005), overbooking, free-list ranking,
+│                         visibility policy (leave type, end date, view-whole-board ⊆ edit-allocations)
+├── application/          ports.ts, board / free-list / my-schedule queries, allocation and leave commands,
+│                         history query, capacity-impact-check.ts and project-closing-hook.ts (implement
+│                         the org / projects ports), import preview + commit, purge-history,
+│                         scheduling-api.ts (facade)
+├── infrastructure/       schema.ts (allocations, allocation_segments, allocation_history, import_runs),
+│                         drizzle-*-repository.ts
+├── http/                 routes.ts, presenter.ts (leave type → «away» unless see-leave-reasons or own)
+└── layer.ts              SchedulingModuleLive + the Layers that satisfy org's and projects' ports
+
+apps/api/src/
+├── middleware/           authenticate → Actor with permissions (identity + permission source, ADR-0004)
+├── composition.ts        Identity, Org, Projects, Scheduling Layers + port wiring (ADR-0007)
+└── index.ts              mounts /org, /projects, /scheduling routes; adds the `scheduled` handler
+                          (monthly history purge, ADR-0001)
+
+apps/web/app/features/
+├── org/                  employee records, teams, holiday list (routes, components, org.server.ts)
+├── projects/             project list, create, close-with-preview (projects.server.ts)
+└── scheduling/           board, free list, my schedule, allocation / leave dialogs, history, import
+                          (scheduling.server.ts)
+```
+
+**C4 Container (L2):**
+
+```mermaid
+C4Container
+    title Resource scheduling — Containers
+
+    Person(planner, "User who plans", "edit-allocations")
+    Person(viewer, "Board viewer", "view-whole-board")
+    Person(resource, "Resource", "own schedule")
+    Person(maintainer, "Records maintainer", "manage-employee-records, manage-projects, manage-holiday-list")
+
+    Container_Boundary(cf, "arv-intranet on Cloudflare") {
+        Container(web, "arv-web", "Worker, React Router 7 SSR", "features org, projects, scheduling: board, free list, own schedule, dialogs, import upload")
+        Container(host, "arv-api host", "Worker, Hono 4 + Effect 3", "authenticate to actor with permissions, composition root, fetch and scheduled entry points")
+        Container(identity, "identity module", "Effect module", "users, resolves the request's user")
+        Container(org, "org module", "Effect module", "employee records, login link, teams, public holidays")
+        Container(projects, "projects module", "Effect module", "projects of every type, open and closed")
+        Container(sched, "scheduling module", "Effect module", "allocations and leave, capacity, board, free list, history, import")
+        Container(cron, "Retention trigger", "Cloudflare Cron Trigger", "fires the monthly history purge")
+        Container(hd, "Hyperdrive", "Cloudflare Hyperdrive", "connection pool, query caching off")
+    }
+
+    ContainerDb(pg, "Postgres 18", "Neon", "schemas identity, org, projects, scheduling")
+    System_Ext(idp, "Identity provider", "authentication source, still open")
+    System_Ext(roles, "Roles/permissions feature", "grants the six permissions")
+
+    Rel(planner, web, "Plans allocations, leave, import", "HTTPS")
+    Rel(viewer, web, "Views board, free list, history", "HTTPS")
+    Rel(resource, web, "Views own schedule", "HTTPS")
+    Rel(maintainer, web, "Maintains records, projects, holidays", "HTTPS")
+    Rel(web, host, "Typed hc client per feature", "service binding API")
+    Rel(host, idp, "Verifies the session", "HTTPS")
+    Rel(host, identity, "Resolves the user")
+    Rel(host, roles, "Gets the user's permissions per request", "facade")
+    Rel(host, org, "Routes requests")
+    Rel(host, projects, "Routes requests")
+    Rel(host, sched, "Routes requests")
+    Rel(cron, host, "Monthly purge", "scheduled event")
+    Rel(org, identity, "Validates login link", "facade")
+    Rel(sched, org, "Employment terms, holidays, employee by login", "facade")
+    Rel(sched, projects, "Project type and open state", "facade")
+    Rel(org, sched, "CapacityImpactCheck port, wired by host")
+    Rel(projects, sched, "ProjectClosingHook port, wired by host")
+    Rel(org, hd, "SQL via the query helper", "pg")
+    Rel(projects, hd, "SQL via the query helper", "pg")
+    Rel(sched, hd, "SQL via the query helper", "pg")
+    Rel(hd, pg, "Pooled connections", "Postgres wire")
+```
+
+## 6. Runtime view
+
+architecture-design seeds the three riskiest flows here; `/sdlc:complete-sequence-diagrams` then covers every PRD §5 acceptance criterion. Participants are the §5 containers; messages are semantic (endpoint paths and status codes arrive with `api-forge`).
+
+**Critical flow 1: Plan an allocation that overbooks** (AC-07, AC-09, AC-10, AC-13, AC-07b, AC-12, AC-14)
+
+```mermaid
+sequenceDiagram
+    actor P as User who plans
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling module
+    participant PR as projects module
+    participant O as org module
+    participant DB as Postgres
+    P->>W: Submits allocation form with the version it was opened at
+    W->>H: Save allocation via typed client
+    H->>H: Authenticate and load the actor's permissions for this request
+    H->>S: Save allocation as this actor
+    alt actor lacks edit-allocations
+        S-->>H: Refused, missing edit-allocations
+        H-->>W: Forbidden
+        W-->>P: Says the permission to edit allocations is missing
+    else permitted
+        S->>PR: Is the project open over these dates
+        PR-->>S: Open until its close date
+        S->>O: Employment terms and holidays for the resource and period
+        O-->>S: Terms and holidays
+        S->>DB: Load the resource's allocation segments in the period
+        DB-->>S: Segments
+        S->>S: Validate rules and compute exact weekly figures
+        alt rule broken or outside employment period or before today
+            S-->>H: Rejected with the broken rule
+            H-->>W: Validation error
+            W-->>P: Shows which rule the input breaks
+        else overbooked and not confirmed
+            S-->>H: Overbooking warning with each week and hours over
+            H-->>W: Confirmation required
+            W-->>P: Lists affected weeks and asks to confirm
+            Note over P,S: On confirm the form is sent again with the confirmation and the same version and every check reruns on fresh data
+        else fits or confirmed
+            S->>DB: One transaction writes segments and history where the version still matches
+            alt version changed meanwhile
+                DB-->>S: No row matched
+                S-->>H: Conflict with current values and who changed them
+                H-->>W: Conflict
+                W-->>P: Shows the other user's change
+            else saved
+                DB-->>S: Committed
+                S-->>H: Saved allocation with last changed by and at
+                H-->>W: Saved
+                W-->>P: Board window reloads with the new hours
+            end
+        end
+    end
+```
+
+**Critical flow 2: Close a project and trim its allocations** (AC-25, AC-11, AC-16, AC-26; ADR-0007)
+
+```mermaid
+sequenceDiagram
+    actor M as Records maintainer
+    participant W as arv-web
+    participant H as arv-api host
+    participant PR as projects module
+    participant S as scheduling module
+    participant DB as Postgres
+    M->>W: Chooses a close date for the project
+    W->>H: Close project via typed client
+    H->>PR: Close project as this actor
+    PR->>PR: Check manage-projects and that the close date is not before today
+    PR->>S: ProjectClosingHook preview for project and close date
+    S->>DB: Allocations of the project running past the close date
+    DB-->>S: Allocations
+    S-->>PR: Allocations to end at the close date and to remove
+    alt not yet confirmed
+        PR-->>H: Confirmation required with the list
+        H-->>W: Preview
+        W-->>M: Shows which allocations end and which are removed
+        Note over M,PR: On confirm the request is sent again with the confirmation and the preview is recomputed
+    else confirmed
+        PR->>DB: Begin one unit of work and record the close date
+        PR->>S: ProjectClosingHook apply inside the same unit of work
+        S->>DB: End segments at the close date, remove later allocations, write history by the closer
+        PR->>DB: Commit
+        DB-->>PR: Committed
+        PR-->>H: Project closes after the close date
+        H-->>W: Closed
+        W-->>M: Freed hours show as availability
+    end
+```
+
+**Critical flow 3: Open the board with per-viewer redaction** (AC-01, AC-03, AC-06, AC-22, AC-29; ADR-0002, ADR-0004, ADR-0005)
+
+```mermaid
+sequenceDiagram
+    actor V as Board viewer
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling module
+    participant O as org module
+    participant PR as projects module
+    participant DB as Postgres
+    V->>W: Opens the board with window and filters in the URL
+    W->>H: Board query for window, team and project
+    H->>H: Authenticate and load the actor's permissions for this request
+    H->>S: Board window as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>H: Refused
+        H-->>W: Forbidden
+        W-->>V: Offers the viewer's own schedule if they are a resource
+    else permitted
+        S->>O: Resources in scope with employment terms and holidays
+        O-->>S: Terms including end dates
+        S->>DB: Allocation segments overlapping the window
+        DB-->>S: Segments
+        S->>PR: Projects referenced in the window
+        PR-->>S: Names and types
+        S->>S: Compute exact weekly figures and one state per cell
+        S->>S: Redact leave type to away and hide end dates and later allocations per permissions
+        S-->>H: Board window
+        H-->>W: Board
+        W-->>V: One row per resource and one column per week
+    end
+```
+
+The flows below use the generic runtime vocabulary (`<user>`, `<ui>`, `<service>`, `<data-store>`, `<client>`); the word after `<service>` names the §5 module that plays the role. In every UI-driven flow the request reaches the module through the api host, which authenticates and resolves the actor's permissions per request (ADR-0004), as drawn in flows 1–3. Persist notes mark the writes `generate-data-model` indexes.
+
+### Flow 4: Find who is free
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: today is the date in the company's single time zone
+    U->>UI: Asks for resources with at least X free hours over the next N weeks
+    UI->>S: Free list query for N weeks and minimum X hours as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>UI: Refused, missing view-whole-board
+        UI-->>U: Says the permission to view the board is missing
+    else N outside 1 to 12, or X negative or not a number
+        S-->>UI: Rejected with the allowed ranges
+        UI-->>U: No results, weeks must be 1 to 12 and free hours zero or more
+    else valid
+        S->>O: Resources with employment terms and holidays from today over N weeks
+        O-->>S: Terms including end dates, and holidays
+        S->>D: Allocation segments overlapping the period
+        D-->>S: Segments
+        S->>S: Sum availability over the rest of this week plus N-1 full weeks, an overbooked week counts as zero
+        S->>S: Leave out incomplete records with a capacity-unknown note, and weeks needing attention
+        S->>S: Apply the visibility policy, leave type to away, end dates and later allocations per permissions
+        S-->>UI: Resources at or above X, most free first, with free hours per week
+        UI-->>U: Ranked free list plus the incomplete-record note
+    end
+    Note over U,UI: Postcondition: read only, nothing persisted
+```
+
+### Flow 5: Change or remove an allocation from today
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant PR as <service> projects
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: user holds edit-allocations, permission refusal as in flow 1
+    P->>UI: Changes the hours or dates of an allocation, or removes it
+    UI->>S: Change or remove allocation with the version it was opened at
+    S->>PR: Is the project open, and its close date
+    PR-->>S: Open until its close date, or closed
+    S->>O: Employment period of the resource
+    O-->>S: Period including the end date
+    S->>D: Load the allocation and its segments
+    D-->>S: Segments and current version
+    alt project closed
+        S-->>UI: Rejected, the project is closed
+        UI-->>P: Says a closed project accepts no new, changed or removed allocations
+    else start date moved before today
+        S-->>UI: Rejected, past plans are not rewritten
+        UI-->>P: Explains only today onwards can change
+    else change still runs past the employment end date or the close date
+        S-->>UI: Rejected, outside the employment period, naming the last bookable date
+        UI-->>P: Shows the last date the resource can be allocated
+    else allowed
+        Note over S: Growing hours run the overbooking warning and confirmation of flow 1
+        S->>S: End the current segment yesterday and start the changed one today, or drop it from today for a removal
+        S->>D: One transaction writes segments and history where the version still matches
+        Note over S,D: persists allocation segments and a history entry effective today
+        alt version changed meanwhile
+            D-->>S: No row matched
+            S-->>UI: Conflict with current values and who changed them
+            UI-->>P: Shows the other user's change
+        else saved
+            D-->>S: Committed
+            S-->>UI: Saved, needing-attention mark cleared if it now ends by the end date
+            UI-->>P: Freed hours show as availability from today
+        end
+    end
+    Note over P,UI: Postcondition: days before today keep their hours, history shows who changed it, when and from which day
+```
+
+### Flow 6: Book leave
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant PR as <service> projects
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: user holds edit-allocations, one leave-type project per leave type
+    P->>UI: Books whole working days of leave for a resource, choosing the leave type
+    UI->>S: Book leave on the chosen leave-type project for those days
+    S->>PR: Is it an open leave-type project
+    PR-->>S: Leave type confirmed
+    S->>O: Contract hours, working days, holidays and employment period
+    O-->>S: Terms and holidays
+    S->>D: The resource's allocation segments over the leave days
+    D-->>S: Segments
+    S->>S: Each leave day takes the full daily capacity, find work allocations whose daily hours fall on leave days
+    alt days before today or outside the employment period
+        S-->>UI: Rejected with the broken rule
+        UI-->>P: Shows which rule the booking breaks
+    else work falls on leave days or a week overbooks, not confirmed
+        S-->>UI: Confirmation required naming the work allocations on leave days and weeks over
+        UI-->>P: Lists those allocations to shorten or move and asks to confirm
+    else fits, or confirmed
+        S->>D: One transaction writes the leave allocation and its history
+        Note over S,D: persists leave allocation segments and a history entry
+        D-->>S: Committed
+        S-->>UI: Saved, leave type shown as away unless see-leave-reasons
+        UI-->>P: Resource shows as away with the number of leave days
+    end
+    Note over P,UI: Postcondition: the resource is not counted as free on the leave days
+```
+
+### Flow 7: Trace an allocation's history
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor V as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over V,UI: Precondition: the allocation exists
+    V->>UI: Opens the allocation's history
+    UI->>S: History of the allocation as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>UI: Refused, missing view-whole-board
+        UI-->>V: Says the permission to view the board is missing
+    else permitted
+        S->>D: History entries of the allocation from the last 12 months in order
+        D-->>S: Entries with who, when, values before and after
+        S->>S: Leave type to away unless see-leave-reasons, values past an end date hidden per permissions
+        S-->>UI: Creation or imported entry, changes, trims and removals in order
+        UI-->>V: Each change with who, when and the values before and after
+    end
+    Note over V,UI: Postcondition: read only
+```
+
+### Flow 8: See my own schedule
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor R as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over R,UI: Precondition: user is signed in to the intranet
+    R->>UI: Opens my schedule
+    UI->>S: Own schedule for the week window as this actor
+    S->>O: Employee record linked to this login
+    alt no employee record linked to the login
+        O-->>S: Not found
+        S-->>UI: Not set up as a resource
+        UI-->>R: Says they are not a resource yet and that manage-employee-records holders can link them
+    else linked
+        O-->>S: Record with employment terms and holidays
+        S->>D: Own allocation segments in the window
+        D-->>S: Segments
+        S->>S: Compute weekly figures, own leave type stays visible
+        S-->>UI: Own weeks against capacity, read only
+        UI-->>R: Own allocations and leave week by week, no edit controls
+    end
+    Note over R,UI: Postcondition: read only
+```
+
+### Flow 9: Create or edit an employee record
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant I as <service> identity
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: the joiner's intranet login exists
+    M->>UI: Saves a record with team, contract hours, working days, employment period and login
+    UI->>O: Create or edit employee record with the version it was opened at
+    alt actor lacks manage-employee-records
+        O-->>UI: Refused, missing manage-employee-records
+        UI-->>M: Says the permission is missing, record unchanged
+    else permitted
+        O->>O: Validate hours above zero and at most 60, a working day, end not before start
+        O->>I: Does the login exist
+        I-->>O: User
+        O->>D: Record already linked to this login
+        D-->>O: None or another record
+        opt contract hours or working days change
+            O->>S: CapacityImpactCheck for the resource with the new terms
+            S->>D: The resource's allocation segments in coming weeks
+            D-->>S: Segments
+            S-->>O: Weeks that would become overbooked
+        end
+        alt a rule is broken
+            O-->>UI: Rejected with the broken rule
+            UI-->>M: Shows which rule the input breaks
+        else login linked to another record
+            O-->>UI: Rejected naming the record the login belongs to
+            UI-->>M: Shows which record already holds the login
+        else new overbooked weeks, not confirmed
+            O-->>UI: Confirmation required with each resource and week
+            UI-->>M: Lists the weeks that would become overbooked and asks to confirm
+        else valid, or confirmed
+            O->>D: Save the record where the version still matches
+            Note over O,D: persists employee record, login link and team membership
+            alt version changed meanwhile
+                D-->>O: No row matched
+                O-->>UI: Conflict with current values and who changed them
+                UI-->>M: Shows the other user's change
+            else saved
+                D-->>O: Committed
+                O-->>UI: Saved record
+                UI-->>M: Board and free list use the new capacity, allocations past a new end date are kept and marked needing attention
+            end
+        end
+    end
+    Note over M,UI: Postcondition: allocations unchanged, no allocation history entry written
+```
+
+### Flow 10: Manage teams
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: the team lead is a resource
+    M->>UI: Creates or renames a team with its team lead, or removes a team
+    UI->>O: Team command as this actor
+    alt actor lacks manage-employee-records
+        O-->>UI: Refused, missing manage-employee-records
+        UI-->>M: Says the permission is missing
+    else permitted
+        O->>D: Team with the same name ignoring case and surrounding spaces, and member count
+        D-->>O: Match and member count
+        alt name matches another team
+            O-->>UI: Rejected, a team with this name exists
+            UI-->>M: Shows the duplicate name
+        else removing a team that still has resources
+            O-->>UI: Rejected naming how many resources remain
+            UI-->>M: Shows the remaining resource count
+        else valid
+            O->>D: Save or delete the team
+            Note over O,D: persists team with normalised name and team lead
+            D-->>O: Committed
+            O-->>UI: Saved
+            UI-->>M: Team list updated
+        end
+    end
+    Note over M,UI: Postcondition: team names unique ignoring case and surrounding spaces
+```
+
+### Flow 11: Create a project
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant PR as <service> projects
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: none
+    M->>UI: Creates a project with a name and a type
+    UI->>PR: Create project as this actor
+    alt actor lacks manage-projects
+        PR-->>UI: Refused, missing manage-projects
+        UI-->>M: Says the permission is missing, project list unchanged
+    else permitted
+        PR->>D: Open project with the same name ignoring case and surrounding spaces
+        D-->>PR: Match or none
+        alt an open project already uses the name
+            PR-->>UI: Rejected, an open project with this name exists
+            UI-->>M: Shows the duplicate
+        else name free
+            PR->>D: Save the project as open
+            Note over PR,D: persists project with type, normalised name and open state
+            D-->>PR: Committed
+            PR-->>UI: Created
+            UI-->>M: Project offered for new allocations
+        end
+    end
+    Note over M,UI: Postcondition: at most one open project per normalised name
+```
+
+### Flow 12: Add or remove a public holiday
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: one company-wide holiday list
+    M->>UI: Adds or removes a public holiday
+    UI->>O: Holiday command as this actor
+    alt actor lacks manage-holiday-list
+        O-->>UI: Refused, missing manage-holiday-list
+        UI-->>M: Says the permission is missing, list unchanged
+    else permitted
+        opt adding a holiday
+            O->>S: CapacityImpactCheck for resources working that weekday
+            S->>D: Allocation segments in that week
+            D-->>S: Segments
+            S-->>O: Resources and weeks that would become overbooked
+        end
+        alt new overbooked weeks, not confirmed
+            O-->>UI: Confirmation required with each resource and week
+            UI-->>M: Lists the weeks that would become overbooked and asks to confirm
+        else no impact, confirmed, or a removal
+            O->>D: Save or delete the holiday
+            Note over O,D: persists public holiday by date
+            D-->>O: Committed
+            O-->>UI: Saved
+            UI-->>M: Capacity drops only for resources who work that day
+        end
+    end
+    Note over M,UI: Postcondition: allocations unchanged, no allocation history entry written
+```
+
+### Flow 13: Import the planning spreadsheet
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant PR as <service> projects
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: no import has completed yet
+    P->>UI: Uploads the planning spreadsheet
+    UI->>S: Import with the file as this actor
+    alt actor lacks edit-allocations, manage-employee-records or manage-projects
+        S-->>UI: Refused naming every missing permission
+        UI-->>P: Lists the missing permissions
+    else permitted
+        S->>D: Completed import run
+        D-->>S: Present or none
+        alt an import already completed
+            S-->>UI: Refused, the import is one time
+            UI-->>P: Says later changes are made on the board
+        else no import yet
+            S->>S: Read cells as plain text and check rows with the manual-entry rules
+            S->>O: Existing records and holidays to match names against
+            O-->>S: Records and holidays
+            S->>PR: Existing projects to match names against
+            PR-->>S: Projects
+            S->>S: Flag names differing only in initials, case or spaces, and compute overbooked resource-weeks
+            alt any problem row
+                S-->>UI: Problem rows with reasons, nothing imported
+                UI-->>P: Lists each row and its reason, asks to fix the file and retry
+            else clean, not confirmed
+                S-->>UI: Confirmation required with counts of records, projects, allocations, incomplete records and overbooked resource-weeks
+                UI-->>P: Shows the preview and asks for one confirmation
+                Note over P,S: On confirm the file is uploaded again and the preview recomputed, the file is never stored
+            else clean and confirmed
+                S->>D: Begin one unit of work
+                S->>O: Create employee records inside the unit of work
+                Note over O,D: persists employee records
+                S->>PR: Create projects inside the unit of work
+                Note over PR,D: persists projects
+                S->>D: Write allocations, imported history entries and the completed import run
+                Note over S,D: persists allocations, history by the importing user, import run
+                S->>D: Commit
+                D-->>S: Committed
+                S-->>UI: Imported
+                UI-->>P: Board shows the imported plan
+            end
+        end
+    end
+    Note over P,UI: Postcondition: exactly one completed import run exists
+```
+
+### Cross-cutting: Monthly history purge
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as <client> scheduler
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over C,S: Trigger: monthly schedule, 03:00 UTC on the 1st
+    C->>S: Purge allocation history older than 12 months
+    S->>S: Check idempotency key, the cut-off date, a rerun for the same cut-off deletes nothing new
+    S->>D: Delete history entries recorded before the cut-off
+    Note over S,D: deletes allocation history by entry time (informs data-model indexes)
+    D-->>S: Entries deleted and the oldest remaining entry's age
+    S->>S: Log the retention report line
+    Note over C,S: retry N times with backoff on failure, N not yet set
+    alt retries exhausted
+        S->>S: Log the failed run, which fires the purge-failure alert
+        Note over C,S: dead-letter: no queue, the failed run is logged and alerted, the next monthly run catches up
+    end
+    Note over C,S: Postcondition: no history entry older than 12 months at run time remains
+```
+
+### Coverage: US/AC → flows
+
+| ID | Realized by (§6 heading) | How | Note |
+|---|---|---|---|
+| US-01 | Critical flow 3: Open the board with per-viewer redaction | flow | |
+| US-02 | Flow 4: Find who is free | flow | |
+| US-03 | Critical flow 1: Plan an allocation that overbooks, Flow 5: Change or remove an allocation from today | flow | |
+| US-04 | Flow 6: Book leave | flow | |
+| US-05 | Flow 7: Trace an allocation's history, Cross-cutting: Monthly history purge | flow | |
+| US-06 | Flow 8: See my own schedule | flow | |
+| US-07 | Flow 9: Create or edit an employee record, Flow 10: Manage teams | flow | |
+| US-08 | Flow 11: Create a project, Critical flow 2: Close a project and trim its allocations | flow | |
+| US-09 | Flow 12: Add or remove a public holiday | flow | |
+| US-10 | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history | flow | redaction step in each read flow |
+| US-11 | Flow 13: Import the planning spreadsheet | flow | |
+| AC-01 | Critical flow 3: Open the board with per-viewer redaction | flow | |
+| AC-02 | Critical flow 3: Open the board with per-viewer redaction | flow | team and project filters in the board query |
+| AC-03 | Critical flow 3: Open the board with per-viewer redaction | branch | `alt neither view-whole-board nor edit-allocations` |
+| AC-04 | Flow 4: Find who is free | flow | |
+| AC-05 | Flow 4: Find who is free | branch | `else N outside 1 to 12, or X negative or not a number` |
+| AC-06 | Flow 4: Find who is free, Critical flow 3: Open the board with per-viewer redaction | flow | incomplete records left out of the free list, one cell state on the board |
+| AC-07 | Critical flow 1: Plan an allocation that overbooks | branch | `else fits or confirmed` / `else saved` |
+| AC-07a | Flow 5: Change or remove an allocation from today | flow | removal path |
+| AC-07b | Critical flow 1: Plan an allocation that overbooks, Flow 5: Change or remove an allocation from today | branch | `alt version changed meanwhile` |
+| AC-08 | Critical flow 1: Plan an allocation that overbooks | flow | proration in the compute step (ADR-0005, ADR-0009) |
+| AC-09 | Critical flow 1: Plan an allocation that overbooks | branch | `alt rule broken or outside employment period or before today` |
+| AC-09b | Flow 5: Change or remove an allocation from today, Flow 6: Book leave | flow | `else start date moved before today` refuses; the allowed path splits segments at today |
+| AC-10 | Critical flow 1: Plan an allocation that overbooks | branch | `else overbooked and not confirmed` |
+| AC-11 | Flow 5: Change or remove an allocation from today | branch | `alt project closed` |
+| AC-12 | Critical flow 1: Plan an allocation that overbooks | branch | `alt actor lacks edit-allocations` |
+| AC-12b | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history | branch | `else permitted` of the neither-permission check |
+| AC-13 | Critical flow 1: Plan an allocation that overbooks | branch | `alt rule broken or outside employment period or before today` |
+| AC-14 | Critical flow 1: Plan an allocation that overbooks | branch | `alt actor lacks edit-allocations` — permissions loaded per request |
+| AC-15 | Flow 6: Book leave | flow | plus `else work falls on leave days or a week overbooks, not confirmed` |
+| AC-16 | Flow 7: Trace an allocation's history | flow | trims written in Critical flow 2, imported entry in Flow 13 |
+| AC-17 | Flow 8: See my own schedule | flow | |
+| AC-18 | Flow 8: See my own schedule | branch | `alt no employee record linked to the login` |
+| AC-19a | Flow 9: Create or edit an employee record | flow | |
+| AC-19b | Flow 9: Create or edit an employee record | branch | `else login linked to another record` |
+| AC-19 | Flow 9: Create or edit an employee record | flow | |
+| AC-19c | Flow 9: Create or edit an employee record, Flow 12: Add or remove a public holiday | branch | `else new overbooked weeks, not confirmed` |
+| AC-19d | Flow 10: Manage teams | flow | |
+| AC-20 | Flow 9: Create or edit an employee record | branch | `alt a rule is broken` |
+| AC-21 | Flow 9: Create or edit an employee record | branch | `else saved` — later allocations kept and marked needing attention |
+| AC-21b | Flow 5: Change or remove an allocation from today | branch | `else change still runs past the employment end date or the close date` / `else saved` clears the mark |
+| AC-22 | Flow 9: Create or edit an employee record, Critical flow 3: Open the board with per-viewer redaction | branch | `alt actor lacks manage-employee-records`; end-date redaction in flow 3 |
+| AC-23 | Flow 11: Create a project | flow | |
+| AC-24 | Flow 11: Create a project | branch | `alt an open project already uses the name` |
+| AC-25 | Critical flow 2: Close a project and trim its allocations | flow | |
+| AC-26 | Flow 11: Create a project, Critical flow 2: Close a project and trim its allocations | branch | `alt actor lacks manage-projects`; manage-projects check in flow 2 |
+| AC-27 | Flow 12: Add or remove a public holiday | flow | |
+| AC-28 | Flow 12: Add or remove a public holiday | branch | `alt actor lacks manage-holiday-list` |
+| AC-29 | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history, Flow 8: See my own schedule | flow | redaction step, own leave type kept in flow 8 |
+| AC-30 | Flow 13: Import the planning spreadsheet | flow | |
+| AC-31 | Flow 13: Import the planning spreadsheet | branch | `alt any problem row` |
+| AC-32 | Flow 13: Import the planning spreadsheet | branch | `alt an import already completed` |
+| AC-33 | Flow 13: Import the planning spreadsheet | branch | `alt actor lacks edit-allocations, manage-employee-records or manage-projects` |
+
+Coverage: 11/11 user stories · 42/42 ACs — 0 non-runtime N/A.
+
+**Flags:**
+- Monthly history purge: the retry count and the dead-letter shape (log + alert, no queue) are not decided anywhere, and §5 has no `<message-bus>`. Worth an ADR, or a §8 line, via `/sdlc:decide-adr`.
+- Flows 1–3 use concrete names (`arv-web`, `Postgres`) and bold headings rather than `###` headings. They were left untouched because this stage is additive. Aligning them to the generic vocabulary would be a manual edit.
+- Flow 5 does not draw the closed-project refusal for a new allocation. Flow 1 only asks whether the project is open, and AC-11's refusal is drawn on the change and remove path.
+
+## 7. Deployment view
+
+The feature ships inside the two existing Cloudflare Workers — serverless, scaled by Cloudflare per request, so there are no replicas or instance counts to manage. `arv-web` gains three feature folders and no new bindings. `arv-api` gains three modules, three Postgres schemas (`org`, `projects`, `scheduling`) and its **first Cron Trigger**: `triggers.crons = ["0 3 1 * *"]` (03:00 UTC on the 1st of each month) fires the `scheduled` handler, which calls `scheduling`'s purge of allocation history entries older than 12 months (ADR-0001). Hyperdrive (query caching off) and the `API` service binding are unchanged. Migrations for the three schemas are applied through `@arv/migrations` **before** the api deploy and are additive only (new schemas and tables), so a rollback of the Worker never needs a schema rollback.
+
+```mermaid
+flowchart LR
+  browser([Browser]) --> web
+  subgraph cf["Cloudflare"]
+    web["arv-web Worker<br/>features org · projects · scheduling"]
+    subgraph api["arv-api Worker"]
+      fetch["fetch handler<br/>authenticate → actor + permissions"]
+      sched["scheduled handler<br/>monthly history purge"]
+      mods["modules<br/>identity · org · projects · scheduling"]
+      fetch --> mods
+      sched --> mods
+    end
+    cron(["Cron Trigger<br/>0 3 1 * *"]) --> sched
+    hd[("Hyperdrive<br/>caching off")]
+  end
+  pg[("Neon Postgres 18<br/>schemas identity · org · projects · scheduling")]
+  web -- "service binding API" --> fetch
+  mods --> hd --> pg
+```
+
+**Monitoring:**
+- **Request metrics** — the api host middleware writes one structured log line per request: route id, status, duration in ms, and no personal data (no names, dates or leave types). Workers Observability (already enabled in both `wrangler.jsonc`) computes p95 per route against the PRD §6 targets: open the schedule board ≤ 1500 ms, «who's free» ≤ 1000 ms, save an allocation ≤ 500 ms.
+- **Alerts** (thresholds are architect's estimates, not PRD numbers): p95 above its PRD target for 1 hour on any of the three routes; 5xx share above 1% over 15 minutes; the history purge fails, or deletes 0 entries on 2 consecutive runs once history is older than 12 months.
+- **Retention report** — each purge run logs the number of entries deleted and the oldest remaining entry's age; the monthly report PRD §6 asks for is that log line.
+- **Availability** — 99.5% monthly, measured by the intranet uptime monitor (PRD §6).
+
+**Scaling thresholds:**
+- PRD scale (100 resources, 300 projects, 52 weeks ahead): a 12-week board window is ~100 × 84 ≈ 8,400 resource-days computed per request (ADR-0005); allocations, segments and history stay in the low thousands of rows per year — comfortable in single tables with ordinary indexes.
+- **Revisit compute-on-read** (ADR-0005 TODO) when resources exceed ~1,000 or when board CPU time per request approaches 50% of the Workers CPU limit; CPU time per board request is measured in the pre-launch load test seeded at 100 resources / 300 projects / 52 weeks (PRD §6).
+- The one-time import runs in one transaction sized for the 2,000-row target (PRD §6, ADR-0006).
+
+## 8. Crosscutting concepts
+
+| Concept | Convention | Where defined |
+|---|---|---|
+| Logging | One structured log line per api request (route id, status, duration ms) written by the host middleware; **no personal data** in logs (no names, dates, leave types, spreadsheet cells). Defects are logged with their `Cause` by `runEffect`. | §7; `packages/platform/src/http/run-effect.ts` |
+| Authentication | Still open (repo ADR 0001: Access JWT, SSO or own sessions); hard launch prerequisite. Until decided, every request is `Anonymous` and every permission check denies. | §2; repo [ADR 0001](../../adr/0001-modular-monolith.md) |
+| Authorization | Permission set carried on `Actor.User`, resolved per request (ADR-0004). Identifiers `<module>:<name>` — `org:manage-employee-records`, `org:manage-holiday-list`, `projects:manage-projects`, `scheduling:view-whole-board`, `scheduling:edit-allocations`, `scheduling:see-leave-reasons`. Checked in **application** use cases (never only in `http/`); deny by default; «edit-allocations includes view-whole-board» lives in one `scheduling` domain policy. A missing permission fails with the `Forbidden` contract error naming it (ADR-0010). | [ADR-0004](./adr/0004-resolve-permissions-into-actor-per-request.md) |
+| Visibility / redaction | A domain visibility policy decides, per viewer, what leaves the api: in `scheduling`, a leave allocation's project (its type) becomes «away» unless the viewer holds `scheduling:see-leave-reasons` or is the resource themselves — in the board, free list, history, project filter and import preview; in `org` / `scheduling`, a resource's employment end date, the allocations after it and the needing-attention marks are visible only to holders of `org:manage-employee-records` or `scheduling:edit-allocations`, and for everyone else weeks after it are computed without those allocations. Applied before the DTO is built; the web never receives hidden fields. | PRD §6.1, AC-22, AC-29; §6 flow 3 |
+| Error handling | Repo default (domain `Schema.TaggedError` → presenter → contract error; DB failures are defects → 500), plus three additions in `@arv/contracts/shared` and `@arv/platform/http`: `Forbidden` (403, names the missing permission), `ConfirmationRequired` (409, carries the impact list), and details on `Conflict` (current values, who changed them, when). Error bodies gain an optional `details` field. | [ADR-0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md) |
+| Warn-then-confirm | Allocation and leave saves (AC-10, AC-15), contract-hours / working-days changes (AC-19c), adding a holiday (AC-27), closing a project (AC-25) and the import (AC-30) answer an unconfirmed request with `ConfirmationRequired` + the impact; the client re-sends the **same** request with `confirm: true` and the server recomputes everything on fresh data. For the import, confirming re-uploads the file — the spreadsheet is never stored. | [ADR-0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md), [ADR-0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) |
+| Concurrency | Optimistic `version` on **allocations** (AC-07b, ADR-0008) and on **employee records** (a lost contract-hours change would silently corrupt capacity); a stale version fails with `Conflict` + current values. Projects, teams and holidays: last write wins. | ADR-0008 |
+| Hour arithmetic | Hours are stored as integer **minutes** (contract hours; allocation hours, which are multiples of 15 minutes per AC-09). Domain calculations use integer **ticks of 1/420 minute** (420 is divisible by every working-day count 1–7), so daily shares, partial weeks, holidays and overbooking comparisons are exact; figures are rounded to the nearest half hour only when shown. | [ADR-0009](./adr/0009-store-minutes-and-compute-in-1-420-minute-ticks.md) |
+| Dates and time zone | Business dates (allocation segments, holidays, employment period, close dates) are `date` values with no time. «Today» is the date in `COMPANY_TIME_ZONE = Europe/Kyiv` (api Worker variable), read through a `Clock` port so tests can fix it. Weeks are ISO weeks, Monday to Sunday. | AC-04, AC-09b |
+| ID strategy | UUIDv7 generated by Postgres. IDs that cross modules — `EmployeeId` (org → scheduling) and `ProjectId` (projects → scheduling) — live in `@arv/kernel` beside `UserId`; module-local IDs stay in their domain. | `ARCHITECTURE.md` → Module anatomy |
+| Rate limiting | **Not implemented in the MVP.** The PRD §6.1 limit (120 allocation changes per minute per user) is removed from scope; attribution of every change in allocation history is the only control against bulk tampering (risk in §11; PRD divergence recorded as a decision override). | PRD §6.1 (diverges) |
+| Untrusted text | Project names, team names and spreadsheet cells are stored and rendered as plain text (React escapes by default; no HTML or markdown rendering); formula-like cells (`=`, `+`, `-`, `@`) are imported as text. Names are compared ignoring letter case and leading/trailing spaces (AC-24, AC-19d); spreadsheet names that differ only in initials, case or spaces are flagged at preview (AC-31). | PRD §6.1 |
+| Accessibility | Every cell state (free, partly booked, overbooked, non-working, incomplete record, needing attention, away) has a text label and an icon (`lucide-react`, already a dependency), never colour alone; theme tokens keep text contrast ≥ 4.5:1. The board's e2e test runs an automated audit with `@axe-core/playwright` (new dev dependency in `e2e/`, approved in this pass; pick a version that passes pnpm's minimum-release-age). | PRD §6 |
+| Internationalisation | Same as the rest of the web app — no new locale handling. | — |
+| Outbox / events | None in this feature (ADR-0006); `DomainEvents` stays unimplemented. | [ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md) |
+
+## 9. Architecture decisions
+
+| # | Title | Status | Section |
+|---|---|---|---|
+| [0001](./adr/0001-build-backend-service-and-web-frontend-surfaces.md) | Build resource scheduling as a backend service plus a web frontend | Accepted | §4 |
+| [0002](./adr/0002-render-board-ssr-with-week-window-in-url.md) | Render the board server-side with the week window in the URL | Accepted | §4 |
+| [0003](./adr/0003-split-into-org-projects-scheduling-modules.md) | Split the feature into `org`, `projects` and `scheduling` modules | Accepted | §4 |
+| [0004](./adr/0004-resolve-permissions-into-actor-per-request.md) | Resolve the actor's permissions on every request and carry them on `Actor` | Accepted | §4 |
+| [0005](./adr/0005-compute-capacity-and-availability-on-read.md) | Compute capacity, availability and overbooking on read in pure domain functions | Accepted | §4 |
+| [0006](./adr/0006-implement-unit-of-work-without-outbox.md) | Implement `UnitOfWork` now and keep the feature synchronous, without an outbox | Accepted | §4 |
+| [0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) | Invert the capacity-impact and project-closing checks through host-wired ports | Accepted | §5 |
+| [0008](./adr/0008-model-allocation-as-effective-dated-segments.md) | Model an allocation as one aggregate of effective-dated segments | Accepted | §5 |
+| [0009](./adr/0009-store-minutes-and-compute-in-1-420-minute-ticks.md) | Store hours as integer minutes and compute in integer ticks of 1/420 minute | Accepted | §8 |
+| [0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md) | Confirm by re-submitting the request, signalled by typed `ConfirmationRequired`, `Forbidden` and detailed `Conflict` errors | Accepted | §8 |
+
+ADR files live under `docs/features/resource-scheduling/adr/NNNN-<title>.md`. Repo-wide decisions this feature builds on: [ADR 0001 — modular monolith with hexagonal modules](../../adr/0001-modular-monolith.md).
+
+## 10. Quality requirements
+
+Each top-3 goal from §1 expanded into a full scenario; numbers are quoted verbatim from PRD §6. Approved by the PM (PRD owner) on 2026-10-29.
+
+**QG-1. Calculation correctness**
+- **When:** any weekly figure is computed — a board cell, a free-list sum, an overbooking warning, a capacity-impact preview or the import preview — over partial weeks, public holidays, part-time working days, leave days or an employment period that starts or ends mid-week.
+- **Then:** «100% of weekly figures match the proration rules (partial weeks, holidays, part-timers, employment period); figures are computed without intermediate rounding, shown rounded to the nearest half hour, and overbooking is judged on the exact figures» (PRD §6). Exactness comes from integer 1/420-minute ticks (ADR-0009) in pure domain functions (ADR-0005).
+- **How verify:** «automated rule-table tests in CI» (PRD §6) — table-driven tests in `modules/scheduling/src/domain/*.test.ts`, run by `pnpm test` on every PR, with at least the PRD examples as rows: AC-08 (40 h/week from a Wednesday → 24 h; holiday Thursday → 32 h), AC-19 (24 h over Monday–Wednesday → 8 h/day), AC-27 (Monday holiday: full-timer drops, Wednesday–Friday part-timer unchanged), AC-04 (rest of current week + N−1 weeks; overbooked week counts as 0), AC-10 (32 h capacity, 24 + 16 → 8 h over), AC-15 (leave day = contract hours ÷ working days).
+
+**QG-2. Confidentiality of personal data**
+- **When:** a viewer without `scheduling:see-leave-reasons` looks at the board, the free list, an allocation's history or the project filter; or a viewer holding neither `org:manage-employee-records` nor `scheduling:edit-allocations` looks at a resource whose employment period ends.
+- **Then:** «leave type is hidden in every view for viewers without the see-leave-reasons permission; they see «away» only» (PRD §6.1), except the resource's own leave; «everyone else sees only zero capacity, with no allocations and no overbooking shown after it» (PRD §6.1). Measured as: 0 api responses contain a leave type, leave-project name or employment end date for a viewer not entitled to it.
+- **How verify:** api integration tests in `apps/api/test/integration/scheduling/` and `…/org/` (workerd + `arv_test`) that call every read endpoint for each permission combination and assert on the **response body**, not the UI; the mandatory security review (PRD §6.1) signs off on the test matrix.
+
+**QG-3. Board responsiveness at target scale**
+- **When:** production traffic with the data at «100 resources, 300 projects, 52 weeks ahead» (PRD §6).
+- **Then:** latency p95 «open the schedule board (100 resources × 12 weeks)» «≤ 1500 ms»; «“who's free” result» «≤ 1000 ms»; «save an allocation (incl. overbooking check)» «≤ 500 ms» (PRD §6).
+- **How verify:** «server request-duration metric» per route in production (PRD §6) — the host's per-request log line queried in Workers Observability (§7); and before launch a **k6** load test against a preview deployment whose database is «seeded at those volumes» (PRD §6), which also records CPU time per board request for the ADR-0005 revisit threshold.
+
+**Additional quality scenarios (from PRD §6):**
+
+- **QS-4 Concurrency** — *When* two users with edit-allocations save different changes to the same allocation one after the other; *Then* «0 lost updates»: the first change is kept, the second is refused with the current values and who changed them (AC-07b); *How verify:* «automated concurrent-save test in CI» — an api integration test that saves twice with the same `version` and asserts one success and one `Conflict`.
+- **QS-5 History retention** — *When* the monthly purge runs (03:00 UTC on the 1st, §7); *Then* «allocation history entries kept for 12 months, then deleted»: after each run no entry older than 12 months at run time remains; between runs an entry can be up to ~13 months old (monthly cadence chosen in §7 — risk in §11); *How verify:* «monthly retention job report» — the purge's log line (entries deleted, oldest remaining age), plus an integration test of the purge with a fixed `Clock`.
+- **QS-6 Availability** — *When* measured over a calendar month; *Then* «99.5% monthly»; *How verify:* «intranet uptime monitor, monthly SLO window».
+- **QS-7 Accessibility** — *When* the board renders any cell state; *Then* «free, partly booked and overbooked are distinguishable without colour; text contrast ≥ 4.5:1»; *How verify:* «automated accessibility audit of the board in CI» — `@axe-core/playwright` in the board's e2e test, plus an e2e assertion that every cell carries a text state label.
+- **QS-8 Import preview** — *When* a planning spreadsheet of «up to 2,000 rows» is uploaded for preview; *Then* the preview is ready in «≤ 10 s»; *How verify:* «timed in the pre-launch import rehearsal» with the real spreadsheet.
+
+## 11. Risks and technical debt
+
+<!-- Severity column literals: Low / Medium / High for regular risks; "Open question" for open decisions (owner + due mandatory). -->
+
+| Risk / debt | Severity | Mitigation | Owner |
+|---|---|---|---|
+| Open architectural decision: may a new package be added to parse the planning spreadsheet? | Open question | Resolve before `/sdlc:break-tasks`; the spreadsheet format is still unknown (PRD §8), so it is too early to decide on a parser (§2) | Tech Lead |
+| Open question (PRD §8, overdue — was due before `/sdlc:architecture-design`): do changes to contract hours or working days need an effective date, so past weeks keep their old capacity? | Open question | Resolve before `/sdlc:generate-data-model`. PRD default meanwhile: a change applies to all weeks, past and future. If an effective date is needed, `org` must store employment terms as effective-dated segments (like ADR-0008) — cheap before the data model, a data migration after launch | PM |
+| Open question (PRD §8, overdue): when will the roles/permissions feature be ready, and does scheduling launch wait for it? | Open question | Resolve before `/sdlc:break-tasks`. Architecture assumes the PRD default — launch waits (§2, ADR-0004); development and tests use a stub permission source | Tech Lead |
+| Open question (PRD §8, overdue): what is the planning spreadsheet's exact format (file type, columns, row mapping, the different-spelling rule of AC-31)? | Open question | Resolve before `/sdlc:break-tasks`; PM supplies a sample of the real spreadsheet and the import mapping is derived from it | PM |
+| Open question (PRD §8, overdue): should intranet logins also be matched to employee records automatically, e.g. by work email? | Open question | Resolve before `/sdlc:break-tasks`. PRD default meanwhile: linking by hand only (AC-19b). Automatic matching would add a read of `identity` users by email through its facade — no new module edge | Tech Lead |
+| Open question (PRD §8): should a tracker project-list import follow after launch? | Open question | Resolve 6 weeks after launch; default no — revisit if users who plan report double entry of projects | Tech Lead |
+| Authentication source undecided (repo ADR 0001): every request is anonymous today, so no permission can be granted | High | Hard launch gate (§2); decide the source per repo ADR 0001 before launch; feature development proceeds with test actors | Tech Lead |
+| Roles/permissions feature not built: scheduling has no real permission source | High | Hard launch gate (§2); stub permission source behind the same per-request lookup (ADR-0004), replaced without module changes | Owner of the roles/permissions feature |
+| Spreadsheet format unknown: the import (US-11) cannot be specified, and the spreadsheet cannot be retired without it (PRD §7 KPI) | High | PM provides the sample (open question above); import tasks scheduled last; manual entry remains possible | PM |
+| Redaction regressions: a new view or endpoint leaks leave type or employment end date (QG-2) | High | Visibility policy in the domain, applied before DTOs (§8); QG-2 response-body test matrix over every read endpoint × permission combination; security review | Tech Lead |
+| Rate limit removed from scope (§8): bulk tampering by a holder of edit-allocations is visible only afterwards, in allocation history | Medium | Every change attributed in history (AC-16); Security Lead confirms or reverses the removal before launch, at the security review; PRD §6.1 divergence recorded as a decision override (§1) | Security Lead |
+| Monthly history purge (§7): allocation history entries, including leave history, can live up to ~13 months instead of 12 | Medium | Security review accepts the cadence or switches the Cron Trigger to daily (a one-line change in `wrangler.jsonc`) | Security Lead |
+| Host-wired ports left on their no-op default (ADR-0007): capacity warnings or project-close trims silently skipped | Medium | One api integration test per operation (AC-19c, AC-25, AC-27) running through the real composition root | Tech Lead |
+| Employee-record completeness: launch gate is 100% of resources with contract hours, working days, start date and team (PRD §7) | Medium | Records created by the import plus manual completion; «incomplete record» shown on the board (AC-06); completeness checked before launch | PM |
+| Deadline, effort budget and team composition not quantified (§2) | Medium | PM sets them before `/sdlc:break-tasks` so the task plan can be sized | PM |
+| Import transaction holds one Hyperdrive connection for up to 2,000 rows (ADR-0006) | Low | Batched inserts inside the unit of work; no network calls inside it; timed in the pre-launch import rehearsal (QS-8) | Tech Lead |
+| Board compute cost grows with resources × days (ADR-0005) | Low | k6 load test records CPU time per board request; revisit threshold ~1,000 resources or 50% of the Workers CPU limit (§7) | Tech Lead |
+| Brownfield drift: no `docs/architecture-map.md`; this SAD read `ARCHITECTURE.md` at `d4b5993`, and `org`/`projects`/`scheduling` are the first modules beside `identity` | Low | Run `/sdlc:map-architecture`; update `ARCHITECTURE.md` (module catalog, module graph, cross-module ports pattern, `UnitOfWorkLive`) in the same PR as the code | Tech Lead |
+
+**Accepted debt (acceptable in v1, plan to fix later):**
+- No rate limiting on allocation changes (PRD §6.1 limit out of scope).
+- No outbox or domain events: cross-module facade commands share one transaction, tying `org`, `projects` and `scheduling` to one database (ADR-0006).
+- Projects, teams and the holiday list are last-write-wins; only allocations and employee records carry an optimistic version (§8).
+- History is kept for allocations only (PRD scope); changes to employee records, projects, teams and holidays are not audited.
+- Monthly retention cadence (§7).
+
+## 12. Glossary
+
+Domain terms are canonical in [`CONTEXT.md`](../../../CONTEXT.md); the definitions below are short reminders and CONTEXT wins on any difference. Terms marked † were introduced by this SAD and are not in CONTEXT yet — candidates for `/sdlc:fix-term`.
+
+| Term | Meaning |
+|---|---|
+| Access role | A named bundle of permissions assigned to intranet users by the roles/permissions feature; not a job role. |
+| Allocation | A planned assignment of a resource to a project for a date range at a fixed number of hours per day or per week; not logged time, not project membership. Modelled as one aggregate of segments (ADR-0008). |
+| Allocation segment † | One effective-dated part of an allocation (from, to, hours per day or week); a change «from today» ends the current segment and starts a new one, so past segments never change. |
+| Availability | Capacity minus allocated hours over a period; the free list sums it over the chosen weeks, with an overbooked week counting as zero. |
+| Board viewer † | Diagram actor for a user holding view-whole-board but not edit-allocations: reads the board, free list and history. |
+| Capacity | Working hours in a period: contract hours spread over working days, minus public holidays, zero outside the employment period; leave is not subtracted (it is an allocation). |
+| Closed project | A project whose close date has passed; accepts no new, changed or removed allocations and is never reopened. |
+| Confirmation required † | The warn-then-confirm response (`ConfirmationRequired`): the server lists the consequences of an unconfirmed request; the client re-sends the same request with `confirm: true` and the server recomputes (ADR-0010). |
+| Contract hours | The fixed weekly working hours from a resource's employment contract, spread evenly over their working days; stored as integer minutes (ADR-0009). |
+| Employee record | The intranet's shared record of an employee (name, team, contract hours, working days, employment period, login link), owned by the `org` module. |
+| Employment period | From a resource's start date to their end date; outside it capacity is zero and no new allocations can be made. |
+| Incomplete record | An employee record missing contract hours or a start date, so capacity is unknown and the resource is left out of the free list. |
+| Leave | A resource's absence, booked in whole working days as an allocation to the leave-type project for its type; shown as «away» to viewers without see-leave-reasons, except to the resource themselves. |
+| Needing attention | The mark on an allocation that runs past its resource's employment end date (AC-21); visible only to holders of manage-employee-records or edit-allocations. |
+| Overbooking | A week in which allocated hours exceed capacity, judged on exact figures; allowed after the user confirms a warning. |
+| Permission | A named right to perform one scheduling action, granted through access roles; identified as `<module>:<name>` (§8). |
+| Project | Anything a resource's hours can be booked against — client, internal, bench, training, leave — owned by the `projects` module. |
+| Public holiday | A company-wide non-working date on the single holiday list, owned by the `org` module. |
+| Records maintainer † | Diagram actor for a user holding manage-employee-records, manage-projects and/or manage-holiday-list. |
+| Redaction † | Removing fields a viewer may not see (leave type, employment end date and what follows it) in the api, before the response is built (§8). |
+| Resource | An employee whose working hours can be allocated to projects; not a user (an intranet login). |
+| Team | A named group of resources under one team lead, owned by the `org` module; used to filter the board. |
+| Tick † | The internal unit of hour arithmetic: 1/420 of a minute, so any weekly amount spread over 1–7 working days is an exact integer (ADR-0009). |
+| User who plans | A user holding the edit-allocations permission (PMs, delivery managers, team leads in PRD §1). |
+| Week window † | The range of weeks one board view shows (by default the current week and the 11 following), carried in the URL (ADR-0002). |
+
