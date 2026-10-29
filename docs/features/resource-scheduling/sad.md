@@ -73,34 +73,46 @@ target_surfaces: []  # filled in §4 — subset of: backend-service | web-fronte
 
 ## 3. Context and scope
 
-<!-- 🎯 Навіщо: малює КОРДОН СИСТЕМИ — хто з нею говорить ззовні, де закінчується зона довіри. -->
-<!--           Без §3 §5 і §8 (авторизація) розпливаються — неясно, що «всередині», а що «зовні». -->
-<!-- 📋 Що писати: 2-3 речення бізнес-контексту + таблиця зовнішніх систем + Mermaid C4Context. -->
-<!-- 📌 Приклад: «зовнішні — нема (свідома відмова від third-party у v1)» — це теж рішення.   -->
-<!-- Кордон довіри (trust boundary) — лінія, за якою ти не довіряєш даним без перевірки.       -->
+<!-- brownfield: no docs/architecture-map.md yet — current architecture read from the authored ARCHITECTURE.md + repo ADR 0001 + a direct scan of apps/, modules/, packages/ (2026-10-29, HEAD d4b5993). Run /sdlc:map-architecture to persist a map. -->
 
-<Business context in 2-3 sentences. What the system does for whom.>
+Planning today lives in a spreadsheet and tracker tickets. The ~5 users who plan cannot see a resource's allocations against their capacity, so «who is free in the next 2 weeks?» costs about an hour of chat. Resource scheduling puts that plan on the intranet. Users who plan maintain allocations and leave on a weekly board. Resources see their own weeks. The employee records, teams, projects and public-holiday list behind it become the intranet's first shared records. The trust boundary is the public web Worker: everything a browser sends (form fields, the uploaded spreadsheet) is untrusted until the private api validates it, and every action is authorised against the six permissions at the moment it happens.
 
 **External systems (in / out):**
 
 | Actor or system | Type | Interaction |
 |---|---|---|
-| <e.g. IC> | Person | Creates goals, adds checkpoints |
-| <e.g. notification-service> | System (internal) | Receives cron registration |
-| <e.g. Identity Provider> | System (external) | Provides JWT tokens |
+| User who plans (holds edit-allocations, which includes view-whole-board) | Person | Views the board and free list; creates, changes and removes allocations; books leave; runs the one-time import (with manage-employee-records + manage-projects) |
+| Board viewer (holds view-whole-board only) | Person | Views the board, the free list and allocation history; cannot edit |
+| Resource (with an intranet login linked to their employee record) | Person | Views their own schedule only, including their own leave type |
+| Records maintainer (holds manage-employee-records, manage-projects and/or manage-holiday-list) | Person | Maintains employee records and teams, projects, and the public-holiday list |
+| Identity provider (source still open — repo ADR 0001: Cloudflare Access JWT, SSO or own sessions) | System (external) | Authenticates the browser session; the api turns it into the request's actor |
+| Roles/permissions feature | System (internal, separate feature — not built yet) | Answers which of the six permissions an intranet user holds, checked at every action |
+| Planning spreadsheet | Data source (external file) | Uploaded once for preview and all-or-nothing import, then archived read-only |
 
 **C4 Context (L1):**
 
 ```mermaid
 C4Context
-    title <system> — System Context
+    title Resource scheduling — System Context
 
-    Person(user, "<User>", "<role + intent>")
-    System(system, "<Our System>", "<one-sentence description>")
-    System_Ext(ext, "<External system>", "<one-sentence description>")
+    Person(planner, "User who plans", "Holds edit-allocations: plans allocations and leave, runs the one-time import")
+    Person(viewer, "Board viewer", "Holds view-whole-board: reads the board, free list and history")
+    Person(resource, "Resource", "Employee with an intranet login: sees only their own schedule")
+    Person(maintainer, "Records maintainer", "Holds manage-employee-records, manage-projects or manage-holiday-list")
 
-    Rel(user, system, "<interaction>", "<protocol>")
-    Rel(system, ext, "<interaction>", "<protocol>")
+    System(intranet, "arv-intranet: Resource scheduling", "Weekly availability board, allocations, leave, employee records, projects, holiday list, history, import")
+
+    System_Ext(idp, "Identity provider", "Authentication source, still open (Access JWT, SSO or own sessions)")
+    System_Ext(roles, "Roles/permissions feature", "Separate intranet feature: grants the six permissions through access roles")
+    System_Ext(sheet, "Planning spreadsheet", "Current plan, imported once and then archived")
+
+    Rel(planner, intranet, "Plans allocations and leave, imports the spreadsheet", "HTTPS")
+    Rel(viewer, intranet, "Views board, free list, history", "HTTPS")
+    Rel(resource, intranet, "Views own schedule", "HTTPS")
+    Rel(maintainer, intranet, "Maintains records, projects, holidays", "HTTPS")
+    Rel(intranet, idp, "Authenticates each request", "HTTPS")
+    Rel(intranet, roles, "Checks permissions at each action", "in-process facade")
+    Rel(planner, sheet, "Exports and uploads once", "file")
 ```
 
 ## 4. Solution strategy
