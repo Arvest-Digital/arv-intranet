@@ -6,7 +6,7 @@ updated_at: "2026-10-29"
 feature_size: M
 stage: "04-05"
 ticket: "TBD"
-target_surfaces: []  # filled in §4 — subset of: backend-service | web-frontend | mobile-app | desktop-app | cli | worker | library-sdk. Read (never re-derived) by api-forge/complete-sequence-diagrams/break-tasks/plan-tests/review-feature → _shared/surfaces.md
+target_surfaces: [backend-service, web-frontend]  # decided in §4 (ADR-0001) — subset of: backend-service | web-frontend | mobile-app | desktop-app | cli | worker | library-sdk. Read (never re-derived) by api-forge/complete-sequence-diagrams/break-tasks/plan-tests/review-feature → _shared/surfaces.md
 ---
 
 # Software Architecture Document — resource-scheduling
@@ -117,28 +117,22 @@ C4Context
 
 ## 4. Solution strategy
 
-<!-- 🎯 Навіщо: 3-4 СТРАТЕГІЧНІ СТОВПИ, з яких потім ростуть усі ADR. Без §4 кожен ADR    -->
-<!--           виглядає випадковим — нема зонтика. ⭐ Найгустіша секція — тут ADR-gate    -->
-<!--           спрацьовує майже завжди (рішення незворотні + мульти-модульні).            -->
-<!-- 📋 Що писати: спершу Target surface(s), потім 3-4 стратегічні вибори.                -->
-<!--           На кожен — заголовок + 2-3 речення rationale.                              -->
-<!-- 📌 ПЕРШЕ рішення §4 — Target surface(s): ЩО САМЕ будуємо. Записується у frontmatter   -->
-<!--           target_surfaces: [...] і гейтить §5 (один контейнер на поверхню) + усі       -->
-<!--           наступні стадії. Деривиться з PRD §1 «для кого» + §4 ролей. → _shared/surfaces.md -->
-<!-- 📌 Приклад: «Зберігати урок як таблицю блоків» — стовп, з якого виросло ADR-0001.    -->
+**Target surface(s) (the first decision — what's being built):** `[backend-service, web-frontend]` — [ADR-0001](./adr/0001-build-backend-service-and-web-frontend-surfaces.md).
 
-**Target surface(s) (the first decision — what's being built):** `<e.g. [backend-service, web-frontend]>`
-<!-- Mirror this list into the frontmatter `target_surfaces`. For each declared UI surface          -->
-<!-- (web-frontend / mobile-app / desktop-app) add a UI-architecture choice below (web → SSR/SPA/   -->
-<!-- hybrid; mobile → native/cross-platform). Multi-surface is usually an ADR (multi-module +       -->
-<!-- irreversible). The UI reuses the repo's existing design system / components / tokens from       -->
-<!-- architecture-map.md §Frontend — it does not design greenfield. → _shared/surfaces.md           -->
+- **backend-service** — the private `arv-api` Worker gains three business modules (`org`, `projects`, `scheduling`) that own the typed HTTP contract (Hono routes + `@arv/contracts/<module>` schemas). The monthly history-retention job runs as a `scheduled` (Cron Trigger) entry point on this same Worker — part of the backend surface, not a separate `worker` surface.
+- **web-frontend** — the public `arv-web` Worker gains feature folders that *consume* that contract through typed per-feature clients; it authors no contract of its own.
 
 **Top strategic choices (the seeds for ADRs):**
 
-1. **<e.g. Module isolation through events>** — <2-3 sentences rationale referencing Quality Goals and constraints>.
-2. **<e.g. Single-store persistence (Postgres)>** — <2-3 sentences>.
-3. **<e.g. UI-architecture: SPA consuming the backend API>** — <per declared UI surface; 2-3 sentences>.
+1. **UI-architecture: server-rendered board with the week window in the URL** ([ADR-0002](./adr/0002-render-board-ssr-with-week-window-in-url.md)) — stay on React Router 7 SSR. The board's window and filters (`from`, `weeks`, `team`, `project`) are URL search params, so each view is one loader call that asks the api for exactly one bounded window (≤ 12 visible weeks), and every view is a shareable link. Scrolling back (≤ 12 months, view only) or forward (≤ 52 weeks) is a navigation to the next window. Edits are route actions; client JavaScript is used only for dialogs and the overbooking / project-close confirmations. Screens are composed from the existing `app/shared/ui` primitives (table, dialog, select, dropdown-menu, input, button) and the theme tokens — no new design system. Serves QG-3 (bounded payload per request) and keeps the api private (the browser never calls it).
+
+2. **Three modules: `org`, `projects`, `scheduling`** ([ADR-0003](./adr/0003-split-into-org-projects-scheduling-modules.md); resolves PRD §8 «is the employee record its own module» — yes). `org` owns employee records, the login link, teams and the public-holiday list (company facts other intranet features reuse) and calls `identity`. `projects` owns projects of every type (client, internal, bench, training, leave), open/closed state, close dates and name uniqueness. `scheduling` owns allocations (including leave), capacity/availability/overbooking, the board and free list, allocation history, the history-retention job and the one-time import, and calls `org` and `projects`. Two operations need the *called* module to ask the *caller* for data — capacity-changing edits in `org` must preview overbooking (AC-19c, AC-27) and closing a project in `projects` must preview and trim allocations (AC-25) — without creating a cycle in the module graph; §5 decides the mechanism.
+
+3. **Permissions resolved into the actor on every request** ([ADR-0004](./adr/0004-resolve-permissions-into-actor-per-request.md)) — the api host's authentication middleware builds the `Actor` from the identity provider *and* the permission set the roles/permissions feature grants that user, on every request; `Actor.User` in `@arv/kernel` gains that set. Each module's use cases check the named permissions they own; the rule «edit-allocations includes everything view-whole-board allows» lives in one `scheduling` policy. Visibility rules (leave type, employment end date) are enforced by redacting before any DTO leaves the api — the web never receives data the viewer may not see. Until the roles/permissions feature ships, a stub permission source serves development and tests; launch waits for the real one (§2). Serves QG-2 and AC-14 (checked at each action, not at sign-in).
+
+4. **Capacity, availability and overbooking computed on read in pure domain functions** ([ADR-0005](./adr/0005-compute-capacity-and-availability-on-read.md)) — no stored weekly aggregates. For a board window or free-list period, `scheduling` loads the allocations overlapping it, asks `org` for the employment terms of the resources in scope and for the holidays in the period, and computes every figure with side-effect-free functions in its `domain/`. One rule set serves the board, the free list, the overbooking warnings and the import preview. Serves QG-1 (figures can never drift from their inputs) and is cheap at the PRD scale (QG-3).
+
+5. **Synchronous and transactional; implement `UnitOfWork` now, no outbox in the MVP** ([ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md)) — implement the kernel's `UnitOfWork` port as `ARCHITECTURE.md` describes (one `db.transaction`, the transaction carried in a `CurrentTx` FiberRef that `query()` reads). Every allocation change and its history entry commit together; cross-module writes (closing a project and trimming its allocations, the all-or-nothing import) are facade commands that join the caller's unit of work. No domain events, outbox, Cron relay or Queue in this feature — no use case needs eventual delivery. Serves the «0 lost updates» and atomic-import requirements (PRD §6, AC-31).
 
 Each tactical decision in later sections should be traceable to one of these strategic seeds. Tactical decisions that *contradict* a strategic choice are red flags — surface them in §11 Risks.
 
