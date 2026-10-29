@@ -244,35 +244,129 @@ C4Container
 
 ## 6. Runtime view
 
-<!-- 🎯 Навіщо: ПОТІК У RUNTIME для 1-2 критичних сценаріїв. Хто з ким коли і у якому     -->
-<!--           порядку говорить. Без §6 §5 — лише купа коробок без життя.                  -->
-<!-- 📋 Що писати: Mermaid sequenceDiagram. Учасники — імена з §5 (не вигадуй нові!).      -->
-<!--           Повідомлення семантичні («складає чорновик»), БЕЗ HTTP-методів/шляхів —     -->
-<!--           ендпоінт-рівневі sequence-діаграми зʼявляться у stage 06 (api-forge).        -->
-<!-- ⏳ RESERVED FOR SEQUENCES: architecture-design сіє лише primary flow(s) тут.          -->
-<!--           complete-sequence-diagrams (stage 06) ДОПОВНЮЄ §6 кожним критичним flow /    -->
-<!--           кожним §5 AC — без обмеження. Не намагайся покрити все тут.                  -->
-<!-- 📌 Приклад: «methodist → web-app: складає чорновик → web-app → content-api: зберегти». -->
+architecture-design seeds the three riskiest flows here; `/sdlc:complete-sequence-diagrams` then covers every PRD §5 acceptance criterion. Participants are the §5 containers; messages are semantic (endpoint paths and status codes arrive with `api-forge`).
 
-**Critical flow 1: <flow name>**
+**Critical flow 1: Plan an allocation that overbooks** (AC-07, AC-09, AC-10, AC-13, AC-07b, AC-12, AC-14)
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant API
-    participant Service
-    participant DB
-    User->>API: <request>
-    API->>Service: <call>
-    Service->>DB: <write tx>
-    DB-->>Service: ok
-    Service-->>API: result
-    API-->>User: 201
+    actor P as User who plans
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling module
+    participant PR as projects module
+    participant O as org module
+    participant DB as Postgres
+    P->>W: Submits allocation form with the version it was opened at
+    W->>H: Save allocation via typed client
+    H->>H: Authenticate and load the actor's permissions for this request
+    H->>S: Save allocation as this actor
+    alt actor lacks edit-allocations
+        S-->>H: Refused, missing edit-allocations
+        H-->>W: Forbidden
+        W-->>P: Says the permission to edit allocations is missing
+    else permitted
+        S->>PR: Is the project open over these dates
+        PR-->>S: Open until its close date
+        S->>O: Employment terms and holidays for the resource and period
+        O-->>S: Terms and holidays
+        S->>DB: Load the resource's allocation segments in the period
+        DB-->>S: Segments
+        S->>S: Validate rules and compute exact weekly figures
+        alt rule broken or outside employment period or before today
+            S-->>H: Rejected with the broken rule
+            H-->>W: Validation error
+            W-->>P: Shows which rule the input breaks
+        else overbooked and not confirmed
+            S-->>H: Overbooking warning with each week and hours over
+            H-->>W: Confirmation required
+            W-->>P: Lists affected weeks and asks to confirm
+            Note over P,S: On confirm the form is sent again with the confirmation and the same version and every check reruns on fresh data
+        else fits or confirmed
+            S->>DB: One transaction writes segments and history where the version still matches
+            alt version changed meanwhile
+                DB-->>S: No row matched
+                S-->>H: Conflict with current values and who changed them
+                H-->>W: Conflict
+                W-->>P: Shows the other user's change
+            else saved
+                DB-->>S: Committed
+                S-->>H: Saved allocation with last changed by and at
+                H-->>W: Saved
+                W-->>P: Board window reloads with the new hours
+            end
+        end
+    end
 ```
 
-<!-- For XS/S: 1 flow above is enough. For M+: add 2-4 more (e.g. failure-mode flow, async flow). -->
+**Critical flow 2: Close a project and trim its allocations** (AC-25, AC-11, AC-16, AC-26; ADR-0007)
 
-**Critical flow 2: <e.g. async event propagation>** — <if applicable, otherwise N/A>.
+```mermaid
+sequenceDiagram
+    actor M as Records maintainer
+    participant W as arv-web
+    participant H as arv-api host
+    participant PR as projects module
+    participant S as scheduling module
+    participant DB as Postgres
+    M->>W: Chooses a close date for the project
+    W->>H: Close project via typed client
+    H->>PR: Close project as this actor
+    PR->>PR: Check manage-projects and that the close date is not before today
+    PR->>S: ProjectClosingHook preview for project and close date
+    S->>DB: Allocations of the project running past the close date
+    DB-->>S: Allocations
+    S-->>PR: Allocations to end at the close date and to remove
+    alt not yet confirmed
+        PR-->>H: Confirmation required with the list
+        H-->>W: Preview
+        W-->>M: Shows which allocations end and which are removed
+        Note over M,PR: On confirm the request is sent again with the confirmation and the preview is recomputed
+    else confirmed
+        PR->>DB: Begin one unit of work and record the close date
+        PR->>S: ProjectClosingHook apply inside the same unit of work
+        S->>DB: End segments at the close date, remove later allocations, write history by the closer
+        PR->>DB: Commit
+        DB-->>PR: Committed
+        PR-->>H: Project closes after the close date
+        H-->>W: Closed
+        W-->>M: Freed hours show as availability
+    end
+```
+
+**Critical flow 3: Open the board with per-viewer redaction** (AC-01, AC-03, AC-06, AC-22, AC-29; ADR-0002, ADR-0004, ADR-0005)
+
+```mermaid
+sequenceDiagram
+    actor V as Board viewer
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling module
+    participant O as org module
+    participant PR as projects module
+    participant DB as Postgres
+    V->>W: Opens the board with window and filters in the URL
+    W->>H: Board query for window, team and project
+    H->>H: Authenticate and load the actor's permissions for this request
+    H->>S: Board window as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>H: Refused
+        H-->>W: Forbidden
+        W-->>V: Offers the viewer's own schedule if they are a resource
+    else permitted
+        S->>O: Resources in scope with employment terms and holidays
+        O-->>S: Terms including end dates
+        S->>DB: Allocation segments overlapping the window
+        DB-->>S: Segments
+        S->>PR: Projects referenced in the window
+        PR-->>S: Names and types
+        S->>S: Compute exact weekly figures and one state per cell
+        S->>S: Redact leave type to away and hide end dates and later allocations per permissions
+        S-->>H: Board window
+        H-->>W: Board
+        W-->>V: One row per resource and one column per week
+    end
+```
 
 ## 7. Deployment view
 
