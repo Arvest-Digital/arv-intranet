@@ -405,22 +405,23 @@ flowchart LR
 
 ## 8. Crosscutting concepts
 
-<!-- 🎯 Навіщо: НАСКРІЗНІ ПАТЕРНИ, які перетинають кілька модулів: логування, помилки,    -->
-<!--           авторизація, ID strategy, outbox, кеш. ⭐ Друга найгустіша секція.          -->
-<!--           Якщо патерн всередині одного модуля — він НЕ сюди. Якщо це конвенція        -->
-<!--           проєкту в цілому — у CLAUDE.md.                                              -->
-<!-- 📋 Що писати: таблиця концепт / конвенція / де визначено. Один рядок на концепт.      -->
-<!-- 📌 Приклад: «UUID v7 (час+випадковий, сортується) у app-layer» — як default з CLAUDE.md. -->
-
 | Concept | Convention | Where defined |
 |---|---|---|
-| Logging | <e.g. structured slog, fields `module=<name>`> | <CLAUDE.md §X or here> |
-| Authentication | <e.g. JWT via session middleware> | <CLAUDE.md §X> |
-| Error handling | <e.g. domain sentinel → ports/errors.go → apperr JSON> | <CLAUDE.md §X> |
-| ID strategy | <e.g. UUID v7 in app layer> | <CLAUDE.md §X> |
-| Internationalisation | <e.g. N/A, English only> | — |
-| Observability | <e.g. OpenTelemetry on HTTP boundaries> | — |
-| Outbox / events | <module-specific patterns, if any> | <here> |
+| Logging | One structured log line per api request (route id, status, duration ms) written by the host middleware; **no personal data** in logs (no names, dates, leave types, spreadsheet cells). Defects are logged with their `Cause` by `runEffect`. | §7; `packages/platform/src/http/run-effect.ts` |
+| Authentication | Still open (repo ADR 0001: Access JWT, SSO or own sessions); hard launch prerequisite. Until decided, every request is `Anonymous` and every permission check denies. | §2; repo [ADR 0001](../../adr/0001-modular-monolith.md) |
+| Authorization | Permission set carried on `Actor.User`, resolved per request (ADR-0004). Identifiers `<module>:<name>` — `org:manage-employee-records`, `org:manage-holiday-list`, `projects:manage-projects`, `scheduling:view-whole-board`, `scheduling:edit-allocations`, `scheduling:see-leave-reasons`. Checked in **application** use cases (never only in `http/`); deny by default; «edit-allocations includes view-whole-board» lives in one `scheduling` domain policy. A missing permission fails with the `Forbidden` contract error naming it (ADR-0010). | [ADR-0004](./adr/0004-resolve-permissions-into-actor-per-request.md) |
+| Visibility / redaction | A domain visibility policy decides, per viewer, what leaves the api: in `scheduling`, a leave allocation's project (its type) becomes «away» unless the viewer holds `scheduling:see-leave-reasons` or is the resource themselves — in the board, free list, history, project filter and import preview; in `org` / `scheduling`, a resource's employment end date, the allocations after it and the needing-attention marks are visible only to holders of `org:manage-employee-records` or `scheduling:edit-allocations`, and for everyone else weeks after it are computed without those allocations. Applied before the DTO is built; the web never receives hidden fields. | PRD §6.1, AC-22, AC-29; §6 flow 3 |
+| Error handling | Repo default (domain `Schema.TaggedError` → presenter → contract error; DB failures are defects → 500), plus three additions in `@arv/contracts/shared` and `@arv/platform/http`: `Forbidden` (403, names the missing permission), `ConfirmationRequired` (409, carries the impact list), and details on `Conflict` (current values, who changed them, when). Error bodies gain an optional `details` field. | [ADR-0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md) |
+| Warn-then-confirm | Allocation and leave saves (AC-10, AC-15), contract-hours / working-days changes (AC-19c), adding a holiday (AC-27), closing a project (AC-25) and the import (AC-30) answer an unconfirmed request with `ConfirmationRequired` + the impact; the client re-sends the **same** request with `confirm: true` and the server recomputes everything on fresh data. For the import, confirming re-uploads the file — the spreadsheet is never stored. | [ADR-0010](./adr/0010-confirm-by-resubmitting-with-typed-confirmation-errors.md), [ADR-0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) |
+| Concurrency | Optimistic `version` on **allocations** (AC-07b, ADR-0008) and on **employee records** (a lost contract-hours change would silently corrupt capacity); a stale version fails with `Conflict` + current values. Projects, teams and holidays: last write wins. | ADR-0008 |
+| Hour arithmetic | Hours are stored as integer **minutes** (contract hours; allocation hours, which are multiples of 15 minutes per AC-09). Domain calculations use integer **ticks of 1/420 minute** (420 is divisible by every working-day count 1–7), so daily shares, partial weeks, holidays and overbooking comparisons are exact; figures are rounded to the nearest half hour only when shown. | [ADR-0009](./adr/0009-store-minutes-and-compute-in-1-420-minute-ticks.md) |
+| Dates and time zone | Business dates (allocation segments, holidays, employment period, close dates) are `date` values with no time. «Today» is the date in `COMPANY_TIME_ZONE = Europe/Kyiv` (api Worker variable), read through a `Clock` port so tests can fix it. Weeks are ISO weeks, Monday to Sunday. | AC-04, AC-09b |
+| ID strategy | UUIDv7 generated by Postgres. IDs that cross modules — `EmployeeId` (org → scheduling) and `ProjectId` (projects → scheduling) — live in `@arv/kernel` beside `UserId`; module-local IDs stay in their domain. | `ARCHITECTURE.md` → Module anatomy |
+| Rate limiting | **Not implemented in the MVP.** The PRD §6.1 limit (120 allocation changes per minute per user) is removed from scope; attribution of every change in allocation history is the only control against bulk tampering (risk in §11; PRD divergence recorded as a decision override). | PRD §6.1 (diverges) |
+| Untrusted text | Project names, team names and spreadsheet cells are stored and rendered as plain text (React escapes by default; no HTML or markdown rendering); formula-like cells (`=`, `+`, `-`, `@`) are imported as text. Names are compared ignoring letter case and leading/trailing spaces (AC-24, AC-19d); spreadsheet names that differ only in initials, case or spaces are flagged at preview (AC-31). | PRD §6.1 |
+| Accessibility | Every cell state (free, partly booked, overbooked, non-working, incomplete record, needing attention, away) has a text label and an icon (`lucide-react`, already a dependency), never colour alone; theme tokens keep text contrast ≥ 4.5:1. The board's e2e test runs an automated audit with `@axe-core/playwright` (new dev dependency in `e2e/`, approved in this pass; pick a version that passes pnpm's minimum-release-age). | PRD §6 |
+| Internationalisation | Same as the rest of the web app — no new locale handling. | — |
+| Outbox / events | None in this feature (ADR-0006); `DomainEvents` stays unimplemented. | [ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md) |
 
 ## 9. Architecture decisions
 
