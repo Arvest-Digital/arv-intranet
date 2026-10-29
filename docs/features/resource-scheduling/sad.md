@@ -20,26 +20,25 @@ target_surfaces: []  # filled in §4 — subset of: backend-service | web-fronte
 
 ## 1. Introduction and goals
 
-<!-- 🎯 Навіщо: стабільна памʼять про «що + три головні якості + хто зацікавлений».     -->
-<!--           Через рік ніхто не згадає на словах, ЯКІ ТРИ ЯКОСТІ для системи критичні. -->
-<!-- 📋 Що писати: 1 абзац intent + 3 рядки топ-3 якості + таблиця stakeholders.        -->
-<!-- 📌 Приклад: «QG-1: швидкість редагування блоку p95 ≤500 мс»                         -->
-
-**Intent.** <One paragraph from PRD §Goals — what we're building and for whom.>
+**Intent.** We build the **Team Availability Board** (PRD §1, Approach C): a weekly board of resources by week showing allocated hours against capacity, a «free hours over the next N weeks» filter, leave booked as allocations to leave-type projects, one company-wide public-holiday list, employee records kept separate from scheduling so later intranet features reuse them, a one-time import of the planning spreadsheet, and a change history on allocations covering the last 12 months. It serves the ~5 users who plan (holders of the edit-allocations permission) and the ~30 resources whose weeks the plan decides. Who may do what is decided by six named permissions granted through the separate roles/permissions feature, not by job title. It is the first business feature on the intranet and the first to need shared employee and project records.
 
 **Top-3 quality goals (1-liners; full scenarios in §10):**
 
-1. <e.g. "Availability under partial failure of downstream module">
-2. <e.g. "Performance for EM dashboard under team-scale growth">
-3. <e.g. "Recoverability of checkpoints with <30 min RTO">
+1. **QG-1 Calculation correctness** — 100% of weekly figures match the proration rules (partial weeks, holidays, part-timers, employment period), computed without intermediate rounding, with overbooking judged on the exact figures (PRD §6).
+2. **QG-2 Confidentiality of personal data** — leave type and employment end date never reach a viewer without the matching permission, in any view (board, free list, history, project filter, import preview) (PRD §6.1).
+3. **QG-3 Board responsiveness at target scale** — board p95 ≤ 1500 ms, «who's free» p95 ≤ 1000 ms, allocation save p95 ≤ 500 ms, holding at 100 resources, 300 projects, 52 weeks ahead (PRD §6).
 
 **Stakeholders.**
 
 | Role | Interest | Sign-off owner? |
 |---|---|---|
-| <e.g. IC> | <feature usage> | No |
-| <e.g. EM> | <dashboard reads> | No |
-| <e.g. Tech Lead> | <SAD approval> | Yes |
+| Users who plan — holders of the edit-allocations permission (PMs, delivery managers, team leads) | One always-current board they trust enough to retire the planning spreadsheet | No |
+| Resources (~30 scheduled employees) | See their own allocations and leave week by week | No |
+| Holders of the manage-employee-records permission | Accurate employee records, so capacity is correct | No |
+| PM (PRD owner — dmitro.b) | Goals and KPIs hold; consulted on §10 quality goals and §11 severities | Yes (§10) |
+| Tech Lead | SAD approval, module graph, ADRs | Yes |
+| Security Lead | Security review: six new permissions, health-related leave data (PRD §6.1) | Yes |
+| Owner of the roles/permissions feature | Supplies the access roles that grant the six permissions | No |
 
 <!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise.       -->
 <!-- Each: «Decision override: <headline> — rationale: <reason>» so downstream skills see the choice.  -->
