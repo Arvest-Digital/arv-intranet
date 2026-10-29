@@ -469,25 +469,35 @@ Each top-3 goal from §1 expanded into a full scenario; numbers are quoted verba
 
 ## 11. Risks and technical debt
 
-<!-- 🎯 Навіщо: ⭐ збирає ВСЕ, що може зламатись — і не лише технічне. Без §11 ризики   -->
-<!--           обговорюються на стендапах і губляться; борг лишається у голові того,    -->
-<!--           хто його прийняв.                                                          -->
-<!-- 📋 Що писати: таблиця ризик/борг — серйозність — мітигація — власник. Технічний    -->
-<!--           борг окремою секцією.                                                      -->
-<!-- 📌 Приклад: «EM не пушить — member не оновлює дані | High | …». Перший ризик —      -->
-<!--           часто продуктовий, не технічний. Це нормально.                            -->
-
-<!-- Severity column literals: Low / Medium / High for regular risks; "Open question" for rows
-     created by Step-7 `Save as Open Question` resolutions (see references/socratic-loop.md). -->
+<!-- Severity column literals: Low / Medium / High for regular risks; "Open question" for open decisions (owner + due mandatory). -->
 
 | Risk / debt | Severity | Mitigation | Owner |
 |---|---|---|---|
-| <e.g. Outbox lag may reach hours during downstream outage> | Medium | <Alert >10 min, on-call playbook, retry backoff> | <DevOps> |
-| <e.g. No event schema versioning in v1> | Medium | <ADR-NNNN planned for v2, graceful handling of unknown fields> | <Backend> |
-| Open architectural decision: <decision-headline> | Open question | Resolve before <stage trigger or YYYY-MM-DD>; <inline rationale from Step-7 Save-as-OQ> | <owner> |
+| Open architectural decision: may a new package be added to parse the planning spreadsheet? | Open question | Resolve before `/sdlc:break-tasks`; the spreadsheet format is still unknown (PRD §8), so it is too early to decide on a parser (§2) | Tech Lead |
+| Open question (PRD §8, overdue — was due before `/sdlc:architecture-design`): do changes to contract hours or working days need an effective date, so past weeks keep their old capacity? | Open question | Resolve before `/sdlc:generate-data-model`. PRD default meanwhile: a change applies to all weeks, past and future. If an effective date is needed, `org` must store employment terms as effective-dated segments (like ADR-0008) — cheap before the data model, a data migration after launch | PM |
+| Open question (PRD §8, overdue): when will the roles/permissions feature be ready, and does scheduling launch wait for it? | Open question | Resolve before `/sdlc:break-tasks`. Architecture assumes the PRD default — launch waits (§2, ADR-0004); development and tests use a stub permission source | Tech Lead |
+| Open question (PRD §8, overdue): what is the planning spreadsheet's exact format (file type, columns, row mapping, the different-spelling rule of AC-31)? | Open question | Resolve before `/sdlc:break-tasks`; PM supplies a sample of the real spreadsheet and the import mapping is derived from it | PM |
+| Open question (PRD §8, overdue): should intranet logins also be matched to employee records automatically, e.g. by work email? | Open question | Resolve before `/sdlc:break-tasks`. PRD default meanwhile: linking by hand only (AC-19b). Automatic matching would add a read of `identity` users by email through its facade — no new module edge | Tech Lead |
+| Open question (PRD §8): should a tracker project-list import follow after launch? | Open question | Resolve 6 weeks after launch; default no — revisit if users who plan report double entry of projects | Tech Lead |
+| Authentication source undecided (repo ADR 0001): every request is anonymous today, so no permission can be granted | High | Hard launch gate (§2); decide the source per repo ADR 0001 before launch; feature development proceeds with test actors | Tech Lead |
+| Roles/permissions feature not built: scheduling has no real permission source | High | Hard launch gate (§2); stub permission source behind the same per-request lookup (ADR-0004), replaced without module changes | Owner of the roles/permissions feature |
+| Spreadsheet format unknown: the import (US-11) cannot be specified, and the spreadsheet cannot be retired without it (PRD §7 KPI) | High | PM provides the sample (open question above); import tasks scheduled last; manual entry remains possible | PM |
+| Redaction regressions: a new view or endpoint leaks leave type or employment end date (QG-2) | High | Visibility policy in the domain, applied before DTOs (§8); QG-2 response-body test matrix over every read endpoint × permission combination; security review | Tech Lead |
+| Rate limit removed from scope (§8): bulk tampering by a holder of edit-allocations is visible only afterwards, in allocation history | Medium | Every change attributed in history (AC-16); revisit after launch if abuse appears; PRD §6.1 divergence recorded as a decision override (§1) | Security Lead |
+| Monthly history purge (§7): allocation history entries, including leave history, can live up to ~13 months instead of 12 | Medium | Security review accepts the cadence or switches the Cron Trigger to daily (a one-line change in `wrangler.jsonc`) | Security Lead |
+| Host-wired ports left on their no-op default (ADR-0007): capacity warnings or project-close trims silently skipped | Medium | One api integration test per operation (AC-19c, AC-25, AC-27) running through the real composition root | Tech Lead |
+| Employee-record completeness: launch gate is 100% of resources with contract hours, working days, start date and team (PRD §7) | Medium | Records created by the import plus manual completion; «incomplete record» shown on the board (AC-06); completeness checked before launch | PM |
+| Deadline, effort budget and team composition not quantified (§2) | Medium | PM sets them before `/sdlc:break-tasks` so the task plan can be sized | PM |
+| Import transaction holds one Hyperdrive connection for up to 2,000 rows (ADR-0006) | Low | Batched inserts inside the unit of work; no network calls inside it; timed in the pre-launch import rehearsal (QS-8) | Tech Lead |
+| Board compute cost grows with resources × days (ADR-0005) | Low | k6 load test records CPU time per board request; revisit threshold ~1,000 resources or 50% of the Workers CPU limit (§7) | Tech Lead |
+| Brownfield drift: no `docs/architecture-map.md`; this SAD read `ARCHITECTURE.md` at `d4b5993`, and `org`/`projects`/`scheduling` are the first modules beside `identity` | Low | Run `/sdlc:map-architecture`; update `ARCHITECTURE.md` (module catalog, module graph, cross-module ports pattern, `UnitOfWorkLive`) in the same PR as the code | Tech Lead |
 
 **Accepted debt (acceptable in v1, plan to fix later):**
-- <e.g. Goal entity is not versioned (immutable) — OK for v1, may need audit versioning in v2>
+- No rate limiting on allocation changes (PRD §6.1 limit out of scope).
+- No outbox or domain events: cross-module facade commands share one transaction, tying `org`, `projects` and `scheduling` to one database (ADR-0006).
+- Projects, teams and the holiday list are last-write-wins; only allocations and employee records carry an optimistic version (§8).
+- History is kept for allocations only (PRD scope); changes to employee records, projects, teams and holidays are not audited.
+- Monthly retention cadence (§7).
 
 ## 12. Glossary
 
