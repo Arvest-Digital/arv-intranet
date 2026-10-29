@@ -25,7 +25,7 @@ The board shows one row per resource and one column per week: by default the cur
 - PRD §6: board p95 ≤ 1500 ms for 100 resources × 12 weeks; holds at 52 weeks ahead.
 - QG-3 (SAD §1) — bounded, predictable cost per request.
 - Repo convention: thin loaders/actions calling a typed per-feature gateway (`.claude/rules/frontend/web.md`); existing `shared/ui` primitives.
-- No new packages without approval (§2) — a client-side virtualised grid would likely need one.
+- No new packages without approval (CLAUDE.md) — a client-side virtualised grid would likely need one.
 
 ## Considered options
 

@@ -29,7 +29,7 @@ Several operations write in more than one place and must succeed or fail as a wh
 
 ## Considered options
 
-1. **Implement `UnitOfWork` now, no events** — `db.transaction` with the transaction in a `CurrentTx` FiberRef read by `query()`; history in `scheduling`'s own table, written in the same transaction; cross-module writes are facade commands joining the caller's unit of work.
+1. **Implement `UnitOfWork` now, no events** — `db.transaction` with the transaction in a `CurrentTx` FiberRef read by `query()`; history in `scheduling`'s own table, written in the same transaction; closing a project calls the `scheduling` hook inside `projects`' unit of work (ADR-0007); the import's cross-module writes are facade commands joining the caller's unit of work.
 2. **Outbox and events now** — implement the outbox, Cron relay and Queue consumers; `ProjectClosed` triggers trimming in `scheduling`; history moves to an event-fed audit module.
 
 ## Decision outcome
@@ -43,7 +43,7 @@ Several operations write in more than one place and must succeed or fail as a wh
 - First production implementation of `UnitOfWork` becomes the pattern for the rest of the intranet.
 
 **Negative**
-- Facade commands that join a caller's transaction tie `projects`, `org` and `scheduling` to one database; if one moves to its own database, those commands become events plus compensation (as `ARCHITECTURE.md` already notes).
+- Port calls and facade commands that share a caller's transaction tie `projects`, `org` and `scheduling` to one database; if one moves to its own database, those commands become events plus compensation (as `ARCHITECTURE.md` already notes).
 - The import's transaction holds one Hyperdrive connection for its whole duration (bounded by the 2,000-row target); it must contain no network calls.
 
 **Neutral**

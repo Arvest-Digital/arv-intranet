@@ -40,8 +40,9 @@ target_surfaces: [backend-service, web-frontend]  # decided in §4 (ADR-0001) �
 | Security Lead | Security review: six new permissions, health-related leave data (PRD §6.1) | Yes |
 | Owner of the roles/permissions feature | Supplies the access roles that grant the six permissions | No |
 
-<!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise.       -->
-<!-- Each: «Decision override: <headline> — rationale: <reason>» so downstream skills see the choice.  -->
+**Decision overrides.**
+
+- Decision override: no rate limiting in the MVP (PRD §6.1 abuse case «more than 120 allocation changes per minute by one user are refused») — rationale: removed from scope by the PRD owner during the architecture pass; attribution of every change in allocation history (AC-16) is the only control; the Security Lead confirms or reverses this at the mandatory security review before launch (§8, §11).
 
 ## 2. Constraints
 
@@ -132,7 +133,7 @@ C4Context
 
 4. **Capacity, availability and overbooking computed on read in pure domain functions** ([ADR-0005](./adr/0005-compute-capacity-and-availability-on-read.md)) — no stored weekly aggregates. For a board window or free-list period, `scheduling` loads the allocations overlapping it, asks `org` for the employment terms of the resources in scope and for the holidays in the period, and computes every figure with side-effect-free functions in its `domain/`. One rule set serves the board, the free list, the overbooking warnings and the import preview. Serves QG-1 (figures can never drift from their inputs) and is cheap at the PRD scale (QG-3).
 
-5. **Synchronous and transactional; implement `UnitOfWork` now, no outbox in the MVP** ([ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md)) — implement the kernel's `UnitOfWork` port as `ARCHITECTURE.md` describes (one `db.transaction`, the transaction carried in a `CurrentTx` FiberRef that `query()` reads). Every allocation change and its history entry commit together; cross-module writes (closing a project and trimming its allocations, the all-or-nothing import) are facade commands that join the caller's unit of work. No domain events, outbox, Cron relay or Queue in this feature — no use case needs eventual delivery. Serves the «0 lost updates» and atomic-import requirements (PRD §6, AC-31).
+5. **Synchronous and transactional; implement `UnitOfWork` now, no outbox in the MVP** ([ADR-0006](./adr/0006-implement-unit-of-work-without-outbox.md)) — implement the kernel's `UnitOfWork` port as `ARCHITECTURE.md` describes (one `db.transaction`, the transaction carried in a `CurrentTx` FiberRef that `query()` reads). Every allocation change and its history entry commit together; closing a project and capacity-changing `org` edits call the ports of ADR-0007 inside the owning module's unit of work, and the all-or-nothing import uses facade commands that join the caller's unit of work. No domain events, outbox, Cron relay or Queue in this feature — no use case needs eventual delivery. Serves the «0 lost updates» and atomic-import requirements (PRD §6, AC-31).
 
 Each tactical decision in later sections should be traceable to one of these strategic seeds. Tactical decisions that *contradict* a strategic choice are red flags — surface them in §11 Risks.
 
@@ -401,7 +402,7 @@ flowchart LR
 **Scaling thresholds:**
 - PRD scale (100 resources, 300 projects, 52 weeks ahead): a 12-week board window is ~100 × 84 ≈ 8,400 resource-days computed per request (ADR-0005); allocations, segments and history stay in the low thousands of rows per year — comfortable in single tables with ordinary indexes.
 - **Revisit compute-on-read** (ADR-0005 TODO) when resources exceed ~1,000 or when board CPU time per request approaches 50% of the Workers CPU limit; CPU time per board request is measured in the pre-launch load test seeded at 100 resources / 300 projects / 52 weeks (PRD §6).
-- The one-time import runs in one transaction bounded by the 2,000-row target (PRD §6, ADR-0006); a spreadsheet larger than that is rejected at preview rather than risking a long-held Hyperdrive connection.
+- The one-time import runs in one transaction sized for the 2,000-row target (PRD §6, ADR-0006).
 
 ## 8. Crosscutting concepts
 
@@ -483,7 +484,7 @@ Each top-3 goal from §1 expanded into a full scenario; numbers are quoted verba
 | Roles/permissions feature not built: scheduling has no real permission source | High | Hard launch gate (§2); stub permission source behind the same per-request lookup (ADR-0004), replaced without module changes | Owner of the roles/permissions feature |
 | Spreadsheet format unknown: the import (US-11) cannot be specified, and the spreadsheet cannot be retired without it (PRD §7 KPI) | High | PM provides the sample (open question above); import tasks scheduled last; manual entry remains possible | PM |
 | Redaction regressions: a new view or endpoint leaks leave type or employment end date (QG-2) | High | Visibility policy in the domain, applied before DTOs (§8); QG-2 response-body test matrix over every read endpoint × permission combination; security review | Tech Lead |
-| Rate limit removed from scope (§8): bulk tampering by a holder of edit-allocations is visible only afterwards, in allocation history | Medium | Every change attributed in history (AC-16); revisit after launch if abuse appears; PRD §6.1 divergence recorded as a decision override (§1) | Security Lead |
+| Rate limit removed from scope (§8): bulk tampering by a holder of edit-allocations is visible only afterwards, in allocation history | Medium | Every change attributed in history (AC-16); Security Lead confirms or reverses the removal before launch, at the security review; PRD §6.1 divergence recorded as a decision override (§1) | Security Lead |
 | Monthly history purge (§7): allocation history entries, including leave history, can live up to ~13 months instead of 12 | Medium | Security review accepts the cadence or switches the Cron Trigger to daily (a one-line change in `wrangler.jsonc`) | Security Lead |
 | Host-wired ports left on their no-op default (ADR-0007): capacity warnings or project-close trims silently skipped | Medium | One api integration test per operation (AC-19c, AC-25, AC-27) running through the real composition root | Tech Lead |
 | Employee-record completeness: launch gate is 100% of resources with contract hours, working days, start date and team (PRD §7) | Medium | Records created by the import plus manual completion; «incomplete record» shown on the board (AC-06); completeness checked before launch | PM |

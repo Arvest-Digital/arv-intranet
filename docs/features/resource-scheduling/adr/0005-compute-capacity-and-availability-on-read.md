@@ -30,11 +30,11 @@ Every board cell, free-list entry and overbooking warning is derived from inputs
 
 1. **Compute on read in pure domain functions** — load raw inputs for the requested window and compute in `scheduling`'s `domain/`; store no aggregates.
 2. **Stored weekly projection** — a resource × week table of capacity and allocated hours, recomputed on every change.
-3. **Compute in SQL** — expand days with `generate_series` and aggregate in Postgres.
+3. **Compute in SQL** — expand days with `generate_series` over `scheduling`'s tables and aggregate in Postgres, with `org`'s employment terms and holidays passed in as query parameters.
 
 ## Decision outcome
 
-**Chosen:** Option 1. Figures cannot drift from their inputs, all rules live in one side-effect-free place that the rule-table tests cover directly, and the same functions serve the board, the free list, overbooking warnings and the import preview. Option 2 would make `org` edits recompute `scheduling` rows across the module boundary; option 3 cannot join `org`'s schema and would split the rules between SQL and TypeScript.
+**Chosen:** Option 1. Figures cannot drift from their inputs, all rules live in one side-effect-free place that the rule-table tests cover directly, and the same functions serve the board, the free list, overbooking warnings and the import preview. Option 2 would make `org` edits recompute `scheduling` rows across the module boundary; option 3 would split the rules between SQL and TypeScript and make the rule-table tests need a database.
 
 ## Consequences
 

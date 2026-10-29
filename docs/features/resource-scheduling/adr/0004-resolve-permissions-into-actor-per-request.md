@@ -31,11 +31,11 @@ Access is decided by six named permissions granted through access roles by a sep
 
 1. **Permissions on `Actor`, resolved per request** — the api host's authentication middleware asks the roles/permissions feature's facade for the user's permissions on every request and puts the set on `Actor.User`; use cases check it.
 2. **Each module calls an access facade** — `org`, `projects` and `scheduling` call `AccessApi.hasPermission(userId, permission)` in each use case.
-3. **Interim permission table inside this feature** — grant permissions from a table owned by this feature until the roles/permissions feature ships.
+3. **Interim permission table inside this feature** — a production permission source owned by this feature, so scheduling can launch before the roles/permissions feature ships, then migrated and removed.
 
 ## Decision outcome
 
-**Chosen:** Option 1. One lookup per request satisfies AC-14 (every action is a request), keeps modules free of an edge to a module that does not exist yet, and makes multi-permission checks (import, redaction decisions on the board) a set lookup. Option 3 would duplicate a feature the PRD names as a non-goal.
+**Chosen:** Option 1. One lookup per request satisfies AC-14 (every action is a request), keeps modules free of an edge to a module that does not exist yet, and makes multi-permission checks (import, redaction decisions on the board) a set lookup. Option 3 would let launch happen earlier, but at the cost of duplicating a feature the PRD names as a non-goal (§3) plus a later migration; the stub permission source chosen here is for development and tests only and is never used in production, so launch waits for the real feature.
 
 ## Consequences
 
