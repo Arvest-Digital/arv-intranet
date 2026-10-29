@@ -138,49 +138,108 @@ Each tactical decision in later sections should be traceable to one of these str
 
 ## 5. Building block view
 
-<!-- 🎯 Навіщо: ВНУТРІШНЯ ДЕКОМПОЗИЦІЯ — модулі, контейнери, БД. Статична топологія:   -->
-<!--           хто з ким може говорити. Без §5 §6 (сценарії) не має словника учасників. -->
-<!-- 📋 Що писати: 1 абзац про стиль (шари/гексагональна/clean/на подіях) +            -->
-<!--           дерево папок + Mermaid C4Container.                                       -->
-<!-- 📌 ОДИН Container на кожну оголошену target_surface (frontmatter): fullstack        -->
-<!--           [backend-service, web-frontend] = backend-API container + web/SPA container; -->
-<!--           [backend-service, mobile-app] = API + mobile app. Container(web, …) нижче — -->
-<!--           лише приклад однієї поверхні; додай/заміни під оголошене у §4. → _shared/surfaces.md -->
-<!-- 📌 Приклад: «web-app, content-api, media-worker, postgres, s3, cdn».                -->
-
-<One paragraph: layered / hexagonal / clean / event-driven. Why.>
+The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001), with no divergence: three new modules generated from `modules/_template`, each with `domain/` (pure entities, policies, calculations) → `application/` (ports, use cases, facade) → `infrastructure/` (Drizzle adapters, its own `pgSchema`) → `http/` (Hono routes, presenter). Modules reach each other only through facades. The two operations that run against the module graph — an `org` edit that changes capacity must preview overbooking (AC-19c, AC-27), and closing a project in `projects` must preview and trim allocations (AC-25) — use **ports owned by the called module and implemented by `scheduling`**, wired in the api host's composition root ([ADR-0007](./adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md)): `org` defines `CapacityImpactCheck`, `projects` defines `ProjectClosingHook`, both exported from their facades; `scheduling` (which already depends on both) provides the Layers that implement them. The package graph stays `org → identity`, `scheduling → org`, `scheduling → projects`, with no cycle. An allocation is one aggregate holding **effective-dated segments**, so a change «from today» ends the current segment and starts a new one without rewriting the past ([ADR-0008](./adr/0008-model-allocation-as-effective-dated-segments.md)).
 
 **Internal decomposition:**
 
 ```
-<e.g. internal/modules/goals/>
-├── domain/       <entities + sentinel errors>
-├── app/          <use cases / services>
-├── infra/        <repository + outbox impl>
-├── ports/        <HTTP handlers, DTOs, error mapping>
-└── module.go     <self-wiring>
+packages/kernel/src/
+├── actor.ts              Actor.User gains the permission set (ADR-0004); Permission identifier type
+└── …                     UnitOfWork / DomainEvents ports (unchanged)
+packages/db/src/
+└── unit-of-work.ts       UnitOfWorkLive: db.transaction + CurrentTx FiberRef read by query() (ADR-0006)
+
+modules/org/                         @arv/org — schema `org`; calls identity
+├── domain/               EmployeeRecord (contract hours, working days, employment period, team, login link),
+│                         Team (name + team lead), PublicHoliday, name-normalisation, validation rules (AC-20)
+├── application/          ports.ts (repositories + CapacityImpactCheck — implemented by scheduling),
+│                         use cases (create/edit record, link login, teams, holidays), org-api.ts (facade:
+│                         employment terms + holidays for a window, employee by login, import commands)
+├── infrastructure/       schema.ts (employee_records, teams, public_holidays), drizzle-*-repository.ts
+└── http/                 routes.ts, presenter.ts (redacts end date for viewers without the permission)
+
+modules/projects/                    @arv/projects — schema `projects`; calls no module
+├── domain/               Project (type: client | internal | bench | training | leave; open / close date),
+│                         name comparison ignoring case and surrounding spaces (AC-24)
+├── application/          ports.ts (repository + ProjectClosingHook — implemented by scheduling),
+│                         use cases (create, close with preview), projects-api.ts (facade: get / list
+│                         projects, is-open-on(date), import commands)
+├── infrastructure/       schema.ts (projects), drizzle-project-repository.ts
+└── http/                 routes.ts, presenter.ts
+
+modules/scheduling/                  @arv/scheduling — schema `scheduling`; calls org, projects
+├── domain/               Allocation (aggregate of effective-dated segments, version), capacity calendar
+│                         and proration (pure, ADR-0005), overbooking, free-list ranking,
+│                         visibility policy (leave type, end date, view-whole-board ⊆ edit-allocations)
+├── application/          ports.ts, board / free-list / my-schedule queries, allocation and leave commands,
+│                         history query, capacity-impact-check.ts and project-closing-hook.ts (implement
+│                         the org / projects ports), import preview + commit, purge-history,
+│                         scheduling-api.ts (facade)
+├── infrastructure/       schema.ts (allocations, allocation_segments, allocation_history, import_runs),
+│                         drizzle-*-repository.ts
+├── http/                 routes.ts, presenter.ts (leave type → «away» unless see-leave-reasons or own)
+└── layer.ts              SchedulingModuleLive + the Layers that satisfy org's and projects' ports
+
+apps/api/src/
+├── middleware/           authenticate → Actor with permissions (identity + permission source, ADR-0004)
+├── composition.ts        Identity, Org, Projects, Scheduling Layers + port wiring (ADR-0007)
+└── index.ts              mounts /org, /projects, /scheduling routes; adds the `scheduled` handler
+                          (monthly history purge, ADR-0001)
+
+apps/web/app/features/
+├── org/                  employee records, teams, holiday list (routes, components, org.server.ts)
+├── projects/             project list, create, close-with-preview (projects.server.ts)
+└── scheduling/           board, free list, my schedule, allocation / leave dialogs, history, import
+                          (scheduling.server.ts)
 ```
 
 **C4 Container (L2):**
 
 ```mermaid
 C4Container
-    title <system> — Containers
+    title Resource scheduling — Containers
 
-    Person(user, "<User>")
+    Person(planner, "User who plans", "edit-allocations")
+    Person(viewer, "Board viewer", "view-whole-board")
+    Person(resource, "Resource", "own schedule")
+    Person(maintainer, "Records maintainer", "manage-employee-records, manage-projects, manage-holiday-list")
 
-    Container_Boundary(boundary, "<Our System>") {
-        Container(web, "<Web/API container>", "<technology>", "<purpose>")
-        Container(svc, "<Service container>", "<technology>", "<purpose>")
-        ContainerDb(db, "<DB>", "<technology>", "<purpose>")
+    Container_Boundary(cf, "arv-intranet on Cloudflare") {
+        Container(web, "arv-web", "Worker, React Router 7 SSR", "features org, projects, scheduling: board, free list, own schedule, dialogs, import upload")
+        Container(host, "arv-api host", "Worker, Hono 4 + Effect 3", "authenticate to actor with permissions, composition root, fetch and scheduled entry points")
+        Container(identity, "identity module", "Effect module", "users, resolves the request's user")
+        Container(org, "org module", "Effect module", "employee records, login link, teams, public holidays")
+        Container(projects, "projects module", "Effect module", "projects of every type, open and closed")
+        Container(sched, "scheduling module", "Effect module", "allocations and leave, capacity, board, free list, history, import")
+        Container(cron, "Retention trigger", "Cloudflare Cron Trigger", "fires the monthly history purge")
+        Container(hd, "Hyperdrive", "Cloudflare Hyperdrive", "connection pool, query caching off")
     }
 
-    System_Ext(ext, "<External>", "<purpose>")
+    ContainerDb(pg, "Postgres 18", "Neon", "schemas identity, org, projects, scheduling")
+    System_Ext(idp, "Identity provider", "authentication source, still open")
+    System_Ext(roles, "Roles/permissions feature", "grants the six permissions")
 
-    Rel(user, web, "<interaction>", "<protocol>")
-    Rel(web, svc, "<service calls>")
-    Rel(svc, db, "<reads/writes>", "<driver>")
-    Rel(svc, ext, "<emits>", "<protocol>")
+    Rel(planner, web, "Plans allocations, leave, import", "HTTPS")
+    Rel(viewer, web, "Views board, free list, history", "HTTPS")
+    Rel(resource, web, "Views own schedule", "HTTPS")
+    Rel(maintainer, web, "Maintains records, projects, holidays", "HTTPS")
+    Rel(web, host, "Typed hc client per feature", "service binding API")
+    Rel(host, idp, "Verifies the session", "HTTPS")
+    Rel(host, identity, "Resolves the user")
+    Rel(host, roles, "Gets the user's permissions per request", "facade")
+    Rel(host, org, "Routes requests")
+    Rel(host, projects, "Routes requests")
+    Rel(host, sched, "Routes requests")
+    Rel(cron, host, "Monthly purge", "scheduled event")
+    Rel(org, identity, "Validates login link", "facade")
+    Rel(sched, org, "Employment terms, holidays, employee by login", "facade")
+    Rel(sched, projects, "Project type and open state", "facade")
+    Rel(org, sched, "CapacityImpactCheck port, wired by host")
+    Rel(projects, sched, "ProjectClosingHook port, wired by host")
+    Rel(org, hd, "SQL via the query helper", "pg")
+    Rel(projects, hd, "SQL via the query helper", "pg")
+    Rel(sched, hd, "SQL via the query helper", "pg")
+    Rel(hd, pg, "Pooled connections", "Postgres wire")
 ```
 
 ## 6. Runtime view
