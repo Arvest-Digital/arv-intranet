@@ -369,6 +369,492 @@ sequenceDiagram
     end
 ```
 
+The flows below use the generic runtime vocabulary (`<user>`, `<ui>`, `<service>`, `<data-store>`, `<client>`); the word after `<service>` names the §5 module that plays the role. In every UI-driven flow the request reaches the module through the api host, which authenticates and resolves the actor's permissions per request (ADR-0004), as drawn in flows 1–3. Persist notes mark the writes `generate-data-model` indexes.
+
+### Flow 4: Find who is free
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: today is the date in the company's single time zone
+    U->>UI: Asks for resources with at least X free hours over the next N weeks
+    UI->>S: Free list query for N weeks and minimum X hours as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>UI: Refused, missing view-whole-board
+        UI-->>U: Says the permission to view the board is missing
+    else N outside 1 to 12, or X negative or not a number
+        S-->>UI: Rejected with the allowed ranges
+        UI-->>U: No results, weeks must be 1 to 12 and free hours zero or more
+    else valid
+        S->>O: Resources with employment terms and holidays from today over N weeks
+        O-->>S: Terms including end dates, and holidays
+        S->>D: Allocation segments overlapping the period
+        D-->>S: Segments
+        S->>S: Sum availability over the rest of this week plus N-1 full weeks, an overbooked week counts as zero
+        S->>S: Leave out incomplete records with a capacity-unknown note, and weeks needing attention
+        S->>S: Apply the visibility policy, leave type to away, end dates and later allocations per permissions
+        S-->>UI: Resources at or above X, most free first, with free hours per week
+        UI-->>U: Ranked free list plus the incomplete-record note
+    end
+    Note over U,UI: Postcondition: read only, nothing persisted
+```
+
+### Flow 5: Change or remove an allocation from today
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant PR as <service> projects
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: user holds edit-allocations, permission refusal as in flow 1
+    P->>UI: Changes the hours or dates of an allocation, or removes it
+    UI->>S: Change or remove allocation with the version it was opened at
+    S->>PR: Is the project open, and its close date
+    PR-->>S: Open until its close date, or closed
+    S->>O: Employment period of the resource
+    O-->>S: Period including the end date
+    S->>D: Load the allocation and its segments
+    D-->>S: Segments and current version
+    alt project closed
+        S-->>UI: Rejected, the project is closed
+        UI-->>P: Says a closed project accepts no new, changed or removed allocations
+    else start date moved before today
+        S-->>UI: Rejected, past plans are not rewritten
+        UI-->>P: Explains only today onwards can change
+    else change still runs past the employment end date or the close date
+        S-->>UI: Rejected, outside the employment period, naming the last bookable date
+        UI-->>P: Shows the last date the resource can be allocated
+    else allowed
+        Note over S: Growing hours run the overbooking warning and confirmation of flow 1
+        S->>S: End the current segment yesterday and start the changed one today, or drop it from today for a removal
+        S->>D: One transaction writes segments and history where the version still matches
+        Note over S,D: persists allocation segments and a history entry effective today
+        alt version changed meanwhile
+            D-->>S: No row matched
+            S-->>UI: Conflict with current values and who changed them
+            UI-->>P: Shows the other user's change
+        else saved
+            D-->>S: Committed
+            S-->>UI: Saved, needing-attention mark cleared if it now ends by the end date
+            UI-->>P: Freed hours show as availability from today
+        end
+    end
+    Note over P,UI: Postcondition: days before today keep their hours, history shows who changed it, when and from which day
+```
+
+### Flow 6: Book leave
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant PR as <service> projects
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: user holds edit-allocations, one leave-type project per leave type
+    P->>UI: Books whole working days of leave for a resource, choosing the leave type
+    UI->>S: Book leave on the chosen leave-type project for those days
+    S->>PR: Is it an open leave-type project
+    PR-->>S: Leave type confirmed
+    S->>O: Contract hours, working days, holidays and employment period
+    O-->>S: Terms and holidays
+    S->>D: The resource's allocation segments over the leave days
+    D-->>S: Segments
+    S->>S: Each leave day takes the full daily capacity, find work allocations whose daily hours fall on leave days
+    alt days before today or outside the employment period
+        S-->>UI: Rejected with the broken rule
+        UI-->>P: Shows which rule the booking breaks
+    else work falls on leave days or a week overbooks, not confirmed
+        S-->>UI: Confirmation required naming the work allocations on leave days and weeks over
+        UI-->>P: Lists those allocations to shorten or move and asks to confirm
+    else fits, or confirmed
+        S->>D: One transaction writes the leave allocation and its history
+        Note over S,D: persists leave allocation segments and a history entry
+        D-->>S: Committed
+        S-->>UI: Saved, leave type shown as away unless see-leave-reasons
+        UI-->>P: Resource shows as away with the number of leave days
+    end
+    Note over P,UI: Postcondition: the resource is not counted as free on the leave days
+```
+
+### Flow 7: Trace an allocation's history
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor V as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over V,UI: Precondition: the allocation exists
+    V->>UI: Opens the allocation's history
+    UI->>S: History of the allocation as this actor
+    alt neither view-whole-board nor edit-allocations
+        S-->>UI: Refused, missing view-whole-board
+        UI-->>V: Says the permission to view the board is missing
+    else permitted
+        S->>D: History entries of the allocation from the last 12 months in order
+        D-->>S: Entries with who, when, values before and after
+        S->>S: Leave type to away unless see-leave-reasons, values past an end date hidden per permissions
+        S-->>UI: Creation or imported entry, changes, trims and removals in order
+        UI-->>V: Each change with who, when and the values before and after
+    end
+    Note over V,UI: Postcondition: read only
+```
+
+### Flow 8: See my own schedule
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor R as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over R,UI: Precondition: user is signed in to the intranet
+    R->>UI: Opens my schedule
+    UI->>S: Own schedule for the week window as this actor
+    S->>O: Employee record linked to this login
+    alt no employee record linked to the login
+        O-->>S: Not found
+        S-->>UI: Not set up as a resource
+        UI-->>R: Says they are not a resource yet and that manage-employee-records holders can link them
+    else linked
+        O-->>S: Record with employment terms and holidays
+        S->>D: Own allocation segments in the window
+        D-->>S: Segments
+        S->>S: Compute weekly figures, own leave type stays visible
+        S-->>UI: Own weeks against capacity, read only
+        UI-->>R: Own allocations and leave week by week, no edit controls
+    end
+    Note over R,UI: Postcondition: read only
+```
+
+### Flow 9: Create or edit an employee record
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant I as <service> identity
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: the joiner's intranet login exists
+    M->>UI: Saves a record with team, contract hours, working days, employment period and login
+    UI->>O: Create or edit employee record with the version it was opened at
+    alt actor lacks manage-employee-records
+        O-->>UI: Refused, missing manage-employee-records
+        UI-->>M: Says the permission is missing, record unchanged
+    else permitted
+        O->>O: Validate hours above zero and at most 60, a working day, end not before start
+        O->>I: Does the login exist
+        I-->>O: User
+        O->>D: Record already linked to this login
+        D-->>O: None or another record
+        opt contract hours or working days change
+            O->>S: CapacityImpactCheck for the resource with the new terms
+            S->>D: The resource's allocation segments in coming weeks
+            D-->>S: Segments
+            S-->>O: Weeks that would become overbooked
+        end
+        alt a rule is broken
+            O-->>UI: Rejected with the broken rule
+            UI-->>M: Shows which rule the input breaks
+        else login linked to another record
+            O-->>UI: Rejected naming the record the login belongs to
+            UI-->>M: Shows which record already holds the login
+        else new overbooked weeks, not confirmed
+            O-->>UI: Confirmation required with each resource and week
+            UI-->>M: Lists the weeks that would become overbooked and asks to confirm
+        else valid, or confirmed
+            O->>D: Save the record where the version still matches
+            Note over O,D: persists employee record, login link and team membership
+            alt version changed meanwhile
+                D-->>O: No row matched
+                O-->>UI: Conflict with current values and who changed them
+                UI-->>M: Shows the other user's change
+            else saved
+                D-->>O: Committed
+                O-->>UI: Saved record
+                UI-->>M: Board and free list use the new capacity, allocations past a new end date are kept and marked needing attention
+            end
+        end
+    end
+    Note over M,UI: Postcondition: allocations unchanged, no allocation history entry written
+```
+
+### Flow 10: Manage teams
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: the team lead is a resource
+    M->>UI: Creates or renames a team with its team lead, or removes a team
+    UI->>O: Team command as this actor
+    alt actor lacks manage-employee-records
+        O-->>UI: Refused, missing manage-employee-records
+        UI-->>M: Says the permission is missing
+    else permitted
+        O->>D: Team with the same name ignoring case and surrounding spaces, and member count
+        D-->>O: Match and member count
+        alt name matches another team
+            O-->>UI: Rejected, a team with this name exists
+            UI-->>M: Shows the duplicate name
+        else removing a team that still has resources
+            O-->>UI: Rejected naming how many resources remain
+            UI-->>M: Shows the remaining resource count
+        else valid
+            O->>D: Save or delete the team
+            Note over O,D: persists team with normalised name and team lead
+            D-->>O: Committed
+            O-->>UI: Saved
+            UI-->>M: Team list updated
+        end
+    end
+    Note over M,UI: Postcondition: team names unique ignoring case and surrounding spaces
+```
+
+### Flow 11: Create a project
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant PR as <service> projects
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: none
+    M->>UI: Creates a project with a name and a type
+    UI->>PR: Create project as this actor
+    alt actor lacks manage-projects
+        PR-->>UI: Refused, missing manage-projects
+        UI-->>M: Says the permission is missing, project list unchanged
+    else permitted
+        PR->>D: Open project with the same name ignoring case and surrounding spaces
+        D-->>PR: Match or none
+        alt an open project already uses the name
+            PR-->>UI: Rejected, an open project with this name exists
+            UI-->>M: Shows the duplicate
+        else name free
+            PR->>D: Save the project as open
+            Note over PR,D: persists project with type, normalised name and open state
+            D-->>PR: Committed
+            PR-->>UI: Created
+            UI-->>M: Project offered for new allocations
+        end
+    end
+    Note over M,UI: Postcondition: at most one open project per normalised name
+```
+
+### Flow 12: Add or remove a public holiday
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor M as <user>
+    participant UI as <ui>
+    participant O as <service> org
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over M,UI: Precondition: one company-wide holiday list
+    M->>UI: Adds or removes a public holiday
+    UI->>O: Holiday command as this actor
+    alt actor lacks manage-holiday-list
+        O-->>UI: Refused, missing manage-holiday-list
+        UI-->>M: Says the permission is missing, list unchanged
+    else permitted
+        opt adding a holiday
+            O->>S: CapacityImpactCheck for resources working that weekday
+            S->>D: Allocation segments in that week
+            D-->>S: Segments
+            S-->>O: Resources and weeks that would become overbooked
+        end
+        alt new overbooked weeks, not confirmed
+            O-->>UI: Confirmation required with each resource and week
+            UI-->>M: Lists the weeks that would become overbooked and asks to confirm
+        else no impact, confirmed, or a removal
+            O->>D: Save or delete the holiday
+            Note over O,D: persists public holiday by date
+            D-->>O: Committed
+            O-->>UI: Saved
+            UI-->>M: Capacity drops only for resources who work that day
+        end
+    end
+    Note over M,UI: Postcondition: allocations unchanged, no allocation history entry written
+```
+
+### Flow 13: Import the planning spreadsheet
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor P as <user>
+    participant UI as <ui>
+    participant S as <service> scheduling
+    participant O as <service> org
+    participant PR as <service> projects
+    participant D as <data-store>
+
+    Note over P,UI: Precondition: no import has completed yet
+    P->>UI: Uploads the planning spreadsheet
+    UI->>S: Import with the file as this actor
+    alt actor lacks edit-allocations, manage-employee-records or manage-projects
+        S-->>UI: Refused naming every missing permission
+        UI-->>P: Lists the missing permissions
+    else permitted
+        S->>D: Completed import run
+        D-->>S: Present or none
+        alt an import already completed
+            S-->>UI: Refused, the import is one time
+            UI-->>P: Says later changes are made on the board
+        else no import yet
+            S->>S: Read cells as plain text and check rows with the manual-entry rules
+            S->>O: Existing records and holidays to match names against
+            O-->>S: Records and holidays
+            S->>PR: Existing projects to match names against
+            PR-->>S: Projects
+            S->>S: Flag names differing only in initials, case or spaces, and compute overbooked resource-weeks
+            alt any problem row
+                S-->>UI: Problem rows with reasons, nothing imported
+                UI-->>P: Lists each row and its reason, asks to fix the file and retry
+            else clean, not confirmed
+                S-->>UI: Confirmation required with counts of records, projects, allocations, incomplete records and overbooked resource-weeks
+                UI-->>P: Shows the preview and asks for one confirmation
+                Note over P,S: On confirm the file is uploaded again and the preview recomputed, the file is never stored
+            else clean and confirmed
+                S->>D: Begin one unit of work
+                S->>O: Create employee records inside the unit of work
+                Note over O,D: persists employee records
+                S->>PR: Create projects inside the unit of work
+                Note over PR,D: persists projects
+                S->>D: Write allocations, imported history entries and the completed import run
+                Note over S,D: persists allocations, history by the importing user, import run
+                S->>D: Commit
+                D-->>S: Committed
+                S-->>UI: Imported
+                UI-->>P: Board shows the imported plan
+            end
+        end
+    end
+    Note over P,UI: Postcondition: exactly one completed import run exists
+```
+
+### Cross-cutting: Monthly history purge
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as <client> scheduler
+    participant S as <service> scheduling
+    participant D as <data-store>
+
+    Note over C,S: Trigger: monthly schedule, 03:00 UTC on the 1st
+    C->>S: Purge allocation history older than 12 months
+    S->>S: Check idempotency key, the cut-off date, a rerun for the same cut-off deletes nothing new
+    S->>D: Delete history entries recorded before the cut-off
+    Note over S,D: deletes allocation history by entry time (informs data-model indexes)
+    D-->>S: Entries deleted and the oldest remaining entry's age
+    S->>S: Log the retention report line
+    Note over C,S: retry N times with backoff on failure, N not yet set
+    alt retries exhausted
+        S->>S: Log the failed run, which fires the purge-failure alert
+        Note over C,S: dead-letter: no queue, the failed run is logged and alerted, the next monthly run catches up
+    end
+    Note over C,S: Postcondition: no history entry older than 12 months at run time remains
+```
+
+### Coverage: US/AC → flows
+
+| ID | Realized by (§6 heading) | How | Note |
+|---|---|---|---|
+| US-01 | Critical flow 3: Open the board with per-viewer redaction | flow | |
+| US-02 | Flow 4: Find who is free | flow | |
+| US-03 | Critical flow 1: Plan an allocation that overbooks, Flow 5: Change or remove an allocation from today | flow | |
+| US-04 | Flow 6: Book leave | flow | |
+| US-05 | Flow 7: Trace an allocation's history, Cross-cutting: Monthly history purge | flow | |
+| US-06 | Flow 8: See my own schedule | flow | |
+| US-07 | Flow 9: Create or edit an employee record, Flow 10: Manage teams | flow | |
+| US-08 | Flow 11: Create a project, Critical flow 2: Close a project and trim its allocations | flow | |
+| US-09 | Flow 12: Add or remove a public holiday | flow | |
+| US-10 | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history | flow | redaction step in each read flow |
+| US-11 | Flow 13: Import the planning spreadsheet | flow | |
+| AC-01 | Critical flow 3: Open the board with per-viewer redaction | flow | |
+| AC-02 | Critical flow 3: Open the board with per-viewer redaction | flow | team and project filters in the board query |
+| AC-03 | Critical flow 3: Open the board with per-viewer redaction | branch | `alt neither view-whole-board nor edit-allocations` |
+| AC-04 | Flow 4: Find who is free | flow | |
+| AC-05 | Flow 4: Find who is free | branch | `else N outside 1 to 12, or X negative or not a number` |
+| AC-06 | Flow 4: Find who is free, Critical flow 3: Open the board with per-viewer redaction | flow | incomplete records left out of the free list, one cell state on the board |
+| AC-07 | Critical flow 1: Plan an allocation that overbooks | branch | `else fits or confirmed` / `else saved` |
+| AC-07a | Flow 5: Change or remove an allocation from today | flow | removal path |
+| AC-07b | Critical flow 1: Plan an allocation that overbooks, Flow 5: Change or remove an allocation from today | branch | `alt version changed meanwhile` |
+| AC-08 | Critical flow 1: Plan an allocation that overbooks | flow | proration in the compute step (ADR-0005, ADR-0009) |
+| AC-09 | Critical flow 1: Plan an allocation that overbooks | branch | `alt rule broken or outside employment period or before today` |
+| AC-09b | Flow 5: Change or remove an allocation from today, Flow 6: Book leave | flow | `else start date moved before today` refuses; the allowed path splits segments at today |
+| AC-10 | Critical flow 1: Plan an allocation that overbooks | branch | `else overbooked and not confirmed` |
+| AC-11 | Flow 5: Change or remove an allocation from today | branch | `alt project closed` |
+| AC-12 | Critical flow 1: Plan an allocation that overbooks | branch | `alt actor lacks edit-allocations` |
+| AC-12b | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history | branch | `else permitted` of the neither-permission check |
+| AC-13 | Critical flow 1: Plan an allocation that overbooks | branch | `alt rule broken or outside employment period or before today` |
+| AC-14 | Critical flow 1: Plan an allocation that overbooks | branch | `alt actor lacks edit-allocations` — permissions loaded per request |
+| AC-15 | Flow 6: Book leave | flow | plus `else work falls on leave days or a week overbooks, not confirmed` |
+| AC-16 | Flow 7: Trace an allocation's history | flow | trims written in Critical flow 2, imported entry in Flow 13 |
+| AC-17 | Flow 8: See my own schedule | flow | |
+| AC-18 | Flow 8: See my own schedule | branch | `alt no employee record linked to the login` |
+| AC-19a | Flow 9: Create or edit an employee record | flow | |
+| AC-19b | Flow 9: Create or edit an employee record | branch | `else login linked to another record` |
+| AC-19 | Flow 9: Create or edit an employee record | flow | |
+| AC-19c | Flow 9: Create or edit an employee record, Flow 12: Add or remove a public holiday | branch | `else new overbooked weeks, not confirmed` |
+| AC-19d | Flow 10: Manage teams | flow | |
+| AC-20 | Flow 9: Create or edit an employee record | branch | `alt a rule is broken` |
+| AC-21 | Flow 9: Create or edit an employee record | branch | `else saved` — later allocations kept and marked needing attention |
+| AC-21b | Flow 5: Change or remove an allocation from today | branch | `else change still runs past the employment end date or the close date` / `else saved` clears the mark |
+| AC-22 | Flow 9: Create or edit an employee record, Critical flow 3: Open the board with per-viewer redaction | branch | `alt actor lacks manage-employee-records`; end-date redaction in flow 3 |
+| AC-23 | Flow 11: Create a project | flow | |
+| AC-24 | Flow 11: Create a project | branch | `alt an open project already uses the name` |
+| AC-25 | Critical flow 2: Close a project and trim its allocations | flow | |
+| AC-26 | Flow 11: Create a project, Critical flow 2: Close a project and trim its allocations | branch | `alt actor lacks manage-projects`; manage-projects check in flow 2 |
+| AC-27 | Flow 12: Add or remove a public holiday | flow | |
+| AC-28 | Flow 12: Add or remove a public holiday | branch | `alt actor lacks manage-holiday-list` |
+| AC-29 | Critical flow 3: Open the board with per-viewer redaction, Flow 4: Find who is free, Flow 7: Trace an allocation's history, Flow 8: See my own schedule | flow | redaction step, own leave type kept in flow 8 |
+| AC-30 | Flow 13: Import the planning spreadsheet | flow | |
+| AC-31 | Flow 13: Import the planning spreadsheet | branch | `alt any problem row` |
+| AC-32 | Flow 13: Import the planning spreadsheet | branch | `alt an import already completed` |
+| AC-33 | Flow 13: Import the planning spreadsheet | branch | `alt actor lacks edit-allocations, manage-employee-records or manage-projects` |
+
+Coverage: 11/11 user stories · 42/42 ACs — 0 non-runtime N/A.
+
+**Flags:**
+- Monthly history purge: the retry count and the dead-letter shape (log + alert, no queue) are not decided anywhere, and §5 has no `<message-bus>`. Worth an ADR, or a §8 line, via `/sdlc:decide-adr`.
+- Flows 1–3 use concrete names (`arv-web`, `Postgres`) and bold headings rather than `###` headings. They were left untouched because this stage is additive. Aligning them to the generic vocabulary would be a manual edit.
+- Flow 5 does not draw the closed-project refusal for a new allocation. Flow 1 only asks whether the project is open, and AC-11's refusal is drawn on the change and remove path.
+
 ## 7. Deployment view
 
 The feature ships inside the two existing Cloudflare Workers — serverless, scaled by Cloudflare per request, so there are no replicas or instance counts to manage. `arv-web` gains three feature folders and no new bindings. `arv-api` gains three modules, three Postgres schemas (`org`, `projects`, `scheduling`) and its **first Cron Trigger**: `triggers.crons = ["0 3 1 * *"]` (03:00 UTC on the 1st of each month) fires the `scheduled` handler, which calls `scheduling`'s purge of allocation history entries older than 12 months (ADR-0001). Hyperdrive (query caching off) and the `API` service binding are unchanged. Migrations for the three schemas are applied through `@arv/migrations` **before** the api deploy and are additive only (new schemas and tables), so a rollback of the Worker never needs a schema rollback.
