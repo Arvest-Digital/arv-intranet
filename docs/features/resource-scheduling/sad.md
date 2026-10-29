@@ -442,29 +442,30 @@ ADR files live under `docs/features/resource-scheduling/adr/NNNN-<title>.md`. Re
 
 ## 10. Quality requirements
 
-<!-- 🎯 Навіщо: ДЕРЕВО ЯКОСТЕЙ (Quality Tree) — беремо мету з §1 і розкладаємо на          -->
-<!--           конкретні листя: тести, метрики, конфіги, drill-и. ⭐ Без §10 §1 — це       -->
-<!--           маніфест. З §10 кожна декларація мапиться на щось, ЩО МОЖНА ДОВЕСТИ.        -->
-<!-- 📋 Що писати: на кожну якість з §1 — When / Then / How verify. Числа з PRD §6 NFR     -->
-<!--           ДОСЛІВНО (не округлюй p95 ≤250мс до ≤300мс — це F6-помилка критика).        -->
-<!-- 📌 Приклад: «p95 ≤500 мс на UPDATE блоку, перевіримо k6 load test 100 req/s».        -->
+Each top-3 goal from §1 expanded into a full scenario; numbers are quoted verbatim from PRD §6. Approved by the PM (PRD owner) on 2026-10-29.
 
-Each top-3 goal from §1 expanded into a full scenario:
+**QG-1. Calculation correctness**
+- **When:** any weekly figure is computed — a board cell, a free-list sum, an overbooking warning, a capacity-impact preview or the import preview — over partial weeks, public holidays, part-time working days, leave days or an employment period that starts or ends mid-week.
+- **Then:** «100% of weekly figures match the proration rules (partial weeks, holidays, part-timers, employment period); figures are computed without intermediate rounding, shown rounded to the nearest half hour, and overbooking is judged on the exact figures» (PRD §6). Exactness comes from integer 1/420-minute ticks (ADR-0009) in pure domain functions (ADR-0005).
+- **How verify:** «automated rule-table tests in CI» (PRD §6) — table-driven tests in `modules/scheduling/src/domain/*.test.ts`, run by `pnpm test` on every PR, with at least the PRD examples as rows: AC-08 (40 h/week from a Wednesday → 24 h; holiday Thursday → 32 h), AC-19 (24 h over Monday–Wednesday → 8 h/day), AC-27 (Monday holiday: full-timer drops, Wednesday–Friday part-timer unchanged), AC-04 (rest of current week + N−1 weeks; overbooked week counts as 0), AC-10 (32 h capacity, 24 + 16 → 8 h over), AC-15 (leave day = contract hours ÷ working days).
 
-**QG-1. <quality attribute>**
-- **When:** <trigger condition>
-- **Then:** <expected behavior with numbers from PRD NFR>
-- **How verify:** <test / chaos drill / load test / observability>
+**QG-2. Confidentiality of personal data**
+- **When:** a viewer without `scheduling:see-leave-reasons` looks at the board, the free list, an allocation's history or the project filter; or a viewer holding neither `org:manage-employee-records` nor `scheduling:edit-allocations` looks at a resource whose employment period ends.
+- **Then:** «leave type is hidden in every view for viewers without the see-leave-reasons permission; they see «away» only» (PRD §6.1), except the resource's own leave; «everyone else sees only zero capacity, with no allocations and no overbooking shown after it» (PRD §6.1). Measured as: 0 api responses contain a leave type, leave-project name or employment end date for a viewer not entitled to it.
+- **How verify:** api integration tests in `apps/api/test/integration/scheduling/` and `…/org/` (workerd + `arv_test`) that call every read endpoint for each permission combination and assert on the **response body**, not the UI; the mandatory security review (PRD §6.1) signs off on the test matrix.
 
-**QG-2. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+**QG-3. Board responsiveness at target scale**
+- **When:** production traffic with the data at «100 resources, 300 projects, 52 weeks ahead» (PRD §6).
+- **Then:** latency p95 «open the schedule board (100 resources × 12 weeks)» «≤ 1500 ms»; «“who's free” result» «≤ 1000 ms»; «save an allocation (incl. overbooking check)» «≤ 500 ms» (PRD §6).
+- **How verify:** «server request-duration metric» per route in production (PRD §6) — the host's per-request log line queried in Workers Observability (§7); and before launch a **k6** load test against a preview deployment whose database is «seeded at those volumes» (PRD §6), which also records CPU time per board request for the ADR-0005 revisit threshold.
 
-**QG-3. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+**Additional quality scenarios (from PRD §6):**
+
+- **QS-4 Concurrency** — *When* two users with edit-allocations save different changes to the same allocation one after the other; *Then* «0 lost updates»: the first change is kept, the second is refused with the current values and who changed them (AC-07b); *How verify:* «automated concurrent-save test in CI» — an api integration test that saves twice with the same `version` and asserts one success and one `Conflict`.
+- **QS-5 History retention** — *When* the monthly purge runs (03:00 UTC on the 1st, §7); *Then* «allocation history entries kept for 12 months, then deleted»: after each run no entry older than 12 months at run time remains; between runs an entry can be up to ~13 months old (monthly cadence chosen in §7 — risk in §11); *How verify:* «monthly retention job report» — the purge's log line (entries deleted, oldest remaining age), plus an integration test of the purge with a fixed `Clock`.
+- **QS-6 Availability** — *When* measured over a calendar month; *Then* «99.5% monthly»; *How verify:* «intranet uptime monitor, monthly SLO window».
+- **QS-7 Accessibility** — *When* the board renders any cell state; *Then* «free, partly booked and overbooked are distinguishable without colour; text contrast ≥ 4.5:1»; *How verify:* «automated accessibility audit of the board in CI» — `@axe-core/playwright` in the board's e2e test, plus an e2e assertion that every cell carries a text state label.
+- **QS-8 Import preview** — *When* a planning spreadsheet of «up to 2,000 rows» is uploaded for preview; *Then* the preview is ready in «≤ 10 s»; *How verify:* «timed in the pre-launch import rehearsal» with the real spreadsheet.
 
 ## 11. Risks and technical debt
 
