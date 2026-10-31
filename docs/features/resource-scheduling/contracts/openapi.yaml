@@ -1,0 +1,2538 @@
+# Derived by sdlc api-forge (scenario A) from:
+#   fields + constraints  ← data-model.md (every field traces to a column, or is marked computed)
+#   error responses       ← sad.md §6 alt-branches (sequence gaps listed in api-sync-report.md)
+#   endpoint list + shape ← PRD.md §4 user stories / §5 acceptance criteria
+# Repo conventions (.claude/rules/openapi.md → "arv-intranet deviations"): module-prefixed
+# unversioned paths, camelCase keys, envelope {error: {_tag, code, message, details?}}.
+openapi: 3.1.0
+
+info:
+  title: Resource scheduling API
+  version: 0.1.0
+  description: |
+    Planning who works on what lives in a spreadsheet and in tracker tickets, with no combined view
+    per person, so the people who plan cannot answer «who is free in the next 2 weeks?» without a
+    round of chat, and overbooking is noticed only after the fact (PRD §1). This API backs the Team
+    Availability Board: a weekly board of resources showing allocated hours against capacity, a
+    «free hours over the next N weeks» list, leave booked as allocations to leave-type projects, one
+    company-wide public-holiday list, shared employee records and projects, a one-time import of
+    the planning spreadsheet, and 12 months of allocation history.
+
+    It spans three modules of the private `arv-api` Worker: `org` (employee records, teams, public
+    holidays), `projects` (projects of every type) and `scheduling` (allocations, leave, board, free
+    list, history, import). Hours travel as integer **minutes** (ADR-0009); computed figures may carry
+    a fraction of a minute and are rounded to the nearest half hour only for display (PRD §6).
+
+    **Warn-then-confirm (ADR-0010).** Saves with consequences answer an unconfirmed request with
+    `409 ConfirmationRequired` and the impact in `details`. The client re-sends the **same** request
+    with `confirm: true`, and the server recomputes everything on fresh data.
+
+    **Redaction (SAD §8).** Leave type becomes «away» (`project: null`, `away: true`) unless the
+    viewer holds `scheduling:see-leave-reasons` or is the resource. The employment end date,
+    allocations after it and needing-attention marks are visible only to holders of
+    `org:manage-employee-records` or `scheduling:edit-allocations`. Hidden fields are never sent.
+
+servers:
+  - url: https://api.internal
+    description: Private api Worker, reached only through the `API` service binding from arv-web
+  - url: http://localhost:8787
+    description: Local (wrangler dev, auxiliary worker)
+
+# Placeholder until the authentication source is decided (repo ADR 0001, SAD §8). Every operation
+# needs an authenticated actor; permissions are resolved per request (ADR-0004).
+security:
+  - BearerAuth: []
+
+tags:
+  - name: org
+    description: Employee records, teams and public holidays (`@arv/org`)
+  - name: projects
+    description: Projects of every type, open and closed (`@arv/projects`)
+  - name: scheduling
+    description: Allocations, leave, board, free list, history and import (`@arv/scheduling`)
+
+paths:
+  # ───────────────────────────── org: employee records (US-07) ─────────────────────────────
+  /org/employee-records:
+    get:
+      tags: [org]
+      summary: List employee records
+      description: Requires `org:manage-employee-records` (deny by default, PRD §6.1). Ordered by id (creation order).
+      operationId: listEmployeeRecords
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of employee records
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecordPage" }
+              examples:
+                page: { $ref: "#/components/examples/EmployeeRecordPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [org]
+      summary: Create an employee record
+      description: |
+        AC-19a. Requires `org:manage-employee-records` (AC-22). A record without contract hours or a
+        start date is saved as an incomplete record (AC-06). Working days default to Monday–Friday.
+        A new record has no allocations, so there is no capacity check and no `confirm`.
+      operationId: createEmployeeRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmployeeRecordCreate" }
+            examples:
+              joiner: { $ref: "#/components/examples/EmployeeRecordCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecord" }
+              examples:
+                created: { $ref: "#/components/examples/EmployeeRecord" }
+        "400":
+          description: |
+            `platform.validation_failed` (contract hours 0 or above 60 h, no working day — AC-20) or
+            `org.invalid_employee_record` (end date before start date — AC-20).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                invalid: { $ref: "#/components/examples/InvalidEmployeeRecord" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `org:manage-employee-records` (AC-22)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageEmployeeRecords" }
+        "404":
+          description: "`org.user_not_found` (the login does not exist) or `org.team_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                userNotFound: { $ref: "#/components/examples/UserNotFound" }
+        "409":
+          description: "`org.login_already_linked` — the login belongs to another record (AC-19b)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                linked: { $ref: "#/components/examples/LoginAlreadyLinked" }
+
+  /org/employee-records/{employeeRecordId}:
+    parameters:
+      - $ref: "#/components/parameters/EmployeeRecordId"
+    get:
+      tags: [org]
+      summary: Get an employee record
+      description: Requires `org:manage-employee-records`. Returns the `version` the edit form must send back.
+      operationId: getEmployeeRecord
+      responses:
+        "200":
+          description: The record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecord" }
+              examples:
+                record: { $ref: "#/components/examples/EmployeeRecord" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`org.employee_record_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/EmployeeRecordNotFound" }
+    patch:
+      tags: [org]
+      summary: Edit an employee record, link or unlink a login
+      description: |
+        AC-19, AC-19a, AC-19b, AC-19c, AC-20, AC-21, AC-22 (flow 9). Requires
+        `org:manage-employee-records`. Sends the `version` the form was opened at (optimistic
+        concurrency, SAD §8). A change to contract hours or working days that would overbook any
+        coming week answers `org.capacity_confirmation_required` until re-sent with `confirm: true`
+        (AC-19c); allocations do not change and no allocation history is written. Setting an end
+        date before existing allocations keeps them and marks them needing attention (AC-21).
+      operationId: updateEmployeeRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmployeeRecordChange" }
+            examples:
+              partTime: { $ref: "#/components/examples/EmployeeRecordChange" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecord" }
+              examples:
+                saved: { $ref: "#/components/examples/EmployeeRecord" }
+        "400":
+          description: "`platform.validation_failed` or `org.invalid_employee_record` (AC-20)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                invalid: { $ref: "#/components/examples/InvalidEmployeeRecord" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `org:manage-employee-records` (AC-22)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageEmployeeRecords" }
+        "404":
+          description: "`org.employee_record_not_found`, `org.user_not_found` or `org.team_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/EmployeeRecordNotFound" }
+        "409":
+          description: |
+            `org.login_already_linked` (AC-19b), `org.version_conflict` (changed meanwhile — current
+            values and who changed them) or `org.capacity_confirmation_required` (AC-19c).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                linked: { $ref: "#/components/examples/LoginAlreadyLinked" }
+                versionConflict: { $ref: "#/components/examples/EmployeeRecordVersionConflict" }
+                confirm: { $ref: "#/components/examples/CapacityConfirmationRequired" }
+
+  # ───────────────────────────── org: teams (US-07, AC-19d) ─────────────────────────────
+  /org/teams:
+    get:
+      tags: [org]
+      summary: List teams
+      description: Requires `scheduling:view-whole-board`, `scheduling:edit-allocations` or `org:manage-employee-records` (board filter, AC-02; team maintenance, AC-19d).
+      operationId: listTeams
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of teams
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamPage" }
+              examples:
+                page: { $ref: "#/components/examples/TeamPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [org]
+      summary: Create a team
+      description: AC-19d (flow 10). Requires `org:manage-employee-records`. Names are compared ignoring letter case and surrounding spaces.
+      operationId: createTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TeamCreate" }
+            examples:
+              platform: { $ref: "#/components/examples/TeamCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+              examples:
+                created: { $ref: "#/components/examples/Team" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `org:manage-employee-records`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageEmployeeRecords" }
+        "404":
+          description: "`org.team_lead_not_found` — the team lead is not an employee record"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                leadNotFound: { $ref: "#/components/examples/TeamLeadNotFound" }
+        "409":
+          description: "`org.duplicate_team_name` (AC-19d)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                duplicate: { $ref: "#/components/examples/DuplicateTeamName" }
+
+  /org/teams/{teamId}:
+    parameters:
+      - $ref: "#/components/parameters/TeamId"
+    patch:
+      tags: [org]
+      summary: Rename a team or change its team lead
+      description: AC-19d (flow 10). Requires `org:manage-employee-records`. Last write wins (SAD §8).
+      operationId: updateTeam
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TeamChange" }
+            examples:
+              rename: { $ref: "#/components/examples/TeamChange" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+              examples:
+                saved: { $ref: "#/components/examples/Team" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`org.team_not_found` or `org.team_lead_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/TeamNotFound" }
+        "409":
+          description: "`org.duplicate_team_name` (AC-19d)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                duplicate: { $ref: "#/components/examples/DuplicateTeamName" }
+    delete:
+      tags: [org]
+      summary: Remove a team
+      description: AC-19d (flow 10). Requires `org:manage-employee-records`. Refused while the team has resources.
+      operationId: deleteTeam
+      responses:
+        "204":
+          description: Removed
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`org.team_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/TeamNotFound" }
+        "409":
+          description: "`org.team_has_members` — names how many resources remain (AC-19d)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                hasMembers: { $ref: "#/components/examples/TeamHasMembers" }
+
+  # ───────────────────────────── org: public holidays (US-09) ─────────────────────────────
+  /org/public-holidays:
+    get:
+      tags: [org]
+      summary: List public holidays in a date range
+      description: Any signed-in user (the single company-wide list, US-09). Ordered by date.
+      operationId: listPublicHolidays
+      parameters:
+        - in: query
+          name: from
+          description: First date, inclusive. Defaults to 1 January of the current year.
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          description: Last date, inclusive. Defaults to 31 December of the current year.
+          schema: { type: string, format: date }
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of holidays
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicHolidayPage" }
+              examples:
+                page: { $ref: "#/components/examples/PublicHolidayPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+    post:
+      tags: [org]
+      summary: Add a public holiday
+      description: |
+        AC-27, AC-19c, AC-28 (flow 12). Requires `org:manage-holiday-list`. If the holiday would
+        push any resource's week over capacity, answers `org.capacity_confirmation_required` until
+        re-sent with `confirm: true`. Allocations do not change.
+      operationId: createPublicHoliday
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicHolidayCreate" }
+            examples:
+              monday: { $ref: "#/components/examples/PublicHolidayCreate" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicHoliday" }
+              examples:
+                added: { $ref: "#/components/examples/PublicHoliday" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `org:manage-holiday-list` (AC-28)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageHolidayList" }
+        "409":
+          description: "`org.duplicate_holiday_date` or `org.capacity_confirmation_required` (AC-19c, AC-27)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                duplicate: { $ref: "#/components/examples/DuplicateHolidayDate" }
+                confirm: { $ref: "#/components/examples/CapacityConfirmationRequired" }
+
+  /org/public-holidays/{publicHolidayId}:
+    parameters:
+      - $ref: "#/components/parameters/PublicHolidayId"
+    delete:
+      tags: [org]
+      summary: Remove a public holiday
+      description: US-09, AC-28 (flow 12). Requires `org:manage-holiday-list`. A removal only adds capacity, so no confirmation.
+      operationId: deletePublicHoliday
+      responses:
+        "204":
+          description: Removed
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `org:manage-holiday-list` (AC-28)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageHolidayList" }
+        "404":
+          description: "`org.holiday_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/HolidayNotFound" }
+
+  # ───────────────────────────── projects (US-08) ─────────────────────────────
+  /projects:
+    get:
+      tags: [projects]
+      summary: List projects
+      description: |
+        Requires `scheduling:view-whole-board`, `scheduling:edit-allocations` or
+        `projects:manage-projects`. Leave-type projects are left out unless the viewer holds
+        `scheduling:see-leave-reasons`, `scheduling:edit-allocations` (chooses the leave type when
+        booking) or `projects:manage-projects` (AC-29).
+      operationId: listProjects
+      parameters:
+        - in: query
+          name: status
+          description: Open or closed today (AC-25). Omitted → both.
+          schema: { $ref: "#/components/schemas/ProjectStatus" }
+        - in: query
+          name: type
+          schema: { $ref: "#/components/schemas/ProjectType" }
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of projects
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectPage" }
+              examples:
+                page: { $ref: "#/components/examples/ProjectPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [projects]
+      summary: Create a project
+      description: AC-23, AC-24, AC-26 (flow 11). Requires `projects:manage-projects`. A new project is open.
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectCreate" }
+            examples:
+              client: { $ref: "#/components/examples/ProjectCreate" }
+      responses:
+        "201":
+          description: Created, open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+              examples:
+                created: { $ref: "#/components/examples/Project" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `projects:manage-projects` (AC-26)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageProjects" }
+        "409":
+          description: "`projects.duplicate_open_name` (AC-24)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                duplicate: { $ref: "#/components/examples/DuplicateOpenProjectName" }
+
+  /projects/{projectId}/close:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      tags: [projects]
+      summary: Close a project and trim its allocations
+      description: |
+        AC-25, AC-26, AC-16 (critical flow 2, ADR-0007). Requires `projects:manage-projects`. An
+        unconfirmed request answers `projects.closing_confirmation_required` listing the allocations
+        that will end at the close date and those that will be removed. With `confirm: true` the
+        close date, the trims, the removals and their history entries (attributed to the closer)
+        commit in one unit of work. The project stays open until the end of the close date.
+      operationId: closeProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectClose" }
+            examples:
+              close: { $ref: "#/components/examples/ProjectClose" }
+      responses:
+        "200":
+          description: Close date recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Project" }
+              examples:
+                closing: { $ref: "#/components/examples/ProjectWithCloseDate" }
+        "400":
+          description: "`platform.validation_failed` or `projects.close_date_in_past` (AC-25)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                past: { $ref: "#/components/examples/CloseDateInPast" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `projects:manage-projects` (AC-26)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageProjects" }
+        "404":
+          description: "`projects.project_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/ProjectNotFound" }
+        "409":
+          description: "`projects.project_closed` (no reopening) or `projects.closing_confirmation_required` (AC-25)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                closed: { $ref: "#/components/examples/ProjectAlreadyClosed" }
+                confirm: { $ref: "#/components/examples/ClosingConfirmationRequired" }
+
+  # ───────────────────────────── scheduling: read views (US-01, US-02, US-06) ─────────────────────────────
+  /scheduling/board:
+    get:
+      tags: [scheduling]
+      summary: Schedule board for a week window
+      description: |
+        AC-01, AC-02, AC-03, AC-06, AC-12b, AC-21b, AC-22, AC-29 (critical flow 3, ADR-0002).
+        Requires `scheduling:view-whole-board` or `scheduling:edit-allocations`. One row per
+        resource whose employment period overlaps the window, one cell per ISO week. The window may
+        start up to 12 months back (view only) and end up to 52 weeks ahead. Redaction is applied
+        per viewer before the response is built.
+      operationId: getBoard
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/WindowWeeks"
+        - in: query
+          name: teamId
+          description: Narrow to resources in this team (AC-02)
+          schema: { type: string, format: uuid }
+        - in: query
+          name: projectId
+          description: Narrow to resources with an allocation to this project in the window (AC-02)
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The board window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Board" }
+              examples:
+                board: { $ref: "#/components/examples/Board" }
+        "400":
+          description: "`platform.validation_failed` or `scheduling.window_out_of_range` (AC-01)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/WindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations (AC-03); the web then offers the viewer's own schedule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/free-list:
+    get:
+      tags: [scheduling]
+      summary: Who is free over the next N weeks
+      description: |
+        AC-04, AC-05, AC-06, AC-12b, AC-21b, AC-29 (flow 4). Requires `scheduling:view-whole-board`
+        or `scheduling:edit-allocations`. The period is the rest of the current week from today
+        (company time zone) plus the next N−1 full weeks. An overbooked week counts as zero.
+        Incomplete records are left out and listed separately. Ranked most free first; this is a
+        computed view bounded by N ≤ 12, not a paginated list.
+      operationId: getFreeList
+      parameters:
+        - in: query
+          name: weeks
+          required: true
+          description: N, from 1 to 12 (AC-05)
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          example: 2
+        - in: query
+          name: minFreeHours
+          required: true
+          description: X, zero or more (AC-05)
+          schema: { type: number, minimum: 0 }
+          example: 16
+      responses:
+        "200":
+          description: Ranked free list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FreeList" }
+              examples:
+                freeList: { $ref: "#/components/examples/FreeList" }
+        "400":
+          description: "`platform.validation_failed` — weeks must be 1 to 12 and free hours zero or more (AC-05)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                invalid: { $ref: "#/components/examples/FreeListQueryInvalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/my-schedule:
+    get:
+      tags: [scheduling]
+      summary: The signed-in resource's own schedule
+      description: |
+        AC-17, AC-18, AC-29 (flow 8). Any signed-in user whose login is linked to an employee
+        record. Read only; the resource always sees their own leave type.
+      operationId: getMySchedule
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/WindowWeeks"
+      responses:
+        "200":
+          description: Own weeks against capacity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MySchedule" }
+              examples:
+                mine: { $ref: "#/components/examples/MySchedule" }
+        "400":
+          description: "`platform.validation_failed` or `scheduling.window_out_of_range`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/WindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: "`scheduling.not_a_resource` — the login is not linked to an employee record (AC-18)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notResource: { $ref: "#/components/examples/NotAResource" }
+
+  # ───────────────────────────── scheduling: allocations (US-03, US-04, US-05) ─────────────────────────────
+  /scheduling/allocations:
+    post:
+      tags: [scheduling]
+      summary: Create a work allocation
+      description: |
+        AC-07, AC-08, AC-09, AC-09b, AC-10, AC-11, AC-12, AC-13, AC-14 (critical flow 1). Requires
+        `scheduling:edit-allocations`, checked on this request (AC-14). Hours are a rate per day or
+        per week, spread over the resource's working days and skipping public holidays (AC-08). A
+        save that overbooks answers `scheduling.overbooking_confirmation_required` until re-sent with
+        `confirm: true` (AC-10).
+      operationId: createAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AllocationCreate" }
+            examples:
+              twentyPerWeek: { $ref: "#/components/examples/AllocationCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                created: { $ref: "#/components/examples/Allocation" }
+        "400":
+          description: |
+            `platform.validation_failed`, `scheduling.invalid_allocation` (AC-09),
+            `scheduling.past_not_rewritable` (AC-09b), `scheduling.outside_employment_period` (AC-13)
+            or `scheduling.past_project_close_date`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                invalid: { $ref: "#/components/examples/InvalidAllocation" }
+                outside: { $ref: "#/components/examples/OutsideEmploymentPeriod" }
+                past: { $ref: "#/components/examples/PastNotRewritable" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `scheduling:edit-allocations` (AC-12, AC-14)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.employee_record_not_found` or `scheduling.project_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/SchedulingProjectNotFound" }
+        "409":
+          description: "`scheduling.project_closed` (AC-11) or `scheduling.overbooking_confirmation_required` (AC-10)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                closed: { $ref: "#/components/examples/SchedulingProjectClosed" }
+                confirm: { $ref: "#/components/examples/OverbookingConfirmationRequired" }
+
+  /scheduling/allocations/{allocationId}:
+    parameters:
+      - $ref: "#/components/parameters/AllocationId"
+    get:
+      tags: [scheduling]
+      summary: Get an allocation
+      description: |
+        US-05, AC-07, AC-07b, AC-12b. Requires `scheduling:view-whole-board` or
+        `scheduling:edit-allocations`. Carries the `version` the edit form must send back, and who
+        last changed it and when.
+      operationId: getAllocation
+      responses:
+        "200":
+          description: The allocation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                allocation: { $ref: "#/components/examples/Allocation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+        "404":
+          description: "`scheduling.allocation_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+    patch:
+      tags: [scheduling]
+      summary: Change an allocation from today
+      description: |
+        AC-07b, AC-09, AC-09b, AC-10, AC-11, AC-12, AC-13, AC-15, AC-21b (flow 5). Requires
+        `scheduling:edit-allocations`. Sends the `version` it was opened at. The change applies only
+        from today: the current segment ends yesterday and a new one starts today (ADR-0008). A
+        start date can change only while it is today or later. For a leave allocation only the
+        dates change. Growing hours run the overbooking confirmation of AC-10.
+      operationId: updateAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AllocationChange" }
+            examples:
+              tenPerWeek: { $ref: "#/components/examples/AllocationChange" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                saved: { $ref: "#/components/examples/AllocationChanged" }
+        "400":
+          description: |
+            `platform.validation_failed`, `scheduling.invalid_allocation`,
+            `scheduling.past_not_rewritable`, `scheduling.outside_employment_period` (AC-13, AC-21b)
+            or `scheduling.past_project_close_date`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                past: { $ref: "#/components/examples/PastNotRewritable" }
+                outside: { $ref: "#/components/examples/OutsideEmploymentPeriod" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `scheduling:edit-allocations` (AC-12, AC-14)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.allocation_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+        "409":
+          description: |
+            `scheduling.project_closed` (AC-11), `scheduling.version_conflict` (AC-07b — current
+            values and who changed them) or `scheduling.overbooking_confirmation_required` (AC-10).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                closed: { $ref: "#/components/examples/SchedulingProjectClosed" }
+                versionConflict: { $ref: "#/components/examples/AllocationVersionConflict" }
+                confirm: { $ref: "#/components/examples/OverbookingConfirmationRequired" }
+    delete:
+      tags: [scheduling]
+      summary: Remove an allocation from today
+      description: |
+        AC-07a, AC-09b, AC-11, AC-12, AC-21b (flow 5). Requires `scheduling:edit-allocations`. Days
+        before today stay booked: an allocation that started before today ends yesterday
+        (`outcome: ended`); one that starts today or later is deleted (`outcome: deleted`). Either
+        way a `removed` history entry is written by the remover.
+      operationId: removeAllocation
+      parameters:
+        - in: query
+          name: version
+          required: true
+          description: The version the allocation was opened at (AC-07b)
+          schema: { type: integer, minimum: 1 }
+          example: 3
+      responses:
+        "200":
+          description: Removed from today
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AllocationRemoval" }
+              examples:
+                ended: { $ref: "#/components/examples/AllocationRemoval" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `scheduling:edit-allocations` (AC-12, AC-14)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.allocation_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+        "409":
+          description: "`scheduling.project_closed` (AC-11) or `scheduling.version_conflict` (AC-07b)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                closed: { $ref: "#/components/examples/SchedulingProjectClosed" }
+                versionConflict: { $ref: "#/components/examples/AllocationVersionConflict" }
+
+  /scheduling/allocations/{allocationId}/history:
+    parameters:
+      - $ref: "#/components/parameters/AllocationId"
+    get:
+      tags: [scheduling]
+      summary: An allocation's change history (last 12 months)
+      description: |
+        AC-07a, AC-12b, AC-16, AC-29 (flow 7). Requires `scheduling:view-whole-board` or
+        `scheduling:edit-allocations`. Oldest first. Works after the allocation was deleted: the
+        `removed` entry outlives it. An unknown id returns an empty page.
+      operationId: listAllocationHistory
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of history entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AllocationHistoryPage" }
+              examples:
+                history: { $ref: "#/components/examples/AllocationHistoryPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/leave:
+    post:
+      tags: [scheduling]
+      summary: Book leave in whole working days
+      description: |
+        AC-15, AC-09b, AC-13, AC-29 (flow 6). Requires `scheduling:edit-allocations`. Creates an
+        allocation to the chosen open leave-type project with `ratePeriod: full-day`: each working
+        day takes the full daily capacity. If work allocations fall on the leave days or a week
+        overbooks, answers `scheduling.overbooking_confirmation_required` naming them until re-sent
+        with `confirm: true`. The response redacts the leave type unless the booker holds
+        `scheduling:see-leave-reasons` (AC-29).
+      operationId: bookLeave
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeaveBooking" }
+            examples:
+              annual: { $ref: "#/components/examples/LeaveBooking" }
+      responses:
+        "201":
+          description: Booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                booked: { $ref: "#/components/examples/LeaveAllocationRedacted" }
+        "400":
+          description: |
+            `platform.validation_failed`, `scheduling.invalid_allocation`,
+            `scheduling.past_not_rewritable`, `scheduling.outside_employment_period` or
+            `scheduling.not_a_leave_project`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notLeave: { $ref: "#/components/examples/NotALeaveProject" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Missing `scheduling:edit-allocations`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.employee_record_not_found` or `scheduling.project_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/SchedulingProjectNotFound" }
+        "409":
+          description: "`scheduling.project_closed` or `scheduling.overbooking_confirmation_required` (AC-15)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                confirm: { $ref: "#/components/examples/LeaveConfirmationRequired" }
+
+  # ───────────────────────────── scheduling: one-time import (US-11) ─────────────────────────────
+  /scheduling/import:
+    get:
+      tags: [scheduling]
+      summary: Whether the one-time import has completed
+      description: AC-32. Requires `scheduling:edit-allocations`. The web offers the import only while `completed` is false.
+      operationId: getImportStatus
+      responses:
+        "200":
+          description: Import status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportStatus" }
+              examples:
+                done: { $ref: "#/components/examples/ImportStatusCompleted" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [scheduling]
+      summary: Preview, then import, the planning spreadsheet
+      description: |
+        AC-30, AC-31, AC-32, AC-33 (flow 13, ADR-0010). Requires `scheduling:edit-allocations`,
+        `org:manage-employee-records` and `projects:manage-projects`. Without `confirm` (or with
+        `confirm=false`) the file is checked and answered with either
+        `scheduling.import_problem_rows` or `scheduling.import_confirmation_required` (the preview).
+        Confirming uploads the same file again; the preview is recomputed and everything is created
+        in one unit of work. The file is never stored.
+      operationId: importSpreadsheet
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/ImportUpload" }
+            examples:
+              preview:
+                summary: First upload — preview only (the file part carries the spreadsheet bytes)
+                value: { file: "<planning-spreadsheet bytes>", confirm: false }
+      responses:
+        "201":
+          description: Imported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+              examples:
+                imported: { $ref: "#/components/examples/ImportResult" }
+        "400":
+          description: "`platform.validation_failed` or `scheduling.import_problem_rows` — nothing imported (AC-31)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                problemRows: { $ref: "#/components/examples/ImportProblemRows" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Names every missing permission (AC-33)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenImport" }
+        "409":
+          description: "`scheduling.import_already_completed` (AC-32) or `scheduling.import_confirmation_required` (AC-30 preview)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                done: { $ref: "#/components/examples/ImportAlreadyCompleted" }
+                preview: { $ref: "#/components/examples/ImportConfirmationRequired" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Placeholder — the authentication source is still open (repo ADR 0001). The host resolves the actor and its permissions per request (ADR-0004).
+
+  parameters:
+    After:
+      in: query
+      name: after
+      description: Cursor — id of the last item seen; the page starts after it
+      schema: { type: string, format: uuid }
+    Before:
+      in: query
+      name: before
+      description: Cursor — id of the first item seen; the page ends before it
+      schema: { type: string, format: uuid }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    WindowFrom:
+      in: query
+      name: from
+      description: Any date in the first week of the window; the window starts on that ISO week's Monday. Defaults to the current week.
+      schema: { type: string, format: date }
+      example: "2026-11-02"
+    WindowWeeks:
+      in: query
+      name: weeks
+      description: Number of week columns (AC-01 default 12)
+      schema: { type: integer, minimum: 1, maximum: 12, default: 12 }
+    EmployeeRecordId:
+      in: path
+      name: employeeRecordId
+      required: true
+      schema: { type: string, format: uuid }
+    TeamId:
+      in: path
+      name: teamId
+      required: true
+      schema: { type: string, format: uuid }
+    PublicHolidayId:
+      in: path
+      name: publicHolidayId
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectId:
+      in: path
+      name: projectId
+      required: true
+      schema: { type: string, format: uuid }
+    AllocationId:
+      in: path
+      name: allocationId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    ValidationError:
+      description: Request failed schema validation (`platform.validation_failed`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            invalid: { $ref: "#/components/examples/ValidationFailed" }
+    Unauthenticated:
+      description: No authenticated actor (`platform.unauthenticated`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            unauthenticated: { $ref: "#/components/examples/Unauthenticated" }
+    Forbidden:
+      description: The actor lacks a permission this operation needs; `details.missingPermissions` names it
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  schemas:
+    # ── Error envelope (repo ApiErrorBody + ADR-0010 details + code) ──
+    ApiErrorBody:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error: { $ref: "#/components/schemas/ApiError" }
+    ApiError:
+      type: object
+      required: [_tag, code, message]
+      additionalProperties: false
+      properties:
+        _tag:
+          description: HTTP kind of failure
+          type: string
+          enum: [ValidationError, Unauthenticated, Forbidden, NotFound, Conflict, ConfirmationRequired, InternalError]
+        code:
+          description: Machine-readable reason, `module.error_name`
+          type: string
+          pattern: "^[a-z_]+\\.[a-z_]+$"
+          enum:
+            - platform.validation_failed
+            - platform.unauthenticated
+            - platform.not_found
+            - platform.internal_error
+            - org.missing_permission
+            - org.invalid_employee_record
+            - org.employee_record_not_found
+            - org.user_not_found
+            - org.team_not_found
+            - org.team_lead_not_found
+            - org.login_already_linked
+            - org.version_conflict
+            - org.capacity_confirmation_required
+            - org.duplicate_team_name
+            - org.team_has_members
+            - org.duplicate_holiday_date
+            - org.holiday_not_found
+            - projects.missing_permission
+            - projects.project_not_found
+            - projects.duplicate_open_name
+            - projects.close_date_in_past
+            - projects.project_closed
+            - projects.closing_confirmation_required
+            - scheduling.missing_permission
+            - scheduling.invalid_allocation
+            - scheduling.outside_employment_period
+            - scheduling.past_not_rewritable
+            - scheduling.past_project_close_date
+            - scheduling.not_a_leave_project
+            - scheduling.window_out_of_range
+            - scheduling.project_closed
+            - scheduling.overbooking_confirmation_required
+            - scheduling.version_conflict
+            - scheduling.allocation_not_found
+            - scheduling.employee_record_not_found
+            - scheduling.project_not_found
+            - scheduling.not_a_resource
+            - scheduling.import_already_completed
+            - scheduling.import_problem_rows
+            - scheduling.import_confirmation_required
+        message:
+          type: string
+          description: Human-readable, safe to show; never contains personal data the viewer may not see
+        details:
+          description: Structured context; its shape follows `code`
+          anyOf:
+            - $ref: "#/components/schemas/ValidationIssues"
+            - $ref: "#/components/schemas/RuleViolations"
+            - $ref: "#/components/schemas/MissingPermissions"
+            - $ref: "#/components/schemas/LoginAlreadyLinkedDetails"
+            - $ref: "#/components/schemas/TeamMembersDetails"
+            - $ref: "#/components/schemas/EmployeeRecordConflictDetails"
+            - $ref: "#/components/schemas/AllocationConflictDetails"
+            - $ref: "#/components/schemas/CapacityImpact"
+            - $ref: "#/components/schemas/AllocationImpact"
+            - $ref: "#/components/schemas/ProjectClosingImpact"
+            - $ref: "#/components/schemas/ImportPreview"
+            - $ref: "#/components/schemas/ImportProblemRowsDetails"
+            - $ref: "#/components/schemas/ImportCompletedDetails"
+
+    ValidationIssues:
+      description: "`platform.validation_failed`"
+      type: object
+      required: [issues]
+      additionalProperties: false
+      properties:
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            additionalProperties: false
+            properties:
+              path: { type: string, description: "Dotted path of the offending field, e.g. `rateMinutes`" }
+              message: { type: string }
+    RuleViolations:
+      description: Domain rules the input breaks (AC-09, AC-09b, AC-13, AC-20, AC-25, AC-01)
+      type: object
+      required: [rules]
+      additionalProperties: false
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - end_before_start
+              - hours_over_24_per_day
+              - hours_over_24_per_working_day
+              - starts_before_today
+              - outside_employment_period
+              - past_project_close_date
+              - not_a_leave_project
+              - close_date_before_today
+              - window_out_of_range
+        lastBookableDate:
+          type: [string, "null"]
+          format: date
+          description: AC-13 — the last date the resource (or the project) can be allocated
+    MissingPermissions:
+      description: "`*.missing_permission` (AC-12, AC-22, AC-26, AC-28, AC-33)"
+      type: object
+      required: [missingPermissions]
+      additionalProperties: false
+      properties:
+        missingPermissions:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Permission" }
+    LoginAlreadyLinkedDetails:
+      description: "`org.login_already_linked` (AC-19b)"
+      type: object
+      required: [employeeRecord]
+      additionalProperties: false
+      properties:
+        employeeRecord: { $ref: "#/components/schemas/EmployeeRef" }
+    TeamMembersDetails:
+      description: "`org.team_has_members` (AC-19d)"
+      type: object
+      required: [memberCount]
+      additionalProperties: false
+      properties:
+        memberCount: { type: integer, minimum: 1 }
+    EmployeeRecordConflictDetails:
+      description: "`org.version_conflict` — current values and who changed them"
+      type: object
+      required: [current]
+      additionalProperties: false
+      properties:
+        current: { $ref: "#/components/schemas/EmployeeRecord" }
+    AllocationConflictDetails:
+      description: "`scheduling.version_conflict` (AC-07b) — current values and who changed them"
+      type: object
+      required: [current]
+      additionalProperties: false
+      properties:
+        current: { $ref: "#/components/schemas/Allocation" }
+    CapacityImpact:
+      description: "`org.capacity_confirmation_required` (AC-19c, AC-27) — every resource and week that would become overbooked"
+      type: object
+      required: [overbookedWeeks]
+      additionalProperties: false
+      properties:
+        overbookedWeeks:
+          type: array
+          items: { $ref: "#/components/schemas/ResourceWeekOver" }
+    AllocationImpact:
+      description: "`scheduling.overbooking_confirmation_required` (AC-10, AC-15)"
+      type: object
+      required: [overbookedWeeks, workOnLeaveDays]
+      additionalProperties: false
+      properties:
+        overbookedWeeks:
+          description: Every affected week of the allocation with the minutes over capacity
+          type: array
+          items: { $ref: "#/components/schemas/WeekOver" }
+        workOnLeaveDays:
+          description: AC-15 — work allocations whose hours fall on a leave day, even when the week stays within capacity
+          type: array
+          items: { $ref: "#/components/schemas/WorkOnLeaveDays" }
+    ProjectClosingImpact:
+      description: "`projects.closing_confirmation_required` (AC-25)"
+      type: object
+      required: [closeDate, endingAtCloseDate, removed]
+      additionalProperties: false
+      properties:
+        closeDate: { type: string, format: date }
+        endingAtCloseDate:
+          description: Allocations that will end on the close date
+          type: array
+          items: { $ref: "#/components/schemas/ClosingAllocation" }
+        removed:
+          description: Allocations starting after the close date, which will be removed
+          type: array
+          items: { $ref: "#/components/schemas/ClosingAllocation" }
+    ImportPreview:
+      description: "`scheduling.import_confirmation_required` (AC-30)"
+      type: object
+      required: [employeeRecordsToCreate, projectsToCreate, allocationsToCreate, incompleteRecords, overbookedWeeks]
+      additionalProperties: false
+      properties:
+        employeeRecordsToCreate: { type: integer, minimum: 0 }
+        projectsToCreate: { type: integer, minimum: 0 }
+        allocationsToCreate: { type: integer, minimum: 0 }
+        incompleteRecords: { type: integer, minimum: 0, description: Employee records still incomplete after the import }
+        overbookedWeeks:
+          type: array
+          items: { $ref: "#/components/schemas/ImportResourceWeekOver" }
+    ImportResourceWeekOver:
+      description: A resource-week the import would overbook; the resource may not exist yet, so it is named by the spreadsheet's full name
+      type: object
+      required: [fullName, weekStart, overMinutes]
+      additionalProperties: false
+      properties:
+        fullName: { type: string, maxLength: 200 }
+        weekStart: { type: string, format: date }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+    ImportProblemRowsDetails:
+      description: "`scheduling.import_problem_rows` (AC-31)"
+      type: object
+      required: [rows]
+      additionalProperties: false
+      properties:
+        rows:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [row, reason, message]
+            additionalProperties: false
+            properties:
+              row: { type: integer, minimum: 1, description: Spreadsheet row number }
+              reason:
+                type: string
+                enum: [empty_hours, end_before_start, similar_name, invalid_allocation, outside_employment_period, invalid_employee_record]
+              message: { type: string }
+    ImportCompletedDetails:
+      description: "`scheduling.import_already_completed` (AC-32)"
+      type: object
+      required: [completedAt]
+      additionalProperties: false
+      properties:
+        completedAt: { type: string, format: date-time }
+
+    # ── Shared value types ──
+    Permission:
+      description: Permission identifiers (SAD §8)
+      type: string
+      enum:
+        - "org:manage-employee-records"
+        - "org:manage-holiday-list"
+        - "projects:manage-projects"
+        - "scheduling:view-whole-board"
+        - "scheduling:edit-allocations"
+        - "scheduling:see-leave-reasons"
+    Minutes:
+      description: Exact computed minutes (ADR-0009); may carry a fraction of a minute. Round to the nearest half hour only for display.
+      type: number
+      minimum: 0
+    WorkingDays:
+      description: ISO weekdays, 1 = Monday … 7 = Sunday (AC-06, AC-20)
+      type: array
+      minItems: 1
+      maxItems: 7
+      uniqueItems: true
+      items: { type: integer, minimum: 1, maximum: 7 }
+    UserRef:
+      description: An intranet user (identity) who made a change
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    TeamRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+    EmployeeRef:
+      type: object
+      required: [id, fullName, team]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string, maxLength: 200 }
+        team:
+          description: null = «no team» (AC-06)
+          oneOf:
+            - $ref: "#/components/schemas/TeamRef"
+            - type: "null"
+    ProjectRef:
+      type: object
+      required: [id, name, type]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        type: { $ref: "#/components/schemas/ProjectType" }
+    WeekMinutes:
+      type: object
+      required: [weekStart, minutes]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date, description: Monday of the ISO week }
+        minutes: { $ref: "#/components/schemas/Minutes" }
+    WeekOver:
+      type: object
+      required: [weekStart, capacityMinutes, allocatedMinutes, overMinutes]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date }
+        capacityMinutes: { $ref: "#/components/schemas/Minutes" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+    ResourceWeekOver:
+      type: object
+      required: [employee, weekStart, overMinutes]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        weekStart: { type: string, format: date }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+    WorkOnLeaveDays:
+      type: object
+      required: [allocationId, project, days]
+      additionalProperties: false
+      properties:
+        allocationId: { type: string, format: uuid }
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        days:
+          type: array
+          items: { type: string, format: date }
+    ClosingAllocation:
+      type: object
+      required: [allocationId, employee, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        allocationId: { type: string, format: uuid }
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date, description: Current last day, before the trim }
+
+    # ── org ──
+    EmployeeRecord:
+      type: object
+      required: [id, fullName, userId, team, contractMinutes, workingDays, employmentStart, employmentEnd, incomplete, version, lastChangedBy, lastChangedAt, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId:
+          type: [string, "null"]
+          format: uuid
+          description: Linked intranet login; null = not linked (AC-18)
+        team:
+          oneOf:
+            - $ref: "#/components/schemas/TeamRef"
+            - type: "null"
+        contractMinutes:
+          type: [integer, "null"]
+          exclusiveMinimum: 0
+          maximum: 3600
+          description: Weekly contract hours × 60; null = incomplete record
+        workingDays: { $ref: "#/components/schemas/WorkingDays" }
+        employmentStart: { type: [string, "null"], format: date, description: null = incomplete record }
+        employmentEnd: { type: [string, "null"], format: date }
+        incomplete:
+          type: boolean
+          description: Computed — no contract hours or no start date (AC-06)
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    EmployeeRecordCreate:
+      type: object
+      required: [fullName]
+      additionalProperties: false
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId: { type: [string, "null"], format: uuid }
+        teamId: { type: [string, "null"], format: uuid }
+        contractMinutes: { type: [integer, "null"], exclusiveMinimum: 0, maximum: 3600 }
+        workingDays:
+          $ref: "#/components/schemas/WorkingDays"
+          description: Defaults to [1, 2, 3, 4, 5]
+        employmentStart: { type: [string, "null"], format: date }
+        employmentEnd: { type: [string, "null"], format: date }
+    EmployeeRecordChange:
+      description: Fields left out keep their value; `null` clears a nullable field.
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { type: integer, minimum: 1, description: The version the form was opened at }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId: { type: [string, "null"], format: uuid }
+        teamId: { type: [string, "null"], format: uuid }
+        contractMinutes: { type: [integer, "null"], exclusiveMinimum: 0, maximum: 3600 }
+        workingDays: { $ref: "#/components/schemas/WorkingDays" }
+        employmentStart: { type: [string, "null"], format: date }
+        employmentEnd: { type: [string, "null"], format: date }
+        confirm: { type: boolean, default: false, description: Confirms the capacity warning (AC-19c) }
+    EmployeeRecordPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EmployeeRecord" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    Team:
+      type: object
+      required: [id, name, teamLead, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        teamLead:
+          oneOf:
+            - $ref: "#/components/schemas/EmployeeRef"
+            - type: "null"
+        createdAt: { type: string, format: date-time }
+    TeamCreate:
+      type: object
+      required: [name, teamLeadId]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        teamLeadId: { type: string, format: uuid }
+    TeamChange:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        teamLeadId: { type: string, format: uuid }
+    TeamPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Team" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    PublicHoliday:
+      type: object
+      required: [id, holidayDate, name, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        holidayDate: { type: string, format: date }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        createdAt: { type: string, format: date-time }
+    PublicHolidayCreate:
+      type: object
+      required: [holidayDate, name]
+      additionalProperties: false
+      properties:
+        holidayDate: { type: string, format: date }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        confirm: { type: boolean, default: false, description: Confirms the capacity warning (AC-19c, AC-27) }
+    PublicHolidayPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PublicHoliday" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    # ── projects ──
+    ProjectType:
+      type: string
+      enum: [client, internal, bench, training, leave]
+    ProjectStatus:
+      description: Computed — closed after the end of `closeDate` (AC-25)
+      type: string
+      enum: [open, closed]
+    Project:
+      type: object
+      required: [id, name, type, closeDate, status, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: "#/components/schemas/ProjectType" }
+        closeDate: { type: [string, "null"], format: date, description: null = no close date }
+        status: { $ref: "#/components/schemas/ProjectStatus" }
+        createdAt: { type: string, format: date-time }
+    ProjectCreate:
+      type: object
+      required: [name, type]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: "#/components/schemas/ProjectType" }
+    ProjectClose:
+      type: object
+      required: [closeDate]
+      additionalProperties: false
+      properties:
+        closeDate: { type: string, format: date, description: Last bookable day; today or later (AC-25) }
+        confirm: { type: boolean, default: false }
+    ProjectPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Project" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    # ── scheduling ──
+    RatePeriod:
+      description: "`day` / `week` for work (AC-07); `full-day` for leave — each working day takes the full daily capacity (AC-15)"
+      type: string
+      enum: [day, week, full-day]
+    WorkRatePeriod:
+      type: string
+      enum: [day, week]
+    AllocationSegment:
+      type: object
+      required: [startsOn, endsOn, rateMinutes, ratePeriod]
+      additionalProperties: false
+      properties:
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        rateMinutes:
+          type: [integer, "null"]
+          multipleOf: 15
+          minimum: 15
+          maximum: 10080
+          description: null only when `ratePeriod` is `full-day`
+        ratePeriod: { $ref: "#/components/schemas/RatePeriod" }
+    Allocation:
+      type: object
+      required: [id, employee, project, away, segments, needsAttention, version, lastChangedBy, lastChangedAt, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        project:
+          description: null when the leave type is redacted to «away» (AC-29)
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean, description: True for leave }
+        segments:
+          description: Effective-dated segments, oldest first (ADR-0008). Segments after an employment end date are left out for viewers who may not see it (AC-22).
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        needsAttention:
+          type: [boolean, "null"]
+          description: Runs past the employment end date (AC-21); null when the viewer may not see it (AC-22)
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    AllocationCreate:
+      type: object
+      required: [employeeId, projectId, startsOn, endsOn, rateMinutes, ratePeriod]
+      additionalProperties: false
+      properties:
+        employeeId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        startsOn: { type: string, format: date, description: Today or later (AC-09b) }
+        endsOn: { type: string, format: date }
+        rateMinutes:
+          type: integer
+          multipleOf: 15
+          minimum: 15
+          maximum: 10080
+          description: "Quarter hours (AC-09); ≤ 1440 per day, or ≤ 1440 × the resource's working days per week (checked in the domain)"
+        ratePeriod: { $ref: "#/components/schemas/WorkRatePeriod" }
+        confirm: { type: boolean, default: false, description: Confirms the overbooking warning (AC-10) }
+    AllocationChange:
+      description: The terms from today. Fields left out keep their current value.
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { type: integer, minimum: 1, description: The version the allocation was opened at (AC-07b) }
+        startsOn: { type: string, format: date, description: Only while the allocation starts today or later (AC-09b) }
+        endsOn: { type: string, format: date }
+        rateMinutes: { type: integer, multipleOf: 15, minimum: 15, maximum: 10080 }
+        ratePeriod: { $ref: "#/components/schemas/WorkRatePeriod" }
+        confirm: { type: boolean, default: false }
+    AllocationRemoval:
+      type: object
+      required: [allocationId, outcome, endsOn]
+      additionalProperties: false
+      properties:
+        allocationId: { type: string, format: uuid }
+        outcome:
+          type: string
+          enum: [ended, deleted]
+          description: "`ended` — started before today and now ends yesterday; `deleted` — started today or later"
+        endsOn: { type: [string, "null"], format: date, description: New last day for `ended`, null for `deleted` }
+    LeaveBooking:
+      type: object
+      required: [employeeId, projectId, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        employeeId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid, description: An open leave-type project; its name is the leave type }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        confirm: { type: boolean, default: false, description: Confirms work on leave days or overbooking (AC-15) }
+
+    ChangeKind:
+      type: string
+      enum: [created, imported, changed, trimmed, removed]
+    AllocationHistoryEntry:
+      type: object
+      required: [id, allocationId, employee, project, away, changeKind, effectiveFrom, before, after, changedBy, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        allocationId: { type: string, format: uuid }
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        project:
+          description: null when the leave type is redacted to «away» (AC-29)
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean }
+        changeKind: { $ref: "#/components/schemas/ChangeKind" }
+        effectiveFrom: { type: [string, "null"], format: date, description: null for created and imported }
+        before:
+          type: [array, "null"]
+          description: Segments before the change; null for created and imported
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        after:
+          type: [array, "null"]
+          description: Segments after the change; null for removed
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        changedBy: { $ref: "#/components/schemas/UserRef" }
+        createdAt: { type: string, format: date-time, description: When the change was made }
+    AllocationHistoryPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AllocationHistoryEntry" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    CellState:
+      description: Exactly one per cell (AC-01, AC-06, AC-21b)
+      type: string
+      enum: [free, partly-booked, overbooked, non-working, incomplete-record, needs-attention]
+    BoardCell:
+      type: object
+      required: [weekStart, state, allocatedMinutes, capacityMinutes, leaveDays]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date }
+        state: { $ref: "#/components/schemas/CellState" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        capacityMinutes:
+          description: null for an incomplete record (capacity unknown)
+          oneOf:
+            - $ref: "#/components/schemas/Minutes"
+            - type: "null"
+        leaveDays: { type: integer, minimum: 0, maximum: 7, description: Days shown as «away» }
+    BoardAllocation:
+      type: object
+      required: [id, project, away, segments, minutesPerWeek, needsAttention, version, lastChangedBy, lastChangedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        project:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean }
+        segments:
+          description: Segments overlapping the window
+          type: array
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        minutesPerWeek:
+          type: array
+          items: { $ref: "#/components/schemas/WeekMinutes" }
+        needsAttention: { type: [boolean, "null"] }
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+    BoardRow:
+      type: object
+      required: [employee, employmentEnd, incomplete, cells, allocations]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        employmentEnd:
+          type: [string, "null"]
+          format: date
+          description: null when there is none or the viewer may not see it (AC-22)
+        incomplete: { type: boolean }
+        cells:
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/BoardAllocation" }
+    Board:
+      type: object
+      required: [from, to, weeks, rows]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date, description: Monday of the first week }
+        to: { type: string, format: date, description: Sunday of the last week }
+        weeks:
+          type: array
+          items: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/BoardRow" }
+    MySchedule:
+      type: object
+      required: [employee, from, to, weeks, cells, allocations]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        weeks:
+          type: array
+          items: { type: string, format: date }
+        cells:
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        allocations:
+          description: Own allocations and leave; own leave type always shown (AC-17, AC-29)
+          type: array
+          items: { $ref: "#/components/schemas/BoardAllocation" }
+    FreeListEntry:
+      type: object
+      required: [employee, freeMinutesTotal, freeMinutesPerWeek]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        freeMinutesTotal: { $ref: "#/components/schemas/Minutes" }
+        freeMinutesPerWeek:
+          type: array
+          items: { $ref: "#/components/schemas/WeekMinutes" }
+    FreeList:
+      type: object
+      required: [from, to, weeks, items, incompleteRecords]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date, description: Today in the company time zone }
+        to: { type: string, format: date }
+        weeks:
+          type: array
+          items: { type: string, format: date }
+        items:
+          description: Most free first
+          type: array
+          items: { $ref: "#/components/schemas/FreeListEntry" }
+        incompleteRecords:
+          description: Left out because their capacity is unknown (AC-06)
+          type: array
+          items: { $ref: "#/components/schemas/EmployeeRef" }
+
+    ImportStatus:
+      type: object
+      required: [completed, run]
+      additionalProperties: false
+      properties:
+        completed: { type: boolean }
+        run:
+          oneOf:
+            - $ref: "#/components/schemas/ImportResult"
+            - type: "null"
+    ImportUpload:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: The planning spreadsheet (format still open, PRD §8); cells are read as plain text
+        confirm: { type: boolean, default: false }
+    ImportResult:
+      type: object
+      required: [id, importedBy, employeeRecordsCreated, projectsCreated, allocationsCreated, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        importedBy: { $ref: "#/components/schemas/UserRef" }
+        employeeRecordsCreated: { type: integer, minimum: 0 }
+        projectsCreated: { type: integer, minimum: 0 }
+        allocationsCreated: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+
+  # ── Examples (placeholder data only) ──
+  examples:
+    ValidationFailed:
+      value:
+        error:
+          _tag: ValidationError
+          code: platform.validation_failed
+          message: "rateMinutes: Expected a multiple of 15"
+          details:
+            issues: [{ path: rateMinutes, message: Expected a multiple of 15 }]
+    Unauthenticated:
+      value:
+        error: { _tag: Unauthenticated, code: platform.unauthenticated, message: Sign in to continue }
+    ForbiddenViewWholeBoard:
+      value:
+        error:
+          _tag: Forbidden
+          code: scheduling.missing_permission
+          message: You lack the permission to view the whole board
+          details: { missingPermissions: ["scheduling:view-whole-board"] }
+    ForbiddenEditAllocations:
+      value:
+        error:
+          _tag: Forbidden
+          code: scheduling.missing_permission
+          message: You lack the permission to edit allocations
+          details: { missingPermissions: ["scheduling:edit-allocations"] }
+    ForbiddenImport:
+      value:
+        error:
+          _tag: Forbidden
+          code: scheduling.missing_permission
+          message: "You lack the permissions: manage employee records, manage projects"
+          details: { missingPermissions: ["org:manage-employee-records", "projects:manage-projects"] }
+    ForbiddenManageEmployeeRecords:
+      value:
+        error:
+          _tag: Forbidden
+          code: org.missing_permission
+          message: You lack the permission to manage employee records
+          details: { missingPermissions: ["org:manage-employee-records"] }
+    ForbiddenManageHolidayList:
+      value:
+        error:
+          _tag: Forbidden
+          code: org.missing_permission
+          message: You lack the permission to manage the holiday list
+          details: { missingPermissions: ["org:manage-holiday-list"] }
+    ForbiddenManageProjects:
+      value:
+        error:
+          _tag: Forbidden
+          code: projects.missing_permission
+          message: You lack the permission to manage projects
+          details: { missingPermissions: ["projects:manage-projects"] }
+
+    EmployeeRecordCreate:
+      value:
+        fullName: Test User 1
+        userId: 01933b8e-0000-7000-8000-000000000101
+        teamId: 01933b8e-0000-7000-8000-000000000201
+        contractMinutes: 2400
+        workingDays: [1, 2, 3, 4, 5]
+        employmentStart: "2026-11-02"
+        employmentEnd: null
+    EmployeeRecordChange:
+      value:
+        version: 2
+        contractMinutes: 1440
+        workingDays: [1, 2, 3]
+        confirm: false
+    EmployeeRecord:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000301
+        fullName: Test User 1
+        userId: 01933b8e-0000-7000-8000-000000000101
+        team: { id: 01933b8e-0000-7000-8000-000000000201, name: Platform }
+        contractMinutes: 2400
+        workingDays: [1, 2, 3, 4, 5]
+        employmentStart: "2026-11-02"
+        employmentEnd: null
+        incomplete: false
+        version: 1
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+        lastChangedAt: "2026-10-31T09:00:00Z"
+        createdAt: "2026-10-31T09:00:00Z"
+    EmployeeRecordPage:
+      value:
+        items:
+          - id: 01933b8e-0000-7000-8000-000000000301
+            fullName: Test User 1
+            userId: null
+            team: null
+            contractMinutes: null
+            workingDays: [1, 2, 3, 4, 5]
+            employmentStart: null
+            employmentEnd: null
+            incomplete: true
+            version: 1
+            lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+            lastChangedAt: "2026-10-31T09:00:00Z"
+            createdAt: "2026-10-31T09:00:00Z"
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+    InvalidEmployeeRecord:
+      value:
+        error:
+          _tag: ValidationError
+          code: org.invalid_employee_record
+          message: The end date is before the start date
+          details: { rules: [end_before_start] }
+    UserNotFound:
+      value:
+        error: { _tag: NotFound, code: org.user_not_found, message: Login 01933b8e-0000-7000-8000-000000000101 not found }
+    EmployeeRecordNotFound:
+      value:
+        error: { _tag: NotFound, code: org.employee_record_not_found, message: Employee record 01933b8e-0000-7000-8000-000000000301 not found }
+    LoginAlreadyLinked:
+      value:
+        error:
+          _tag: Conflict
+          code: org.login_already_linked
+          message: This login is already linked to Test User 3
+          details:
+            employeeRecord: { id: 01933b8e-0000-7000-8000-000000000303, fullName: Test User 3, team: null }
+    EmployeeRecordVersionConflict:
+      value:
+        error:
+          _tag: Conflict
+          code: org.version_conflict
+          message: Test User 2 changed this record meanwhile
+          details:
+            current:
+              id: 01933b8e-0000-7000-8000-000000000301
+              fullName: Test User 1
+              userId: null
+              team: null
+              contractMinutes: 1920
+              workingDays: [1, 2, 3, 4]
+              employmentStart: "2026-11-02"
+              employmentEnd: null
+              incomplete: false
+              version: 3
+              lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+              lastChangedAt: "2026-10-31T09:05:00Z"
+              createdAt: "2026-10-31T09:00:00Z"
+    CapacityConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: org.capacity_confirmation_required
+          message: 1 resource-week would become overbooked
+          details:
+            overbookedWeeks:
+              - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+                weekStart: "2026-11-09"
+                overMinutes: 480
+
+    TeamCreate:
+      value: { name: Platform, teamLeadId: 01933b8e-0000-7000-8000-000000000301 }
+    TeamChange:
+      value: { name: Platform Core }
+    Team:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000201
+        name: Platform
+        teamLead: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        createdAt: "2026-10-31T09:00:00Z"
+    TeamPage:
+      value:
+        items:
+          - id: 01933b8e-0000-7000-8000-000000000201
+            name: Platform
+            teamLead: null
+            createdAt: "2026-10-31T09:00:00Z"
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+    DuplicateTeamName:
+      value:
+        error: { _tag: Conflict, code: org.duplicate_team_name, message: A team named «Platform» already exists }
+    TeamHasMembers:
+      value:
+        error:
+          _tag: Conflict
+          code: org.team_has_members
+          message: The team still has 4 resources
+          details: { memberCount: 4 }
+    TeamNotFound:
+      value:
+        error: { _tag: NotFound, code: org.team_not_found, message: Team 01933b8e-0000-7000-8000-000000000201 not found }
+    TeamLeadNotFound:
+      value:
+        error: { _tag: NotFound, code: org.team_lead_not_found, message: Employee record 01933b8e-0000-7000-8000-000000000399 not found }
+
+    PublicHolidayCreate:
+      value: { holidayDate: "2026-12-28", name: Test holiday, confirm: false }
+    PublicHoliday:
+      value: { id: 01933b8e-0000-7000-8000-000000000401, holidayDate: "2026-12-28", name: Test holiday, createdAt: "2026-10-31T09:00:00Z" }
+    PublicHolidayPage:
+      value:
+        items:
+          - { id: 01933b8e-0000-7000-8000-000000000401, holidayDate: "2026-12-28", name: Test holiday, createdAt: "2026-10-31T09:00:00Z" }
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+    DuplicateHolidayDate:
+      value:
+        error: { _tag: Conflict, code: org.duplicate_holiday_date, message: 2026-12-28 is already a public holiday }
+    HolidayNotFound:
+      value:
+        error: { _tag: NotFound, code: org.holiday_not_found, message: Public holiday 01933b8e-0000-7000-8000-000000000401 not found }
+
+    ProjectCreate:
+      value: { name: Test Project, type: client }
+    Project:
+      value: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client, closeDate: null, status: open, createdAt: "2026-10-31T09:00:00Z" }
+    ProjectWithCloseDate:
+      value: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client, closeDate: "2026-11-30", status: open, createdAt: "2026-10-31T09:00:00Z" }
+    ProjectPage:
+      value:
+        items:
+          - { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client, closeDate: null, status: open, createdAt: "2026-10-31T09:00:00Z" }
+        hasNext: true
+        hasPrev: false
+        nextCursor: 01933b8e-0000-7000-8000-000000000501
+    ProjectClose:
+      value: { closeDate: "2026-11-30", confirm: false }
+    DuplicateOpenProjectName:
+      value:
+        error: { _tag: Conflict, code: projects.duplicate_open_name, message: An open project named «Test Project» already exists }
+    CloseDateInPast:
+      value:
+        error:
+          _tag: ValidationError
+          code: projects.close_date_in_past
+          message: The close date cannot be earlier than today; past plans are never rewritten
+          details: { rules: [close_date_before_today] }
+    ProjectNotFound:
+      value:
+        error: { _tag: NotFound, code: projects.project_not_found, message: Project 01933b8e-0000-7000-8000-000000000501 not found }
+    ProjectAlreadyClosed:
+      value:
+        error: { _tag: Conflict, code: projects.project_closed, message: The project is closed and cannot be reopened }
+    ClosingConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: projects.closing_confirmation_required
+          message: 3 allocations will end on 2026-11-30 and 1 will be removed
+          details:
+            closeDate: "2026-11-30"
+            endingAtCloseDate:
+              - allocationId: 01933b8e-0000-7000-8000-000000000601
+                employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+                startsOn: "2026-11-02"
+                endsOn: "2026-12-31"
+            removed:
+              - allocationId: 01933b8e-0000-7000-8000-000000000602
+                employee: { id: 01933b8e-0000-7000-8000-000000000302, fullName: Test User 2, team: null }
+                startsOn: "2026-12-07"
+                endsOn: "2026-12-31"
+
+    Board:
+      value:
+        from: "2026-11-02"
+        to: "2026-11-08"
+        weeks: ["2026-11-02"]
+        rows:
+          - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: { id: 01933b8e-0000-7000-8000-000000000201, name: Platform } }
+            employmentEnd: null
+            incomplete: false
+            cells:
+              - { weekStart: "2026-11-02", state: partly-booked, allocatedMinutes: 1200, capacityMinutes: 2400, leaveDays: 1 }
+            allocations:
+              - id: 01933b8e-0000-7000-8000-000000000601
+                project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+                away: false
+                segments: [{ startsOn: "2026-11-02", endsOn: "2026-12-31", rateMinutes: 1200, ratePeriod: week }]
+                minutesPerWeek: [{ weekStart: "2026-11-02", minutes: 720 }]
+                needsAttention: false
+                version: 1
+                lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+                lastChangedAt: "2026-10-31T09:00:00Z"
+              - id: 01933b8e-0000-7000-8000-000000000603
+                project: null
+                away: true
+                segments: [{ startsOn: "2026-11-06", endsOn: "2026-11-06", rateMinutes: null, ratePeriod: full-day }]
+                minutesPerWeek: [{ weekStart: "2026-11-02", minutes: 480 }]
+                needsAttention: false
+                version: 1
+                lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+                lastChangedAt: "2026-10-31T09:00:00Z"
+    WindowOutOfRange:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.window_out_of_range
+          message: The board shows at most 12 months back and 52 weeks ahead
+          details: { rules: [window_out_of_range] }
+    FreeList:
+      value:
+        from: "2026-11-02"
+        to: "2026-11-15"
+        weeks: ["2026-11-02", "2026-11-09"]
+        items:
+          - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            freeMinutesTotal: 2160
+            freeMinutesPerWeek: [{ weekStart: "2026-11-02", minutes: 1200 }, { weekStart: "2026-11-09", minutes: 960 }]
+        incompleteRecords:
+          - { id: 01933b8e-0000-7000-8000-000000000304, fullName: Test User 4, team: null }
+    FreeListQueryInvalid:
+      value:
+        error:
+          _tag: ValidationError
+          code: platform.validation_failed
+          message: The number of weeks must be from 1 to 12 and the free hours must be zero or more
+          details:
+            issues: [{ path: weeks, message: Expected a number between 1 and 12 }]
+    MySchedule:
+      value:
+        employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        from: "2026-11-02"
+        to: "2026-11-08"
+        weeks: ["2026-11-02"]
+        cells:
+          - { weekStart: "2026-11-02", state: partly-booked, allocatedMinutes: 480, capacityMinutes: 2400, leaveDays: 1 }
+        allocations:
+          - id: 01933b8e-0000-7000-8000-000000000603
+            project: { id: 01933b8e-0000-7000-8000-000000000502, name: Annual leave, type: leave }
+            away: true
+            segments: [{ startsOn: "2026-11-06", endsOn: "2026-11-06", rateMinutes: null, ratePeriod: full-day }]
+            minutesPerWeek: [{ weekStart: "2026-11-02", minutes: 480 }]
+            needsAttention: false
+            version: 1
+            lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+            lastChangedAt: "2026-10-31T09:00:00Z"
+    NotAResource:
+      value:
+        error:
+          _tag: NotFound
+          code: scheduling.not_a_resource
+          message: You are not set up as a resource yet; someone with the manage-employee-records permission can link you
+
+    AllocationCreate:
+      value:
+        employeeId: 01933b8e-0000-7000-8000-000000000301
+        projectId: 01933b8e-0000-7000-8000-000000000501
+        startsOn: "2026-11-02"
+        endsOn: "2026-12-31"
+        rateMinutes: 1200
+        ratePeriod: week
+        confirm: false
+    Allocation:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000601
+        employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+        away: false
+        segments: [{ startsOn: "2026-11-02", endsOn: "2026-12-31", rateMinutes: 1200, ratePeriod: week }]
+        needsAttention: false
+        version: 1
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+        lastChangedAt: "2026-10-31T09:00:00Z"
+        createdAt: "2026-10-31T09:00:00Z"
+    AllocationChange:
+      value: { version: 1, rateMinutes: 600, ratePeriod: week, confirm: false }
+    AllocationChanged:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000601
+        employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+        away: false
+        segments:
+          - { startsOn: "2026-10-01", endsOn: "2026-10-27", rateMinutes: 1200, ratePeriod: week }
+          - { startsOn: "2026-10-28", endsOn: "2026-11-30", rateMinutes: 600, ratePeriod: week }
+        needsAttention: false
+        version: 2
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+        lastChangedAt: "2026-10-28T09:00:00Z"
+        createdAt: "2026-09-30T09:00:00Z"
+    AllocationRemoval:
+      value: { allocationId: 01933b8e-0000-7000-8000-000000000601, outcome: ended, endsOn: "2026-10-30" }
+    InvalidAllocation:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.invalid_allocation
+          message: The end date is before the start date
+          details: { rules: [end_before_start] }
+    OutsideEmploymentPeriod:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.outside_employment_period
+          message: The allocation falls outside the resource's employment period; the last date they can be allocated is 2026-11-15
+          details: { rules: [outside_employment_period], lastBookableDate: "2026-11-15" }
+    PastNotRewritable:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.past_not_rewritable
+          message: Past plans are not rewritten; only today onwards can change
+          details: { rules: [starts_before_today] }
+    NotALeaveProject:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.not_a_leave_project
+          message: Leave can only be booked on a leave-type project
+          details: { rules: [not_a_leave_project] }
+    SchedulingProjectNotFound:
+      value:
+        error: { _tag: NotFound, code: scheduling.project_not_found, message: Project 01933b8e-0000-7000-8000-000000000501 not found }
+    AllocationNotFound:
+      value:
+        error: { _tag: NotFound, code: scheduling.allocation_not_found, message: Allocation 01933b8e-0000-7000-8000-000000000601 not found }
+    SchedulingProjectClosed:
+      value:
+        error:
+          _tag: Conflict
+          code: scheduling.project_closed
+          message: The project is closed and accepts no new, changed or removed allocations
+    OverbookingConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.overbooking_confirmation_required
+          message: The resource will be overbooked in 1 week
+          details:
+            overbookedWeeks:
+              - { weekStart: "2026-11-09", capacityMinutes: 1920, allocatedMinutes: 2400, overMinutes: 480 }
+            workOnLeaveDays: []
+    LeaveConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.overbooking_confirmation_required
+          message: 1 work allocation falls on the leave days
+          details:
+            overbookedWeeks: []
+            workOnLeaveDays:
+              - allocationId: 01933b8e-0000-7000-8000-000000000601
+                project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+                days: ["2026-11-06"]
+    AllocationVersionConflict:
+      value:
+        error:
+          _tag: Conflict
+          code: scheduling.version_conflict
+          message: Test User 2 changed this allocation meanwhile
+          details:
+            current:
+              id: 01933b8e-0000-7000-8000-000000000601
+              employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+              project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+              away: false
+              segments: [{ startsOn: "2026-11-02", endsOn: "2026-12-31", rateMinutes: 960, ratePeriod: week }]
+              needsAttention: false
+              version: 2
+              lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+              lastChangedAt: "2026-10-31T09:05:00Z"
+              createdAt: "2026-10-31T09:00:00Z"
+    LeaveBooking:
+      value:
+        employeeId: 01933b8e-0000-7000-8000-000000000301
+        projectId: 01933b8e-0000-7000-8000-000000000502
+        startsOn: "2026-11-09"
+        endsOn: "2026-11-13"
+        confirm: false
+    LeaveAllocationRedacted:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000604
+        employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        project: null
+        away: true
+        segments: [{ startsOn: "2026-11-09", endsOn: "2026-11-13", rateMinutes: null, ratePeriod: full-day }]
+        needsAttention: false
+        version: 1
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+        lastChangedAt: "2026-10-31T09:00:00Z"
+        createdAt: "2026-10-31T09:00:00Z"
+    AllocationHistoryPage:
+      value:
+        items:
+          - id: 01933b8e-0000-7000-8000-000000000701
+            allocationId: 01933b8e-0000-7000-8000-000000000601
+            employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+            away: false
+            changeKind: created
+            effectiveFrom: null
+            before: null
+            after: [{ startsOn: "2026-10-01", endsOn: "2026-11-30", rateMinutes: 1200, ratePeriod: week }]
+            changedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+            createdAt: "2026-09-30T09:00:00Z"
+          - id: 01933b8e-0000-7000-8000-000000000702
+            allocationId: 01933b8e-0000-7000-8000-000000000601
+            employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project, type: client }
+            away: false
+            changeKind: changed
+            effectiveFrom: "2026-10-28"
+            before: [{ startsOn: "2026-10-01", endsOn: "2026-11-30", rateMinutes: 1200, ratePeriod: week }]
+            after:
+              - { startsOn: "2026-10-01", endsOn: "2026-10-27", rateMinutes: 1200, ratePeriod: week }
+              - { startsOn: "2026-10-28", endsOn: "2026-11-30", rateMinutes: 600, ratePeriod: week }
+            changedBy: { id: 01933b8e-0000-7000-8000-000000000103, name: Test User 3 }
+            createdAt: "2026-10-28T09:00:00Z"
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+
+    ImportStatusCompleted:
+      value:
+        completed: true
+        run:
+          id: 01933b8e-0000-7000-8000-000000000801
+          importedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+          employeeRecordsCreated: 30
+          projectsCreated: 42
+          allocationsCreated: 180
+          createdAt: "2026-10-31T09:00:00Z"
+    ImportResult:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000801
+        importedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+        employeeRecordsCreated: 30
+        projectsCreated: 42
+        allocationsCreated: 180
+        createdAt: "2026-10-31T09:00:00Z"
+    ImportProblemRows:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.import_problem_rows
+          message: 2 rows need fixing; nothing was imported
+          details:
+            rows:
+              - { row: 14, reason: empty_hours, message: Hours are empty }
+              - { row: 27, reason: similar_name, message: «Test User 1» and «T. User 1» look like the same person }
+    ImportAlreadyCompleted:
+      value:
+        error:
+          _tag: Conflict
+          code: scheduling.import_already_completed
+          message: The import is one-time; make later changes on the board
+          details: { completedAt: "2026-10-31T09:00:00Z" }
+    ImportConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.import_confirmation_required
+          message: Review the import before confirming
+          details:
+            employeeRecordsToCreate: 30
+            projectsToCreate: 42
+            allocationsToCreate: 180
+            incompleteRecords: 2
+            overbookedWeeks:
+              - fullName: Test User 5
+                weekStart: "2026-11-16"
+                overMinutes: 240
