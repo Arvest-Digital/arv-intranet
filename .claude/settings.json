@@ -70,6 +70,7 @@
     ],
     "deny": [
       "Bash(git push*)",
+      "Bash(git reset --hard)",
       "Bash(rm -rf *)",
       "Bash(curl * | bash*)",
       "Bash(curl * | sh*)",
