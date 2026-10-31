@@ -1,0 +1,955 @@
+{
+  "slug": "resource-scheduling",
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Carry the permission set on Actor and resolve it per request",
+      "layer": "wiring",
+      "deps": [],
+      "acs": [
+        "AC-14",
+        "AC-03",
+        "AC-12"
+      ],
+      "dod": "Unit tests: an Actor built by the middleware carries exactly the stub's grants for that user, and an anonymous request carries none (deny by default).",
+      "files_hint": [
+        "packages/kernel/src/actor.ts",
+        "packages/kernel/src/ids.ts",
+        "packages/kernel/src/today.ts",
+        "packages/kernel/src/index.ts",
+        "apps/api/src/middleware/authenticate.ts",
+        "apps/api/src/middleware/permission-source.ts",
+        "apps/api/src/env.ts"
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "Implement UnitOfWorkLive with a CurrentTx FiberRef read by query()",
+      "layer": "infra",
+      "deps": [],
+      "acs": [
+        "AC-07b",
+        "AC-25",
+        "AC-31"
+      ],
+      "dod": "Integration test (real `arv_test` DB): two writes inside `transactional` followed by a failure leave no rows; without the failure both rows exist.",
+      "files_hint": [
+        "packages/db/src/unit-of-work.ts",
+        "packages/db/src/database.ts",
+        "packages/db/src/index.ts",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "Add Forbidden, ConfirmationRequired, detailed Conflict and ValidationError contract errors",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-12",
+        "AC-10",
+        "AC-07b",
+        "AC-09"
+      ],
+      "dod": "Unit tests: each new error maps to its status and a body that validates against the OpenAPI `ApiError` example.",
+      "files_hint": [
+        "packages/contracts/src/shared/errors.ts",
+        "packages/contracts/src/shared/index.ts",
+        "packages/platform/src/http/errors.ts",
+        "packages/platform/src/http/run-effect.ts"
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "Scaffold org, projects and scheduling modules and register them",
+      "layer": "wiring",
+      "deps": [],
+      "acs": [],
+      "dod": "`pnpm check:modules` passes with the three new edges and no cycle.",
+      "files_hint": [
+        "modules/org/",
+        "modules/projects/",
+        "modules/scheduling/",
+        "apps/api/src/composition.ts",
+        "apps/api/src/index.ts",
+        "packages/migrations/drizzle.config.ts",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "Promote the org schema: teams, employee_records, public_holidays",
+      "layer": "migration",
+      "deps": [
+        "T04"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-19b",
+        "AC-19d"
+      ],
+      "dod": "Generated SQL matches the staged `.up.sql` files column for column (differences listed in the PR, if any).",
+      "files_hint": [
+        "docs/features/resource-scheduling/migrations/20261030120000_create_teams_and_employee_records.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120001_create_public_holidays.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120000_create_teams_and_employee_records.down.sql",
+        "docs/features/resource-scheduling/migrations/20261030120001_create_public_holidays.down.sql",
+        "modules/org/src/infrastructure/schema.ts",
+        "packages/migrations/drizzle/"
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "Promote the projects schema: projects",
+      "layer": "migration",
+      "deps": [
+        "T04"
+      ],
+      "acs": [
+        "AC-24",
+        "AC-25"
+      ],
+      "dod": "Generated SQL matches the staged `.up.sql`.",
+      "files_hint": [
+        "docs/features/resource-scheduling/migrations/20261030120002_create_projects.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120002_create_projects.down.sql",
+        "modules/projects/src/infrastructure/schema.ts",
+        "packages/migrations/drizzle/"
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "Promote the scheduling schema: allocations, segments, history, import_runs",
+      "layer": "migration",
+      "deps": [
+        "T04"
+      ],
+      "acs": [
+        "AC-07b",
+        "AC-16",
+        "AC-32"
+      ],
+      "dod": "Generated SQL matches the staged `.up.sql` files.",
+      "files_hint": [
+        "docs/features/resource-scheduling/migrations/20261030120003_create_allocations.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120004_create_allocation_history.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120005_create_import_runs.up.sql",
+        "docs/features/resource-scheduling/migrations/20261030120003_create_allocations.down.sql",
+        "docs/features/resource-scheduling/migrations/20261030120004_create_allocation_history.down.sql",
+        "docs/features/resource-scheduling/migrations/20261030120005_create_import_runs.down.sql",
+        "modules/scheduling/src/infrastructure/schema.ts",
+        "packages/migrations/drizzle/"
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "Model EmployeeRecord, Team and PublicHoliday with their validation rules",
+      "layer": "domain",
+      "deps": [
+        "T01"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-19",
+        "AC-19d",
+        "AC-20"
+      ],
+      "dod": "Table-driven unit tests cover every AC-20 rule (0, negative, 61 h, no working day, end before start) and the AC-06 incompleteness rule.",
+      "files_hint": [
+        "modules/org/src/domain/"
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "Add org Drizzle repositories and test fixtures",
+      "layer": "infra",
+      "deps": [
+        "T02",
+        "T05",
+        "T08"
+      ],
+      "acs": [
+        "AC-19a",
+        "AC-19b",
+        "AC-19d"
+      ],
+      "dod": "Integration tests: version mismatch updates 0 rows; a second login link hits the unique index and surfaces as a domain conflict; holidays range query returns only in-range dates.",
+      "files_hint": [
+        "modules/org/src/infrastructure/",
+        "modules/org/src/application/ports.ts",
+        "packages/db/src/testing/seed.ts"
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Implement employee-record use cases, the CapacityImpactCheck port and the org facade",
+      "layer": "app",
+      "deps": [
+        "T09"
+      ],
+      "acs": [
+        "AC-19a",
+        "AC-19b",
+        "AC-19",
+        "AC-19c",
+        "AC-20",
+        "AC-21",
+        "AC-22"
+      ],
+      "dod": "Use-case tests with in-memory fakes: AC-19a, AC-19b (names the record already linked), AC-19, AC-20, AC-22 (missing permission → `Forbidden`).",
+      "files_hint": [
+        "modules/org/src/application/employee-records.ts",
+        "modules/org/src/application/ports.ts",
+        "modules/org/src/application/org-api.ts",
+        "modules/org/src/index.ts",
+        "modules/org/src/layer.ts"
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Implement team and public-holiday use cases",
+      "layer": "app",
+      "deps": [
+        "T10"
+      ],
+      "acs": [
+        "AC-19d",
+        "AC-27",
+        "AC-28",
+        "AC-19c"
+      ],
+      "dod": "Use-case tests: AC-19d (create, rename, «platform » refused, remove-with-members refused naming the count), AC-28 (`Forbidden`).",
+      "files_hint": [
+        "modules/org/src/application/teams.ts",
+        "modules/org/src/application/holidays.ts",
+        "modules/org/src/application/ports.ts",
+        "modules/org/src/application/org-api.ts"
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Expose employee-record endpoints with end-date redaction",
+      "layer": "ports",
+      "deps": [
+        "T03",
+        "T10"
+      ],
+      "acs": [
+        "AC-19a",
+        "AC-19b",
+        "AC-19",
+        "AC-20",
+        "AC-22"
+      ],
+      "dod": "Api integration tests (workerd + `arv_test`): create → 201, invalid hours → 400 naming the rule, second login link → 409 naming the linked record, missing permission → 403.",
+      "files_hint": [
+        "packages/contracts/src/org/",
+        "modules/org/src/http/routes.ts",
+        "modules/org/src/http/presenter.ts",
+        "apps/api/test/integration/org/"
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "Expose team and public-holiday endpoints",
+      "layer": "ports",
+      "deps": [
+        "T11",
+        "T12"
+      ],
+      "acs": [
+        "AC-19d",
+        "AC-27",
+        "AC-28"
+      ],
+      "dod": "Api integration tests: duplicate team name → 409, remove team with members → 409 with count, holiday without permission → 403, holiday add returns 409 `ConfirmationRequired` when the (stubbed) check reports impact.",
+      "files_hint": [
+        "packages/contracts/src/org/",
+        "modules/org/src/http/routes.ts",
+        "modules/org/src/http/presenter.ts",
+        "apps/api/test/integration/org/"
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Model Project with type, name comparison and open/closed on a date",
+      "layer": "domain",
+      "deps": [
+        "T01"
+      ],
+      "acs": [
+        "AC-24",
+        "AC-25",
+        "AC-11"
+      ],
+      "dod": "Unit tests: open on the close date, closed the day after; close date before today rejected; «Atlas» vs «atlas » same key.",
+      "files_hint": [
+        "modules/projects/src/domain/"
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Add the projects Drizzle repository and fixtures",
+      "layer": "infra",
+      "deps": [
+        "T02",
+        "T06",
+        "T14"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24"
+      ],
+      "dod": "Integration tests: find-open-by-name ignores a closed project with the same key; list by ids returns names and types.",
+      "files_hint": [
+        "modules/projects/src/infrastructure/",
+        "modules/projects/src/application/ports.ts",
+        "packages/db/src/testing/seed.ts"
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Implement create and close-with-preview use cases, the ProjectClosingHook port and the projects facade",
+      "layer": "app",
+      "deps": [
+        "T15"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24",
+        "AC-25",
+        "AC-26"
+      ],
+      "dod": "Use-case tests: AC-23, AC-24 refusal, AC-26 `Forbidden`, close-date-before-today refused, closing an already closed project refused.",
+      "files_hint": [
+        "modules/projects/src/application/",
+        "modules/projects/src/index.ts",
+        "modules/projects/src/layer.ts"
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Expose project endpoints with leave-project redaction in the list",
+      "layer": "ports",
+      "deps": [
+        "T03",
+        "T16"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24",
+        "AC-25",
+        "AC-26",
+        "AC-29"
+      ],
+      "dod": "Api integration tests: duplicate open name → 409, close without confirm → 409 `ConfirmationRequired`, missing permission → 403, leave projects absent from the list for a viewer without see-leave-reasons.",
+      "files_hint": [
+        "packages/contracts/src/projects/",
+        "modules/projects/src/http/",
+        "apps/api/test/integration/projects/"
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Implement tick arithmetic and the capacity calendar",
+      "layer": "domain",
+      "deps": [
+        "T01"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-08",
+        "AC-19",
+        "AC-27",
+        "AC-15"
+      ],
+      "dod": "Rule-table tests with the PRD rows: AC-08 (40 h/wk from Wednesday → 24 h; holiday Thursday → 32 h), AC-19 (24 h Mon–Wed → 8 h/day), AC-27 (Monday holiday: full-timer drops, Wed–Fri part-timer unchanged), AC-15 (leave day = contract ÷ working days).",
+      "files_hint": [
+        "modules/scheduling/src/domain/ticks.ts",
+        "modules/scheduling/src/domain/capacity.ts",
+        "modules/scheduling/src/domain/capacity.test.ts"
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Model the Allocation aggregate of effective-dated segments with its rules",
+      "layer": "domain",
+      "deps": [
+        "T01"
+      ],
+      "acs": [
+        "AC-09",
+        "AC-09b",
+        "AC-11",
+        "AC-13",
+        "AC-21b",
+        "AC-07b"
+      ],
+      "dod": "Table-driven tests for each AC-09 rule, AC-13 (names the 15th), AC-11, AC-21b.",
+      "files_hint": [
+        "modules/scheduling/src/domain/allocation.ts",
+        "modules/scheduling/src/domain/allocation.test.ts",
+        "modules/scheduling/src/domain/errors.ts"
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "Compute weekly figures, cell states, overbooking and the free-list ranking",
+      "layer": "domain",
+      "deps": [
+        "T18",
+        "T19"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-04",
+        "AC-10",
+        "AC-15",
+        "AC-21",
+        "AC-21b"
+      ],
+      "dod": "Rule-table tests: AC-10 (32 h cap, 24 + 16 → 8 h over), AC-04 (overbooked week = 0, period from today), AC-01 state per cell incl. «40/40» partly booked, AC-21b (needing attention instead of overbooked, not free), AC-15 leave-day conflict named even when the week fits.",
+      "files_hint": [
+        "modules/scheduling/src/domain/weekly-figures.ts",
+        "modules/scheduling/src/domain/free-list.ts",
+        "modules/scheduling/src/domain/overbooking.ts",
+        "modules/scheduling/src/domain/*.test.ts"
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "Implement the scheduling permission and visibility policy",
+      "layer": "domain",
+      "deps": [
+        "T01"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-12b",
+        "AC-17",
+        "AC-22",
+        "AC-29"
+      ],
+      "dod": "Table-driven tests over every permission combination × {own, other} resource asserting what is visible (AC-03, AC-12b, AC-17, AC-22, AC-29).",
+      "files_hint": [
+        "modules/scheduling/src/domain/visibility.ts",
+        "modules/scheduling/src/domain/visibility.test.ts"
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "Add scheduling Drizzle repositories and fixtures",
+      "layer": "infra",
+      "deps": [
+        "T02",
+        "T07",
+        "T19"
+      ],
+      "acs": [
+        "AC-07",
+        "AC-07a",
+        "AC-07b",
+        "AC-16"
+      ],
+      "dod": "Integration tests: stale version → 0 rows → `Conflict` (AC-07b); deleting an allocation keeps its history rows (AC-07a); window query returns only overlapping segments.",
+      "files_hint": [
+        "modules/scheduling/src/infrastructure/",
+        "modules/scheduling/src/application/ports.ts",
+        "packages/db/src/testing/seed.ts"
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Implement create, change and remove allocation use cases",
+      "layer": "app",
+      "deps": [
+        "T10",
+        "T16",
+        "T20",
+        "T21",
+        "T22"
+      ],
+      "acs": [
+        "AC-07",
+        "AC-07a",
+        "AC-07b",
+        "AC-09",
+        "AC-09b",
+        "AC-10",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-14",
+        "AC-21b"
+      ],
+      "dod": "Use-case tests (fakes for org/projects facades and repos): AC-07 (saved with last changed by/at), AC-07a, AC-07b conflict carries current values, AC-10 warning then save on confirm, AC-11, AC-12, AC-13, AC-21b.",
+      "files_hint": [
+        "modules/scheduling/src/application/allocations.ts",
+        "modules/scheduling/src/application/ports.ts",
+        "modules/scheduling/src/application/scheduling-api.ts",
+        "modules/scheduling/src/layer.ts"
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Implement the book-leave use case",
+      "layer": "app",
+      "deps": [
+        "T23"
+      ],
+      "acs": [
+        "AC-15",
+        "AC-09b",
+        "AC-12"
+      ],
+      "dod": "Use-case tests: AC-15 (5 days at full daily capacity; conflicting work allocation named even when the week fits), leave on a non-leave project refused, leave starting before today refused (AC-09b), missing permission refused (AC-12).",
+      "files_hint": [
+        "modules/scheduling/src/application/leave.ts",
+        "modules/scheduling/src/application/ports.ts",
+        "modules/scheduling/src/application/scheduling-api.ts"
+      ]
+    },
+    {
+      "id": "T25",
+      "title": "Implement the board and free-list queries",
+      "layer": "app",
+      "deps": [
+        "T10",
+        "T16",
+        "T20",
+        "T21",
+        "T22"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-12b",
+        "AC-21",
+        "AC-22",
+        "AC-29"
+      ],
+      "dod": "Use-case tests with fakes: AC-01 rows/columns and default window, AC-02 filters, AC-03 refusal, AC-04 ordering, AC-05 validation message, AC-06 incomplete excluded with note, AC-22 hidden end-date effects, AC-29 «away».",
+      "files_hint": [
+        "modules/scheduling/src/application/board.ts",
+        "modules/scheduling/src/application/free-list.ts",
+        "modules/scheduling/src/application/ports.ts"
+      ]
+    },
+    {
+      "id": "T26",
+      "title": "Implement the my-schedule and allocation-history queries",
+      "layer": "app",
+      "deps": [
+        "T25"
+      ],
+      "acs": [
+        "AC-16",
+        "AC-17",
+        "AC-18",
+        "AC-29",
+        "AC-12b"
+      ],
+      "dod": "Use-case tests: AC-17, AC-18 (not set up as a resource), AC-16 ordering with trim attributed to the closer, AC-29 history redaction, AC-12b (edit-allocations may read history).",
+      "files_hint": [
+        "modules/scheduling/src/application/my-schedule.ts",
+        "modules/scheduling/src/application/history.ts",
+        "modules/scheduling/src/application/ports.ts"
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Implement CapacityImpactCheck and ProjectClosingHook in scheduling",
+      "layer": "app",
+      "deps": [
+        "T11",
+        "T16",
+        "T23"
+      ],
+      "acs": [
+        "AC-19c",
+        "AC-25",
+        "AC-27",
+        "AC-16"
+      ],
+      "dod": "Use-case tests: AC-19c lists the overbooked weeks and writes no history; AC-27 Monday holiday affects only the full-timer; AC-25 preview lists 3 trims + later removals, apply writes `trimmed` / `removed` history by the closer (AC-16).",
+      "files_hint": [
+        "modules/scheduling/src/application/capacity-impact-check.ts",
+        "modules/scheduling/src/application/project-closing-hook.ts",
+        "modules/scheduling/src/layer.ts"
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Expose board, free-list, my-schedule, allocation and history read endpoints",
+      "layer": "ports",
+      "deps": [
+        "T03",
+        "T25",
+        "T26"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-16",
+        "AC-17",
+        "AC-18",
+        "AC-29"
+      ],
+      "dod": "Api integration tests: board 200 with default window, window out of range → 400, free list bad weeks → 400 with the AC-05 message, my-schedule unlinked → the AC-18 error, no permission → 403.",
+      "files_hint": [
+        "packages/contracts/src/scheduling/",
+        "modules/scheduling/src/http/routes.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "apps/api/test/integration/scheduling/"
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Expose allocation and leave write endpoints",
+      "layer": "ports",
+      "deps": [
+        "T23",
+        "T24",
+        "T28"
+      ],
+      "acs": [
+        "AC-07",
+        "AC-07a",
+        "AC-07b",
+        "AC-09",
+        "AC-10",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-15"
+      ],
+      "dod": "Api integration tests: create 201, overbooking → 409 `ConfirmationRequired` then 201 with `confirm: true`, stale version → 409 `Conflict` with current values, closed project → 409/400 per contract, outside employment → 400 naming the last date, no permission → 403.",
+      "files_hint": [
+        "packages/contracts/src/scheduling/",
+        "modules/scheduling/src/http/routes.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "apps/api/test/integration/scheduling/"
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Wire scheduling's port implementations in the composition root",
+      "layer": "wiring",
+      "deps": [
+        "T13",
+        "T17",
+        "T27",
+        "T29"
+      ],
+      "acs": [
+        "AC-19c",
+        "AC-25",
+        "AC-27",
+        "AC-14"
+      ],
+      "dod": "Api integration tests through the real composition root: contract-hours change that overbooks → 409 `ConfirmationRequired` (AC-19c); holiday add that overbooks → 409 (AC-27); confirmed project close trims allocations and writes history (AC-25).",
+      "files_hint": [
+        "apps/api/src/composition.ts",
+        "apps/api/test/integration/composition/",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Add the monthly allocation-history purge and its Cron Trigger",
+      "layer": "wiring",
+      "deps": [
+        "T22",
+        "T30"
+      ],
+      "acs": [
+        "AC-16"
+      ],
+      "dod": "Integration test with a fixed clock: entries older than 12 months deleted, newer kept, rerun deletes nothing (QS-5).",
+      "files_hint": [
+        "modules/scheduling/src/application/purge-history.ts",
+        "apps/api/src/index.ts",
+        "apps/api/wrangler.jsonc",
+        "apps/api/test/integration/scheduling/"
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Add the QG-2 redaction matrix and the concurrent-save test",
+      "layer": "tests",
+      "deps": [
+        "T30"
+      ],
+      "acs": [
+        "AC-03",
+        "AC-07b",
+        "AC-12b",
+        "AC-22",
+        "AC-29"
+      ],
+      "dod": "Matrix covers every read operation in openapi.yaml (test enumerates them and fails if one is missing).",
+      "files_hint": [
+        "apps/api/test/integration/redaction/",
+        "apps/api/test/integration/scheduling/concurrency.test.ts"
+      ]
+    },
+    {
+      "id": "T33",
+      "title": "Add org and projects import commands that join the caller's unit of work",
+      "layer": "app",
+      "deps": [
+        "T10",
+        "T16"
+      ],
+      "acs": [
+        "AC-30"
+      ],
+      "dod": "Integration test: calling both commands inside one `transactional` and then failing leaves no rows in either schema.",
+      "files_hint": [
+        "modules/org/src/application/import.ts",
+        "modules/org/src/application/org-api.ts",
+        "modules/projects/src/application/import.ts",
+        "modules/projects/src/application/projects-api.ts"
+      ]
+    },
+    {
+      "id": "T34",
+      "title": "Implement import parsing, validation and the preview",
+      "layer": "app",
+      "deps": [
+        "T23",
+        "T33"
+      ],
+      "acs": [
+        "AC-30",
+        "AC-31",
+        "AC-33"
+      ],
+      "dod": "Unit tests per problem-row reason (AC-31) and the counts of a clean file (AC-30); AC-33 names missing permissions.",
+      "files_hint": [
+        "modules/scheduling/src/domain/import-rows.ts",
+        "modules/scheduling/src/application/import-preview.ts"
+      ]
+    },
+    {
+      "id": "T35",
+      "title": "Implement the one-time import commit and its endpoints",
+      "layer": "app",
+      "deps": [
+        "T29",
+        "T34"
+      ],
+      "acs": [
+        "AC-30",
+        "AC-32",
+        "AC-33"
+      ],
+      "dod": "Api integration tests: unconfirmed upload → 409 `ConfirmationRequired` with the preview; confirmed → everything created; second import → refused with the one-time message; a failing row mid-commit leaves nothing.",
+      "files_hint": [
+        "modules/scheduling/src/application/import-commit.ts",
+        "modules/scheduling/src/http/routes.ts",
+        "packages/contracts/src/scheduling/",
+        "apps/api/test/integration/scheduling/"
+      ]
+    },
+    {
+      "id": "T36",
+      "title": "Build the employee-record screens",
+      "layer": "ui",
+      "deps": [
+        "T12"
+      ],
+      "acs": [
+        "AC-19a",
+        "AC-19b",
+        "AC-19",
+        "AC-19c",
+        "AC-20",
+        "AC-21",
+        "AC-22"
+      ],
+      "dod": "Route/component tests (existing web test setup): validation errors rendered per rule (AC-20), already-linked login message (AC-19b), confirm dialog resubmits with `confirm: true` (AC-19c).",
+      "files_hint": [
+        "apps/web/app/features/org/org.server.ts",
+        "apps/web/app/features/org/routes/employee-records*",
+        "apps/web/app/features/org/components/employee-record-*",
+        "apps/web/app/routes.ts"
+      ]
+    },
+    {
+      "id": "T37",
+      "title": "Build the teams and public-holiday screens",
+      "layer": "ui",
+      "deps": [
+        "T13"
+      ],
+      "acs": [
+        "AC-19d",
+        "AC-27",
+        "AC-28",
+        "AC-19c"
+      ],
+      "dod": "Route/component tests: duplicate name and remove-with-members messages (AC-19d), holiday confirm dialog (AC-27), forbidden state (AC-28).",
+      "files_hint": [
+        "apps/web/app/features/org/routes/teams*",
+        "apps/web/app/features/org/routes/holidays*",
+        "apps/web/app/features/org/components/team-*",
+        "apps/web/app/features/org/components/holiday-*"
+      ]
+    },
+    {
+      "id": "T38",
+      "title": "Build the project list, create and close-with-preview screens",
+      "layer": "ui",
+      "deps": [
+        "T17"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24",
+        "AC-25",
+        "AC-26",
+        "AC-11"
+      ],
+      "dod": "Route/component tests: AC-24 message, close preview lists trims and removals and resubmits with `confirm: true` (AC-25), forbidden state (AC-26).",
+      "files_hint": [
+        "apps/web/app/features/projects/"
+      ]
+    },
+    {
+      "id": "T39",
+      "title": "Build the schedule board with the week window and filters in the URL",
+      "layer": "ui",
+      "deps": [
+        "T28"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-06",
+        "AC-21",
+        "AC-22",
+        "AC-29"
+      ],
+      "dod": "Route/component tests: every cell state renders its text label (QS-7), URL params drive the loader call, forbidden view offers own schedule (AC-03).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/scheduling.server.ts",
+        "apps/web/app/features/scheduling/routes/board*",
+        "apps/web/app/features/scheduling/components/board-*",
+        "apps/web/app/routes.ts"
+      ]
+    },
+    {
+      "id": "T40",
+      "title": "Build the free-list and my-schedule screens",
+      "layer": "ui",
+      "deps": [
+        "T28"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-05",
+        "AC-17",
+        "AC-18"
+      ],
+      "dod": "Route/component tests: AC-05 message on bad input, ordering of results (AC-04), own leave type shown (AC-17), AC-18 state.",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/free-list*",
+        "apps/web/app/features/scheduling/routes/my-schedule*",
+        "apps/web/app/features/scheduling/components/free-list-*"
+      ]
+    },
+    {
+      "id": "T41",
+      "title": "Build the allocation create, change and remove dialog",
+      "layer": "ui",
+      "deps": [
+        "T29",
+        "T39"
+      ],
+      "acs": [
+        "AC-07",
+        "AC-07a",
+        "AC-07b",
+        "AC-09",
+        "AC-09b",
+        "AC-10",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-21b"
+      ],
+      "dod": "Route/component tests: overbooking confirm flow (AC-10), conflict message with current values (AC-07b), rule errors (AC-09, AC-13), remove (AC-07a), forbidden (AC-12).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/allocation-dialog*",
+        "apps/web/app/features/scheduling/routes/board-actions*"
+      ]
+    },
+    {
+      "id": "T42",
+      "title": "Build the leave dialog and the allocation history panel",
+      "layer": "ui",
+      "deps": [
+        "T41"
+      ],
+      "acs": [
+        "AC-15",
+        "AC-16",
+        "AC-29"
+      ],
+      "dod": "Route/component tests: leave-day conflict confirm names the work allocations (AC-15), history renders trim and imported entries (AC-16), redacted entry shows «away» (AC-29).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/leave-dialog*",
+        "apps/web/app/features/scheduling/components/history-panel*"
+      ]
+    },
+    {
+      "id": "T43",
+      "title": "Build the import upload, preview and confirm screen",
+      "layer": "ui",
+      "deps": [
+        "T35"
+      ],
+      "acs": [
+        "AC-30",
+        "AC-31",
+        "AC-32",
+        "AC-33"
+      ],
+      "dod": "Route/component tests: problem rows listed (AC-31), confirm resubmits the file (AC-30), already-imported state (AC-32), missing permissions named (AC-33).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/import*",
+        "apps/web/app/features/scheduling/components/import-*"
+      ]
+    },
+    {
+      "id": "T44",
+      "title": "Add the board end-to-end test with the accessibility audit",
+      "layer": "tests",
+      "deps": [
+        "T30",
+        "T39",
+        "T41"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-07",
+        "AC-10"
+      ],
+      "dod": "`pnpm test:e2e` green with zero axe violations on the board.",
+      "files_hint": [
+        "e2e/tests/scheduling-board.spec.ts",
+        "e2e/package.json",
+        "e2e/db.ts"
+      ]
+    }
+  ]
+}
