@@ -169,39 +169,78 @@ Each tactical decision in later sections should be traceable to one of these str
 <!--           лише приклад однієї поверхні; додай/заміни під оголошене у §4. → _shared/surfaces.md -->
 <!-- 📌 Приклад: «web-app, content-api, media-worker, postgres, s3, cdn».                -->
 
-<One paragraph: layered / hexagonal / clean / event-driven. Why.>
+The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001) with no divergence. It extends the existing `identity` module rather than adding one: users and the access list, sessions, access roles, grants, the permission catalog port and actor resolution all live in `modules/identity` and its `identity` Postgres schema ([ADR-0006](./adr/0006-keep-sign-in-sessions-and-access-roles-in-one-identity-module.md)), because the per-request check is one query joining sessions, users and grants (QG-2) and the last-admin guard spans users, roles and grants in one transaction (AC-14) — neither is possible across module schemas. The module graph does not change (`identity → (none)`); identity imports no feature module, and features reach identity only through `@arv/kernel`'s actor and their own permission declarations (ADR-0004, ADR-0005).
+
+Sign-in is split along the trust boundary ([ADR-0007](./adr/0007-split-sign-in-into-a-web-browser-leg-and-an-identity-server-leg.md)): the **web** owns the browser leg — it asks identity for Google's sign-in address, keeps the anti-forgery `state`, the PKCE verifier and `returnTo` in a short-lived (10-minute) HttpOnly cookie, checks `state` on return, sets and clears the session cookie, and forwards the session token as `Authorization: Bearer` on every api call; **identity** owns the server leg — it builds the Google address from its own configuration, exchanges the code with the Google client secret, checks the claims, applies the access list and the first-admin rule, and creates the session. The Google client secret, the company domain and the first-admin address exist only in the api.
+
+**Tactical decisions inside the module (inline, no ADR):**
+- **Last-admin guard (AC-14): apply, verify, roll back.** Each of the four actions that can remove manage access — remove a user, take an access role from a user, remove manage access from a role, delete a role — runs in one `UnitOfWork.transactional`: apply the change, count users still holding `identity:manage-access` through a declared grant, and if none remain fail with `LastAdminRequired`, which rolls everything back. One rule covers every action and multi-target changes alike. Two admins removing each other at the same instant can both pass under Postgres' default isolation — accepted by PRD §6.1, recovered through the configured first admin (AC-15) or the runbook (PRD §8 Q4). Needs `UnitOfWorkLive` in `@arv/db`, planned by resource-scheduling ADR-0006; whichever feature is built first implements it.
+- **First-admin bootstrap (AC-15)** runs inside sign-in completion: only when no user holds manage access and the verified email equals the configured first-admin address, identity upserts that user under the name Google reports and gives them the ordinary access role «Admin» (created holding only manage access, or reused with manage access added). Once any admin exists, the address is ordinary.
+- **Removal revokes, it does not silently delete:** removing a user revokes all their sessions with the reason «access removed», so their next request gets «you no longer have access» (AC-07) rather than a generic sign-in prompt; revoked and expired rows are purged lazily.
+- **Uniqueness by normalised key:** emails are stored lower-cased and trimmed (AC-06); access-role names keep their display form but are unique on lower-cased, trimmed text (AC-10).
 
 **Internal decomposition:**
 
 ```
-<e.g. internal/modules/goals/>
-├── domain/       <entities + sentinel errors>
-├── app/          <use cases / services>
-├── infra/        <repository + outbox impl>
-├── ports/        <HTTP handlers, DTOs, error mapping>
-└── module.go     <self-wiring>
+modules/identity/                        @arv/identity — schema `identity`; calls no module
+└── src/
+    ├── domain/            user.ts (normalised email), session.ts, access-role.ts (name key, granted keys),
+    │                      sign-in-eligibility.ts (claims → eligible | refused), last-admin.ts, errors.ts
+    ├── application/       ports.ts (UserRepository, SessionRepository, AccessRoleRepository, GoogleSignIn,
+    │                      PermissionCatalog, IdentityConfig); begin-sign-in, complete-sign-in (+ first admin),
+    │                      resolve-actor, sign-out, access-list and access-role use cases, identity-api.ts (facade)
+    ├── infrastructure/    schema.ts (users, sessions, access_roles, access_role_permissions, user_access_roles),
+    │                      drizzle-*-repository.ts, google-sign-in.ts (adapter over the approved OIDC library)
+    ├── http/              routes.ts (public: sign-in begin/complete; authenticated: me, sign-out,
+    │                      access list, access roles, catalog), presenter.ts
+    ├── permissions.ts     identity's declarations: identity:manage-access
+    ├── layer.ts · index.ts
+packages/kernel/src/       actor.ts (Actor.User { id, permissions }), permission.ts (Permission,
+                           PermissionDeclaration, requirePermission, PermissionDenied, Unauthenticated)
+packages/contracts/src/    shared: Forbidden, Unauthorized · identity: sign-in, me, access-list, access-role DTOs
+packages/platform/src/http PermissionDenied → Forbidden 403, Unauthenticated → Unauthorized 401
+packages/db/src/           UnitOfWorkLive (if not already built by resource-scheduling)
+apps/api/src/
+├── middleware/            authenticate: Bearer → IdentityApi.resolveActor; refuses everything without
+│                          a valid session except the public sign-in routes and /health
+├── composition.ts         PermissionCatalog from every module's declarations; IdentityConfig from env
+└── env.ts                 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (secrets); COMPANY_EMAIL_DOMAIN,
+                           FIRST_ADMIN_EMAIL, SIGN_IN_RETURN_URL (vars)
+apps/web/app/
+├── root.tsx               root gate (ADR-0002): session → me → redirect to sign-in with returnTo
+├── shared/lib/            session.server.ts (session + sign-in-state cookies); api.server.ts forwards Bearer
+└── features/identity/     routes: sign-in, sign-in-return, sign-out, not-set-up, access/users, access/roles;
+                           components from shared/ui; identity.server.ts (hc<IdentityRoutes>)
 ```
 
 **C4 Container (L2):**
 
 ```mermaid
 C4Container
-    title <system> — Containers
+    title identity — Containers
 
-    Person(user, "<User>")
+    Person(user, "user", "Company staff member on the access list")
+    Person(admin, "admin", "user holding manage access")
 
-    Container_Boundary(boundary, "<Our System>") {
-        Container(web, "<Web/API container>", "<technology>", "<purpose>")
-        Container(svc, "<Service container>", "<technology>", "<purpose>")
-        ContainerDb(db, "<DB>", "<technology>", "<purpose>")
+    Container_Boundary(intranet, "arv-intranet") {
+        Container(web, "arv-web", "Cloudflare Worker, React Router 7 SSR", "Sign-in, sign-out and not-set-up screens, admin screens, session cookie, root gate")
+        Container(host, "arv-api host", "Cloudflare Worker, Hono 4 + Effect 3", "authenticate to actor with permissions, composition root, public sign-in routes")
+        Container(identity, "identity module", "Effect module", "Sign-in completion, sessions, access list, access roles, permission catalog, actor resolution")
+        Container(features, "Feature modules", "Effect modules", "Resource scheduling first; declare permissions, call requirePermission")
+        ContainerDb(pg, "Postgres 18", "Neon via Hyperdrive, no query cache", "Schema identity: users, sessions, access roles, grants")
     }
 
-    System_Ext(ext, "<External>", "<purpose>")
+    System_Ext(google, "Google sign-in", "Company Google organisation, OpenID Connect")
 
-    Rel(user, web, "<interaction>", "<protocol>")
-    Rel(web, svc, "<service calls>")
-    Rel(svc, db, "<reads/writes>", "<driver>")
-    Rel(svc, ext, "<emits>", "<protocol>")
+    Rel(user, web, "Signs in, uses features, signs out", "HTTPS")
+    Rel(admin, web, "Manages the access list and access roles", "HTTPS")
+    Rel(web, google, "Redirects the browser to sign in", "HTTPS redirect")
+    Rel(web, host, "Calls with the session token as Bearer", "service binding")
+    Rel(host, identity, "Resolves the actor, routes identity requests", "in-process")
+    Rel(host, features, "Routes feature requests with the actor", "in-process")
+    Rel(features, identity, "Declare permissions, collected by the host", "composition")
+    Rel(identity, google, "Exchanges the code for the ID token", "OpenID Connect over HTTPS")
+    Rel(identity, pg, "Reads and writes the identity schema", "Drizzle over Hyperdrive")
 ```
 
 ## 6. Runtime view
