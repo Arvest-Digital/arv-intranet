@@ -465,22 +465,48 @@ Related decisions outside this folder:
 <!--           ДОСЛІВНО (не округлюй p95 ≤250мс до ≤300мс — це F6-помилка критика).        -->
 <!-- 📌 Приклад: «p95 ≤500 мс на UPDATE блоку, перевіримо k6 load test 100 req/s».        -->
 
-Each top-3 goal from §1 expanded into a full scenario:
+Each top-3 goal from §1 expanded into full scenarios. Every number is quoted from PRD §6; nothing is rounded or added. Integration tests run in workerd against the real `arv_test` database (`pnpm test:integration`); production numbers come from the sources in §7.
 
-**QG-1. <quality attribute>**
-- **When:** <trigger condition>
-- **Then:** <expected behavior with numbers from PRD NFR>
-- **How verify:** <test / chaos drill / load test / observability>
+**QG-1. Revocation and fail-closed access**
 
-**QG-2. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+*Scenario 1a — Revocation (PRD §6 Revocation; AC-07, AC-11, AC-17)*
+- **When:** an admin's removal of a user from the access list, or a permission change (removing a permission from an access role, taking an access role from a user, deleting an access role), is confirmed, and the affected user's next request arrives with their existing session.
+- **Then:** 0 requests accepted after a removal from the access list or a permission change is confirmed — the removed user gets «no longer have access» (401), the user who lost a permission gets 403 on the action it guarded.
+- **How verify:** integration test in CI `apps/api/test/integration/identity/revocation.test.ts` — sign in two seeded users, confirm each change type through the admin routes, then assert the very next request of the affected user is refused (401 or 403) and the unaffected user is still served.
 
-**QG-3. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+*Scenario 1b — Session lifetime (PRD §6 Session lifetime; AC-07, AC-20)*
+- **When:** a session reaches 7 days since sign-in, or the user signs out (also replaying a copy of the signed-out cookie from another client), or the user is removed from the access list.
+- **Then:** ≤ 7 days from sign-in (absolute); 0 requests accepted on a session after its sign-out or after the user's removal from the access list; the user's other sessions survive their own sign-out on one device.
+- **How verify:** integration test in CI `apps/api/test/integration/identity/sessions.test.ts` — sessions seeded with an expiry in the past are refused; after sign-out a replayed token is refused while a second session of the same user is accepted; after removal every session of the user is refused.
+
+*Scenario 1c — Fail closed (PRD §6 Fail closed)*
+- **When:** the user's access-list membership or permissions cannot be determined — the database is unreachable or the resolution query fails.
+- **Then:** 100% of intranet requests refused when the user's access-list membership or permissions cannot be determined (500, never served as anonymous or with stale permissions).
+- **How verify:** fault-injection test in CI `apps/api/test/integration/identity/fail-closed.test.ts` — run every authenticated route with a database Layer that fails (and once with an unreachable connection string) and assert no 2xx; unit test in `modules/identity` that `resolveActor` turns repository failure into a defect, never `Anonymous`.
+
+**QG-2. Access-check overhead (and the other latency targets under load)**
+
+*Scenario 2a — Access check (PRD §6 Latency p95 — access check)*
+- **When:** any authenticated request is handled, at 100 users and 50 access roles.
+- **Then:** the access check added to every request (access list + permissions) is ≤ 25 ms p95.
+- **How verify:** production request timing, access-check step vs total — the `accessCheckMs` field logged by `authenticate` (§7), p95 read weekly in the first month; before launch, the k6 load test below.
+
+*Scenario 2b — Sign-in completion and admin actions (PRD §6 Latency p95 rows)*
+- **When:** a person returns from Google to the sign-in return page; an admin adds or removes a user, saves an access role or assigns an access role.
+- **Then:** sign-in completion (from Google's return to the first intranet page) ≤ 800 ms p95; admin access actions ≤ 500 ms p95.
+- **How verify:** production server timing of the sign-in completion step (logged by web's sign-in return handler) and production request timing of the admin routes in Workers Logs.
+
+*Scenario 2c — Capacity headroom (PRD §6 Capacity headroom)*
+- **When:** the database holds 100 users and 50 access roles.
+- **Then:** the three latency targets above hold at 100 users and 50 access roles.
+- **How verify:** seeded load test in CI with **k6** (approved 2026-11-03 as a new CI tool — see §11): a CI job seeds `arv_test` with 100 users, 50 access roles and their sessions, starts the web and api Workers locally (`wrangler dev`) with Google replaced by a test double, and runs `e2e/load/identity.k6.js` against the access check, sign-in completion and admin actions with thresholds `p(95)<25`, `p(95)<800` and `p(95)<500` on the respective timings. Local Postgres is faster than Neon through Hyperdrive, so CI is a lower bound; production `accessCheckMs` remains the source of truth.
+
+**QG-3. Availability of sign-in and the access check**
+
+*Scenario 3 — Availability (PRD §6 Availability)*
+- **When:** a calendar month of production traffic on the sign-in routes and on authenticated api requests.
+- **Then:** ≥ 99.5% monthly, excluding Google outages.
+- **How verify:** monthly uptime from production monitoring — the share of non-5xx responses in Workers Analytics for the api's sign-in and authenticated routes, with minutes in which Google's token endpoint failed (counted by identity without personal data) excluded.
 
 ## 11. Risks and technical debt
 
