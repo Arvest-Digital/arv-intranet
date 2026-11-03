@@ -523,12 +523,28 @@ Each top-3 goal from §1 expanded into full scenarios. Every number is quoted fr
 
 | Risk / debt | Severity | Mitigation | Owner |
 |---|---|---|---|
-| <e.g. Outbox lag may reach hours during downstream outage> | Medium | <Alert >10 min, on-call playbook, retry backoff> | <DevOps> |
-| <e.g. No event schema versioning in v1> | Medium | <ADR-NNNN planned for v2, graceful handling of unknown fields> | <Backend> |
-| Open architectural decision: <decision-headline> | Open question | Resolve before <stage trigger or YYYY-MM-DD>; <inline rationale from Step-7 Save-as-OQ> | <owner> |
+| **Brownfield:** the identity scaffold's `/users` routes (list, get, create) accept anonymous requests today, and `identity.users.email` is unique case-sensitively, so «Anna@» and «anna@» could both exist (AC-06) | High | The first identity task puts every existing route behind the new `authenticate` refusal and `identity:manage-access`; a migration normalises stored emails (lower-case, trimmed) before the unique constraint is rebuilt on the normalised value; an integration test asserts that no api route except the public sign-in routes and `/health` answers an anonymous request. Must land before any production deploy of identity | Backend |
+| A mistake in the Google claim checks (issuer, audience, expiry, `email_verified`, `hd`, email domain) lets a personal, unverified or other-domain account sign in (AC-02) | High | Approved OIDC library instead of hand-written crypto (§2); one test per claim with forged/missing values; Google consent screen set to Internal (§7); mandatory security review before launch | Security Lead |
+| Neon scale-to-zero (kept in §7) adds wake-up time to the first queries after idle, pushing the access check above 25 ms p95 or sign-in above 800 ms p95 | Medium | `accessCheckMs` and sign-in timing reviewed weekly in the first month after launch; turn off scale-to-zero on the production compute if either p95 is missed | Tech Lead |
+| `@arv/kernel`'s `Actor` and new shared errors change while resource scheduling is planned against them (its ADR-0004) | Medium | Identity's kernel/contracts/platform changes land first as one task; scheduling's tasks consume them; both features' tests build actors through the same kernel constructor | Tech Lead |
+| `UnitOfWorkLive` is needed by identity (last-admin guard) and planned by resource-scheduling ADR-0006; two implementations could diverge | Medium | Whichever feature is built first implements it in `@arv/db` exactly as scheduling ADR-0006 describes; the other reuses it — a dependency edge in both features' tasks | Tech Lead |
+| A cached Hyperdrive config, or any future cache, serves identity's session/permission query and breaks revocation (QG-1) | Medium | ADR-0005 forbids it; the revocation integration test fails on any cache; `ARCHITECTURE.md` notes that identity queries use only the uncached main config | Backend |
+| No admin is left and the configured first admin cannot sign in (left the company, address invalid) — PRD §8 Q4 | Medium | Runbook before launch: the Tech Lead changes `FIRST_ADMIN_EMAIL` to a current admin-to-be who then signs in (AC-15); a direct data fix only as last resort. Resolve before identity launch | Tech Lead |
+| A leaver's mailbox is reassigned before they are removed, so the new holder signs in as them — PRD §8 Q2 | Medium | Offboarding checklist: remove from the access list on the last working day, never reassign the mailbox before that; agreed with HR before identity launch | dmitro.b |
+| Two admins remove each other at the same instant and both changes pass, leaving no admin (accepted by PRD §6.1) | Low | Recovered by the configured first admin signing in (AC-15) or the runbook above | Tech Lead |
+| Plain-language names and descriptions of the seven launch permissions are not agreed — PRD §8 Q1 | Low | Default to the glossary wording in each module's `permissions.ts`; agree before `/sdlc:break-tasks identity` | PM + scheduling owner |
+| k6 is a new CI tool, approved in §10 on 2026-11-03 after §2 was written, so §2's dependency list does not name it | Low | Pin the k6 version in the CI job; `break-tasks` plans the CI step and the seed script; treat this row as the §2 amendment | Tech Lead |
+| The sign-in rate limit (§8) blocks legitimate sign-ins when the whole office shares one public IP at the start of the day | Low | Set the per-IP threshold for ~30 people signing in within minutes; watch 429s on the sign-in paths during the first week | Tech Lead |
+| Google sign-in outage: nobody can start a new session | Low | Existing sessions keep working up to their 7-day expiry; excluded from the availability target (PRD §6) | Tech Lead |
+| Effort budget not set in the PRD (§2) | Low | PM sets it before `/sdlc:break-tasks identity` | PM |
+| `ARCHITECTURE.md` (module catalog, «Authentication source» open question), repo ADR 0001 and CONTEXT.md («the roles/permissions feature») describe the pre-identity state | Low | Update `ARCHITECTURE.md` and mark repo ADR 0001's open question resolved by ADR-0003 in the implementation PR; `/sdlc:fix-term` for «roles/permissions feature» (§12) | dmitro.b |
 
 **Accepted debt (acceptable in v1, plan to fix later):**
-- <e.g. Goal entity is not versioned (immutable) — OK for v1, may need audit versioning in v2>
+- No audit log of who granted or removed access — current state only (PRD §3); revisit if an access incident needs investigating.
+- No enforced second factor on staff Google accounts (PRD §3).
+- The simultaneous two-admin removal race is not guarded (PRD §6.1).
+- No alerting in v1; the Tech Lead reviews the §7 numbers weekly in the first month.
+- Expired and revoked session rows are purged lazily, not by a scheduled job.
 
 ## 12. Glossary
 
