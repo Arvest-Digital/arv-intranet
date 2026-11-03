@@ -554,8 +554,25 @@ Each top-3 goal from §1 expanded into full scenarios. Every number is quoted fr
 <!--           Один термін може мати дві мови у заголовку: «Goal (Обʼєктив)».              -->
 <!-- 📌 Приклад: «Lesson | урок усередині курсу, що складається з блоків (text, video)». -->
 
+Domain terms are canonical in [`CONTEXT.md`](../../../CONTEXT.md); this table repeats the ones this SAD relies on and adds the technical terms it introduces. Terms marked † are not in CONTEXT.md yet — run `/sdlc:fix-term` for them after this pass.
+
 | Term | Meaning |
 |---|---|
-| <e.g. Goal> | <quarterly intent in statement form> |
-| <e.g. KR> | <Key Result — measurable target linked to a Goal> |
-| <e.g. Checkpoint> | <bi-weekly progress update on a KR> |
+| access list | The admin-kept list of company-domain email addresses allowed to sign in; removal denies the user's next request. NOT the company email domain and NOT an access role (CONTEXT). |
+| access role | A named bundle of permissions assigned to users by admins; a user may hold several and gets the union (CONTEXT). CONTEXT says «assigned by the roles/permissions feature» — that feature is this `identity` module (ADR-0006); wording to update via `fix-term`. |
+| admin | A user who holds the manage-access permission through an access role; 1–2 exist; the first is seeded from configuration only while no admin exists; the last cannot lose admin rights (CONTEXT). |
+| permission | A named right to perform one action, declared by the feature that checks it and granted only through access roles (CONTEXT). In code: a key `<module>:<kebab-action>`. |
+| retired permission | A permission an access role still grants but no module declares any more; flagged to admins, grants nothing (CONTEXT). In code: a granted key absent from the permission catalog. |
+| user | A person on the access list who signs in with their company Google account and holds zero or more access roles (CONTEXT). |
+| manage access | Identity's own permission (`identity:manage-access`): add and remove users on the access list, compose and assign access roles; grants nothing else (AC-19). |
+| pre-selected access role † | The at most one access role an admin marks to be ticked by default when adding someone; afterwards an ordinary assignment (AC-13). |
+| configured first admin † | The company-domain address in `FIRST_ADMIN_EMAIL`; it becomes admin on sign-in only while no user holds manage access (AC-15). |
+| session † | One signed-in browser: a random token in the `__Host-arv_session` cookie, stored by identity only as its hash, valid at most 7 days from sign-in; ended by sign-out (that session) or removal (all of the user's sessions). |
+| actor | Who is making the current request (`Actor` in `@arv/kernel`): anonymous, or a user with the set of permissions granted to them right now. |
+| permission catalog | Every permission currently declared by any module, collected by the api host at composition and read by identity (ADR-0004). |
+| permission declaration | One module-exported entry: key, plain-language name, one-sentence description, feature (ADR-0004). |
+| `requirePermission` | The one shared check in `@arv/kernel`; refuses with «permission denied» (403) or «not signed in» (401) (ADR-0005). |
+| hosted domain (`hd`) | The Google ID-token claim naming the Google organisation that manages the account; present only for company-managed accounts, and must equal the company domain (AC-02). |
+| «not set up yet» screen | What a verified company-domain person not on the access list sees: they are not on the list yet, and the admins' names and emails to ask (AC-03). |
+| PKCE / `state` | Proof Key for Code Exchange and the anti-forgery value that bind Google's return to the sign-in this browser started (ADR-0007). |
+| fail closed | When access cannot be determined, the request is refused, never allowed (PRD §6). |
