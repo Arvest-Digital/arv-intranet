@@ -377,6 +377,343 @@ sequenceDiagram
     end
 ```
 
+### Flow 4: Add a user to the access list
+
+Realizes US-03 (AC-04, AC-05, AC-06, AC-08) and the pre-selected role in the add form (AC-13).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: the person is signed in and the joiner is not on the access list
+    U->>UI: Open the add-user form
+    UI->>S: Request the access roles and the pre-selected mark
+    S->>S: Check the actor holds manage access
+    alt Actor lacks manage access
+        S-->>UI: Refuse as permission denied
+        UI-->>U: Show you lack the permission to manage access, and no access data
+    else Actor holds manage access
+        S->>D: Read the access roles and the pre-selected mark
+        D-->>S: Roles and mark
+        S-->>UI: Roles with the pre-selected one ticked
+        UI-->>U: Show the form with the pre-selected role ticked
+        U->>UI: Enter address and name, keep or change the ticked roles, submit
+        UI->>S: Add the user with address, name and chosen roles
+        S->>S: Normalise the address, lower case and trimmed
+        alt Address invalid or not on the company domain
+            S-->>UI: Refuse as not a company-domain address
+            UI-->>U: Show only company-domain addresses can be added
+        else Address already on the access list
+            S->>D: Look up the user by normalised address
+            D-->>S: Existing user found
+            S-->>UI: Refuse as conflict, address already listed
+            UI-->>U: Show this address is already on the access list
+        else New address
+            S->>D: Look up the user by normalised address
+            D-->>S: Not found
+            S->>D: Insert the user and the chosen role assignments
+            Note over S,D: persists user (unique normalised email) and user-role assignments, a racing duplicate hits the unique key and is refused as conflict
+            D-->>S: Saved
+            S-->>UI: The new user with their roles
+            UI-->>U: Show the joiner on the access list, able to sign in now
+        end
+    end
+    Note over U,UI: Postcondition: the address is listed once, with exactly the chosen roles
+```
+
+### Flow 5: Correct a user's name
+
+Realizes US-03 (AC-21).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in and the user is on the access list
+    U->>UI: Edit the user's name and save
+    UI->>S: Rename the user
+    S->>S: Check the actor holds manage access
+    S->>D: Update only the user's name
+    alt User no longer on the access list
+        D-->>S: No row updated
+        S-->>UI: Refuse as not found
+        UI-->>U: Show the user is no longer on the access list
+    else User found
+        Note over S,D: persists user name, email, role assignments and sessions untouched
+        D-->>S: Updated
+        S-->>UI: The user with the new name and the same roles
+        UI-->>U: Show the new name, the address stays read-only
+    end
+    Note over U,UI: Postcondition: name changed, roles and sessions unchanged, the address cannot be changed
+```
+
+### Flow 6: Create or rename an access role
+
+Realizes US-04 (AC-09, AC-10, and AC-16 «a retired permission cannot be added»). Removing manage access from a role runs the last-admin guard of Critical flow 3.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in
+    U->>UI: Open the access-role form
+    UI->>S: Request the permission catalog
+    S->>S: Check the actor holds manage access
+    S->>S: List declared permissions with plain-language name, description and owning feature
+    S-->>UI: The catalog
+    UI-->>U: Show each permission in plain words, grouped by feature
+    U->>UI: Enter the name, pick permissions, save
+    UI->>S: Create the role, or rename and change it
+    S->>S: Normalise the name key, lower case and trimmed
+    alt A picked permission is not declared by any module
+        S-->>UI: Refuse as a retired permission
+        UI-->>U: Show the retired permission cannot be added
+    else Another role already has the same name key
+        S->>D: Look up roles by name key
+        D-->>S: Another role found
+        S-->>UI: Refuse as conflict, name taken
+        UI-->>U: Show an access role with that name already exists
+    else Name free and every picked permission declared
+        S->>D: Look up roles by name key
+        D-->>S: No other role
+        S->>D: Save the role and its permission keys
+        Note over S,D: persists access role (unique name key) and its granted permission keys
+        D-->>S: Saved
+        S-->>UI: The role with its permissions in plain words
+        UI-->>U: Show the role listed, held by nobody yet
+    end
+    Note over U,UI: Postcondition: role names are unique by key and no user holds a new role until assigned
+```
+
+### Flow 7: Delete an access role after a warning
+
+Realizes US-04 (AC-11 delete with warning and pre-selected mark) and US-06 (AC-14 for deleting a role).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in and the access role exists
+    U->>UI: Choose to delete the role
+    UI->>S: Request what deleting would affect
+    S->>S: Check the actor holds manage access
+    S->>D: Count holders of the role and read the pre-selected mark
+    D-->>S: Holder count and whether the role is pre-selected
+    S-->>UI: Impact summary
+    UI-->>U: Warn how many users hold it, and that it is the pre-selected role if so
+    U->>UI: Confirm the delete
+    UI->>S: Delete the role
+    S->>D: Begin transaction
+    S->>D: Delete the role, its grants and assignments, clear the pre-selected mark if it points here
+    S->>D: Count users still holding manage access through a declared grant
+    alt No user would hold manage access
+        S->>D: Roll back
+        S-->>UI: Refuse as last admin required
+        UI-->>U: Show the intranet must keep at least one admin, appoint another first
+    else At least one admin remains
+        S->>D: Commit
+        Note over S,D: persists removal of the role, its grants and assignments, and the cleared pre-selected mark
+        D-->>S: Committed
+        S-->>UI: Updated role list
+        UI-->>U: Show the role gone, and no role marked if it was the pre-selected one
+    end
+    Note over U,UI: Postcondition: former holders lose what only this role granted, from their next request
+```
+
+### Flow 8: Assign or take away access roles
+
+Realizes US-05 (AC-12) and US-06 (AC-14 for taking a role from a user).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in and the user is on the access list
+    U->>UI: Open the user's access roles
+    UI->>S: Request the user's roles and combined permissions
+    S->>S: Check the actor holds manage access
+    S->>D: Read the user's roles and the permission keys they grant
+    D-->>S: Roles and keys
+    S->>S: Union the keys, keep only declared ones, label each in plain words
+    S-->>UI: Roles and combined permissions
+    UI-->>U: Show the roles held and the combined permissions in plain words
+    U->>UI: Tick or untick roles and save
+    UI->>S: Set the user's roles
+    S->>D: Begin transaction
+    S->>D: Replace the user's role assignments
+    S->>D: Count users still holding manage access through a declared grant
+    alt No user would hold manage access
+        S->>D: Roll back
+        S-->>UI: Refuse as last admin required
+        UI-->>U: Show the intranet must keep at least one admin, appoint another first
+    else At least one admin remains
+        S->>D: Commit
+        Note over S,D: persists user-role assignments
+        D-->>S: Committed
+        S-->>UI: Updated roles and combined permissions
+        UI-->>U: Show every role held and the combined permissions in plain words
+    end
+    Note over U,UI: Postcondition: the user may do what any held role grants, from their next request
+```
+
+### Flow 9: Mark or clear the pre-selected access role
+
+Realizes US-05 (AC-13).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in
+    U->>UI: Mark a role as pre-selected for new people, or clear the mark
+    UI->>S: Set or clear the pre-selected role
+    S->>S: Check the actor holds manage access
+    alt Role no longer exists
+        S-->>UI: Refuse as not found
+        UI-->>U: Show the role no longer exists
+    else Role exists, or clearing the mark
+        S->>D: Replace the single pre-selected mark
+        Note over S,D: persists the pre-selected mark, at most one role at a time
+        D-->>S: Saved
+        S-->>UI: The marked role, or none
+        UI-->>U: Show the mark moved or cleared, nobody's roles changed
+    end
+    Note over U,UI: Postcondition: at most one role is marked and no existing user's roles changed
+```
+
+### Flow 10: Review access roles with retired permissions flagged
+
+Realizes US-07 (AC-16 admin side). The holder side, refused because retired keys grant nothing, is Critical flow 2.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: an admin is signed in and a module may have stopped declaring a permission some role grants
+    U->>UI: Open the access roles
+    UI->>S: Request the access roles
+    S->>S: Check the actor holds manage access
+    S->>D: Read every role with its granted permission keys and holder count
+    D-->>S: Roles and keys
+    S->>S: Compare each key with the permission catalog
+    alt A role grants a key no module declares
+        S-->>UI: Roles, each affected one flagged with the retired permission named
+        UI-->>U: Show the role flagged, naming the retired permission
+        U->>UI: Remove the retired permission from the role
+        UI->>S: Remove the permission from the role
+        S->>D: Delete that grant
+        Note over S,D: persists access role grants
+        D-->>S: Saved
+        S-->>UI: The role without the flag
+        UI-->>U: Show the role no longer flagged
+    else Every key is declared, including one declared again under the same name
+        S-->>UI: Roles in plain words, no flags
+        UI-->>U: Show the roles unflagged, a re-declared permission grants again
+    end
+    Note over U,UI: Postcondition: retired keys grant nothing until a module declares them again
+```
+
+### Flow 11: Sign out
+
+Realizes US-09 (AC-20 sign-out). Expiry after 7 days is the expired-session branch of Critical flow 2.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as <user>
+    participant UI as <ui>
+    participant S as <service>
+    participant D as <data-store>
+
+    Note over U,UI: Precondition: the user is signed in in this browser
+    U->>UI: Choose to sign out
+    UI->>S: Sign out this session with its session token
+    S->>D: Remove this session by its token hash
+    alt Session already expired, revoked or unknown
+        D-->>S: No session removed
+        S-->>UI: Treat as already signed out
+    else Session found
+        Note over S,D: persists removal of this session only, other sessions kept
+        D-->>S: Removed
+        S-->>UI: Signed out
+    end
+    UI->>UI: Clear the session cookie
+    UI-->>U: Show the sign-in page, still signed in to Google
+    Note over U,UI: Postcondition: the token is unusable from anywhere and other devices stay signed in
+```
+
+### Coverage: US/AC → flows
+
+| ID | Realized by (§6 heading) | How | Note |
+|---|---|---|---|
+| US-01 | Critical flow 1: Sign in with company Google | flow | |
+| US-02 | Critical flow 1: Sign in with company Google | flow | `else Not on the access list` |
+| US-03 | Flow 4: Add a user to the access list, Flow 5: Correct a user's name, Critical flow 3: Admin change guarded against losing the last admin | flow | removal is Critical flow 3 |
+| US-04 | Flow 6: Create or rename an access role, Flow 7: Delete an access role after a warning, Critical flow 3: Admin change guarded against losing the last admin | flow | changing a role's permissions is Critical flow 3 |
+| US-05 | Flow 8: Assign or take away access roles, Flow 9: Mark or clear the pre-selected access role | flow | |
+| US-06 | Critical flow 3: Admin change guarded against losing the last admin, Flow 7: Delete an access role after a warning, Flow 8: Assign or take away access roles, Critical flow 1: Sign in with company Google | flow | first admin is the `opt` in Critical flow 1 |
+| US-07 | Flow 10: Review access roles with retired permissions flagged, Critical flow 2: Access check on every request | flow | |
+| US-08 | Critical flow 2: Access check on every request | flow | |
+| US-09 | Flow 11: Sign out, Critical flow 2: Access check on every request | flow | expiry is a Critical flow 2 branch |
+| AC-01 | Critical flow 1: Sign in with company Google | flow | |
+| AC-02 | Critical flow 1: Sign in with company Google | branch | `alt Claims refused, not company-managed, not verified or other domain` |
+| AC-03 | Critical flow 1: Sign in with company Google, Critical flow 2: Access check on every request | branch | `else Not on the access list` (empty admin list means «ask your manager»); opening a page without a session is `else No session, expired after 7 days, or signed out` |
+| AC-04 | Flow 4: Add a user to the access list | flow | |
+| AC-05 | Flow 4: Add a user to the access list | branch | `alt Address invalid or not on the company domain` |
+| AC-06 | Flow 4: Add a user to the access list | branch | `else Address already on the access list` |
+| AC-07 | Critical flow 3: Admin change guarded against losing the last admin, Critical flow 2: Access check on every request | flow | next request is `else Session revoked because the user was removed` |
+| AC-08 | Flow 4: Add a user to the access list, Critical flow 2: Access check on every request | branch | `alt Actor lacks manage access` · `alt Permission not in the actor's set` |
+| AC-09 | Flow 6: Create or rename an access role | flow | |
+| AC-10 | Flow 6: Create or rename an access role | branch | `else Another role already has the same name key` |
+| AC-11 | Flow 7: Delete an access role after a warning, Critical flow 3: Admin change guarded against losing the last admin | flow | |
+| AC-12 | Flow 8: Assign or take away access roles | flow | |
+| AC-13 | Flow 9: Mark or clear the pre-selected access role, Flow 4: Add a user to the access list | flow | |
+| AC-14 | Critical flow 3: Admin change guarded against losing the last admin, Flow 7: Delete an access role after a warning, Flow 8: Assign or take away access roles | branch | `alt No user would hold manage access` |
+| AC-15 | Critical flow 1: Sign in with company Google | branch | `opt No user holds manage access and the email is the configured first admin` |
+| AC-16 | Flow 10: Review access roles with retired permissions flagged, Flow 6: Create or rename an access role, Critical flow 2: Access check on every request | flow | `alt A picked permission is not declared by any module` in Flow 6 · «Keep only granted keys that a module still declares» in Critical flow 2 |
+| AC-17 | Critical flow 2: Access check on every request | branch | `alt Permission not in the actor's set` |
+| AC-18 | Critical flow 2: Access check on every request | branch | `alt Permission not in the actor's set` (undeclared keys are dropped first) |
+| AC-19 | Critical flow 2: Access check on every request | branch | `alt Permission not in the actor's set` |
+| AC-20 | Flow 11: Sign out, Critical flow 2: Access check on every request | flow | expiry is `else No session, expired after 7 days, or signed out` |
+| AC-21 | Flow 5: Correct a user's name | flow | |
+
+Coverage: 9/9 user stories · 21/21 ACs — 0 non-runtime N/A.
+
+**Flags:**
+- No new participants: every generic participant in Flows 4–11 maps to a §5 container (`<ui>` arv-web, `<service>` arv-api host + identity module, `<data-store>` Postgres).
+- The three seeded Critical flows keep their concrete §5 names (they predate this stage and were left untouched).
+- The pre-selected mark (Flows 4, 7, 9) needs a home holding at most one role — for `generate-data-model`.
+- Lookups by normalised email, by role name key, by session token hash and by role holder count are the index hints from the persist notes — for `generate-data-model`.
+- No ADR-worthy decision surfaced.
+
 ## 7. Deployment view
 
 <!-- 🎯 Навіщо: ТОПОЛОГІЯ, яку DevOps має знати без читання Helm-чартів — скільки реплік,  -->
