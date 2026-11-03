@@ -412,15 +412,26 @@ No new deployable. Identity ships inside the existing `arv-web` and `arv-api` Wo
 <!-- 📋 Що писати: таблиця концепт / конвенція / де визначено. Один рядок на концепт.      -->
 <!-- 📌 Приклад: «UUID v7 (час+випадковий, сортується) у app-layer» — як default з CLAUDE.md. -->
 
+Repo conventions apply unchanged unless a row says otherwise; identity adds the rows marked *new*.
+
 | Concept | Convention | Where defined |
 |---|---|---|
-| Logging | <e.g. structured slog, fields `module=<name>`> | <CLAUDE.md §X or here> |
-| Authentication | <e.g. JWT via session middleware> | <CLAUDE.md §X> |
-| Error handling | <e.g. domain sentinel → ports/errors.go → apperr JSON> | <CLAUDE.md §X> |
-| ID strategy | <e.g. UUID v7 in app layer> | <CLAUDE.md §X> |
-| Internationalisation | <e.g. N/A, English only> | — |
-| Observability | <e.g. OpenTelemetry on HTTP boundaries> | — |
-| Outbox / events | <module-specific patterns, if any> | <here> |
+| Logging | Repo default (Hono `logger`, `console`; Workers Logs). Identity never logs an email, name, session token, code or Google claim; refused sign-ins log nothing; one `identity.sign_in.succeeded` event with `userId` only | ARCHITECTURE.md · here · PRD §6.1 |
+| Authentication *(new)* | Session cookie `__Host-arv_session` — HttpOnly, Secure, `SameSite=Lax`, `Path=/`, lifetime no longer than the session's expiry — set and cleared only by the web server, which forwards the token to the api as `Authorization: Bearer`. The api's `authenticate` middleware refuses every route without a valid session except an explicit public list (sign-in begin/complete, `/health`) | [ADR-0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md), [ADR-0003](./adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md), [ADR-0007](./adr/0007-split-sign-in-into-a-web-browser-leg-and-an-identity-server-leg.md) |
+| Authorization *(new)* | Deny by default. Use cases call `requirePermission(permission)` from `@arv/kernel` over `CurrentActor`; the actor's set is granted keys ∩ catalog, resolved per request with no cache. No feature builds its own access check (PRD §7 shared-check adoption, checked at review) | [ADR-0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md) |
+| Permission declaration *(new)* | Each module declares its permissions in `src/permissions.ts`, exported from its root: key `<module>:<kebab-action>` (e.g. `identity:manage-access`, `scheduling:edit-allocations`), plain-language name, one-sentence description, feature; the host composition collects them; keys are never renamed once granted (rename = retire) | [ADR-0004](./adr/0004-declare-permissions-in-module-code-and-collect-them-in-the-host.md) |
+| CSRF *(new)* | `SameSite=Lax` session cookie; state changes only through POST actions; the web server rejects non-GET requests whose `Origin` is not its own; the sign-in round-trip is bound by OAuth `state` and PKCE | here |
+| Open redirect *(new)* | `returnTo` is accepted only as a same-origin path that starts with `/` and not `//`; anything else returns the user to the home page (AC-01) | [ADR-0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md) |
+| Rate limiting *(new)* | A Cloudflare Rate Limiting rule on the web zone's sign-in and sign-in-return paths (a zone rule, no code), with a per-IP threshold tuned so a whole office behind one address can still sign in at the start of the day; the exact threshold is set at deploy time. Other routes are not rate-limited in v1 | here, §7 |
+| Error handling | Repo default: domain `Schema.TaggedError`s → presenter → shared contract errors; DB failures are defects → 500, which is how identity fails closed. New shared contract errors `Unauthorized` (401) and `Forbidden` (403), mapped once in `@arv/platform`; identity's `LastAdminRequired` → `Conflict` (409); duplicate email or role name → `Conflict` (409); non-company address → validation error (400) | CLAUDE.md · ARCHITECTURE.md §Errors · [ADR-0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md) |
+| ID strategy | Repo default: UUIDv7 from Postgres. The session token is not an id: 256 random bits from Web Crypto, stored only as its SHA-256 hash | ARCHITECTURE.md §Data · [ADR-0003](./adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md) |
+| Normalisation *(new)* | Emails stored lower-cased and trimmed, unique (AC-06); access-role names unique on lower-cased, trimmed text, displayed as entered (AC-10) | §5 |
+| Transactions | Repo default `UnitOfWork`; admin changes that can affect manage access run in one transaction (last-admin guard). Transactions stay short and never contain the Google call (Hyperdrive holds one connection per transaction) | ARCHITECTURE.md §Cloudflare constraints · §5 |
+| Caching | None for identity data — no in-isolate cache, no KV, and only Hyperdrive's uncached main config may serve identity queries (QG-1) | [ADR-0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md) |
+| Configuration and secrets | Google client id and secret as api Worker secrets; company domain, first-admin address and sign-in return URL as api vars; web holds none | §7 |
+| Internationalisation | N/A — English UI, matching the existing web | — |
+| Observability | `accessCheckMs` per api request; availability from Workers Analytics | §7 |
+| Outbox / events | N/A — identity publishes no events in v1; features consume the per-request actor, not events | — |
 
 ## 9. Architecture decisions
 
