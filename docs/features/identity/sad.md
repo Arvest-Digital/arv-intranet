@@ -442,10 +442,19 @@ Repo conventions apply unchanged unless a row says otherwise; identity adds the 
 
 | # | Title | Status | Section |
 |---|---|---|---|
-| <NNNN> | <imperative — e.g. "Use sliding window for rate limiting"> | Accepted | §<N> |
-| <NNNN> | <imperative — e.g. "Co-locate outbox worker in API process"> | Accepted | §<N> |
+| [0001](./adr/0001-build-backend-service-and-web-frontend-surfaces.md) | Build identity as a backend service and a web frontend | Accepted | §4 |
+| [0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md) | Gate every web page at the root with a server-only session cookie | Accepted | §4 |
+| [0003](./adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md) | Sign in with Google OpenID Connect and keep server-side sessions in identity | Accepted | §4 |
+| [0004](./adr/0004-declare-permissions-in-module-code-and-collect-them-in-the-host.md) | Declare permissions in each module's code and collect them in the api host | Accepted | §4 |
+| [0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md) | Check permissions with one kernel `requirePermission` over a per-request, uncached actor | Accepted | §4 |
+| [0006](./adr/0006-keep-sign-in-sessions-and-access-roles-in-one-identity-module.md) | Keep sign-in, sessions and access roles in one `identity` module | Accepted | §5 |
+| [0007](./adr/0007-split-sign-in-into-a-web-browser-leg-and-an-identity-server-leg.md) | Split sign-in into a web browser leg and an identity server leg | Accepted | §5 |
 
-ADR files live under `docs/features/<slug>/adr/NNNN-<title>.md`.
+ADR files live under `docs/features/identity/adr/NNNN-<title>.md`.
+
+Related decisions outside this folder:
+- ADR-0003 resolves the «Authentication source» open question in repo [ADR 0001](../../adr/0001-modular-monolith.md) and PRD §8 Q3; `ARCHITECTURE.md` (module catalog, Open questions) is updated in the implementation PR.
+- ADR-0005 implements resource-scheduling [ADR-0004](../resource-scheduling/adr/0004-resolve-permissions-into-actor-per-request.md) (permissions on `Actor`, resolved per request); the `UnitOfWorkLive` used by the last-admin guard is the one planned in resource-scheduling [ADR-0006](../resource-scheduling/adr/0006-implement-unit-of-work-without-outbox.md).
 
 ## 10. Quality requirements
 
