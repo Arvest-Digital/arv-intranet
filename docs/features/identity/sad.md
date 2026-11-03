@@ -93,28 +93,42 @@ When two goals conflict, the higher one wins: no cache or shortcut may let a req
 <!-- 📌 Приклад: «зовнішні — нема (свідома відмова від third-party у v1)» — це теж рішення.   -->
 <!-- Кордон довіри (trust boundary) — лінія, за якою ти не довіряєш даним без перевірки.       -->
 
-<Business context in 2-3 sentences. What the system does for whom.>
+<!-- brownfield: no docs/architecture-map.md yet — current architecture read from the authored ARCHITECTURE.md + repo ADR 0001 + resource-scheduling's SAD/ADR-0004 + a direct scan of apps/, modules/identity, packages/kernel (2026-11-03, HEAD 795a841). Run /sdlc:map-architecture to persist a map. -->
+
+Today the intranet has no sign-in: every request is anonymous and nobody can be granted anything. Identity makes the intranet usable only by people on the access list who arrive with a verified, company-managed Google account on the company email domain, and gives every feature one place to ask «may this user do this, right now?». The **trust boundary** is the public web Worker: everything a browser sends — the Google redirect parameters, the session cookie, admin form fields — is untrusted until the private api has checked it, and Google's answer is trusted only after its issuer, audience, expiry, verified email and organisation domain are checked. Configuration (the company email domain and the first-admin address) is set by the Tech Lead at deploy time and is trusted.
 
 **External systems (in / out):**
 
 | Actor or system | Type | Interaction |
 |---|---|---|
-| <e.g. IC> | Person | Creates goals, adds checkpoints |
-| <e.g. notification-service> | System (internal) | Receives cron registration |
-| <e.g. Identity Provider> | System (external) | Provides JWT tokens |
+| user | Person | Signs in with their company Google account, uses intranet features with their current permissions, signs out (US-01, US-08, US-09) |
+| admin | Person (a user holding manage access) | Keeps the access list, composes and assigns access roles, sees retired permissions flagged (US-02 – US-07) |
+| Person not on the access list | Person (company Google account, no access) | Sees the «not set up yet» screen naming the admins; nothing about them is recorded (AC-03) |
+| Google sign-in (company Google organisation) | System (external) | Authenticates the person and reports their email, whether it is verified, and the organisation domain that manages the account (OpenID Connect) |
+| Intranet features (resource scheduling first) | System (internal) | Declare their permissions and check the current user's permissions through the one shared check on every action |
+| Cloudflare observability (Workers Logs) | System (external) | Receives successful sign-in events and request timings; source for the sign-in coverage and access-check overhead KPIs (PRD §7) |
 
 **C4 Context (L1):**
 
 ```mermaid
 C4Context
-    title <system> — System Context
+    title identity — System Context
 
-    Person(user, "<User>", "<role + intent>")
-    System(system, "<Our System>", "<one-sentence description>")
-    System_Ext(ext, "<External system>", "<one-sentence description>")
+    Person(user, "user", "Company staff member on the access list")
+    Person(admin, "admin", "user holding manage access")
+    Person(outsider, "Person not on the access list", "Has a company Google account but no intranet access")
 
-    Rel(user, system, "<interaction>", "<protocol>")
-    Rel(system, ext, "<interaction>", "<protocol>")
+    System(intranet, "arv-intranet", "Intranet on Cloudflare Workers; identity signs people in and checks permissions on every request")
+    System(features, "Intranet features", "Resource scheduling first; declare permissions and check them through the shared check")
+    System_Ext(google, "Google sign-in", "Company Google organisation; OpenID Connect")
+    System_Ext(obs, "Cloudflare observability", "Workers Logs: successful sign-ins and request timings")
+
+    Rel(user, intranet, "Signs in, uses features, signs out", "HTTPS")
+    Rel(admin, intranet, "Keeps the access list, composes and assigns access roles", "HTTPS")
+    Rel(outsider, intranet, "Tries to sign in, sees whom to ask", "HTTPS")
+    Rel(intranet, google, "Redirects for sign-in, exchanges the code for the ID token", "OpenID Connect over HTTPS")
+    Rel(features, intranet, "Declare permissions, check the current user's permissions", "in-process")
+    Rel(intranet, obs, "Writes successful sign-ins and timings", "Workers Logs")
 ```
 
 ## 4. Solution strategy
