@@ -33,3 +33,7 @@ node_modules
 coverage/
 playwright-report/
 test-results/
+
+# SDLC plugin (per-developer)
+.claude/*.local.md
+.worktrees/
