@@ -25,21 +25,27 @@ target_surfaces: []  # filled in §4 — subset of: backend-service | web-fronte
 <!-- 📋 Що писати: 1 абзац intent + 3 рядки топ-3 якості + таблиця stakeholders.        -->
 <!-- 📌 Приклад: «QG-1: швидкість редагування блоку p95 ≤500 мс»                         -->
 
-**Intent.** <One paragraph from PRD §Goals — what we're building and for whom.>
+**Intent.** Identity gives the intranet its front door and its single access model (PRD §1, Approach A «Allowlist Sign-in, Admin-Composed Roles»). Staff on the company email domain sign in with their company-managed Google account, and only if an admin has put them on the access list. Admins build access roles from the permissions each feature declares and give each user zero or more of them. Every request re-checks access-list membership and current permissions through one shared check, and anything not granted is refused. It serves the ~30 users on every visit and the 1–2 admins a few times a month (onboarding, offboarding, role changes). It also unblocks resource scheduling's launch: scheduling's six permissions are the first feature-declared ones, alongside identity's own manage access.
 
 **Top-3 quality goals (1-liners; full scenarios in §10):**
 
-1. <e.g. "Availability under partial failure of downstream module">
-2. <e.g. "Performance for EM dashboard under team-scale growth">
-3. <e.g. "Recoverability of checkpoints with <30 min RTO">
+1. **QG-1 Revocation and fail-closed access.** A removal from the access list or a permission change takes effect on the very next request, and any request whose access cannot be determined is refused (PRD §6: Revocation, Session lifetime, Fail closed).
+2. **QG-2 Access-check overhead.** At most 25 ms p95 added to every request, still holding at 100 users and 50 access roles (PRD §6: access-check latency, Capacity headroom).
+3. **QG-3 Availability of sign-in and the access check.** At least 99.5% monthly, excluding Google outages (PRD §6: Availability).
+
+When two goals conflict, the higher one wins: no cache or shortcut may let a request through after a revocation, even if it would save milliseconds.
 
 **Stakeholders.**
 
 | Role | Interest | Sign-off owner? |
 |---|---|---|
-| <e.g. IC> | <feature usage> | No |
-| <e.g. EM> | <dashboard reads> | No |
-| <e.g. Tech Lead> | <SAD approval> | Yes |
+| user | Signs in with their company Google account and acts with their current permissions (US-01, US-08, US-09) | No |
+| admin | Keeps the access list, composes access roles and assigns them; never loses the last admin (US-02 – US-07) | No |
+| Feature owners (resource scheduling first) | Declare their feature's permissions and check them only through the one shared check (PRD §2, §7 shared-check adoption) | No |
+| PM | KPIs (PRD §7); plain-language names of the launch permissions (PRD §8 Q1) | No |
+| HR / offboarding process owner | Removal from the access list on the last working day, mailbox not reassigned before that (PRD §8 Q2) | No |
+| Tech Lead | SAD approval; first-admin recovery runbook (PRD §8 Q4) | Yes |
+| Security Lead | Mandatory security review: new authentication boundary and new personal data (PRD §6.1) | Yes |
 
 <!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise.       -->
 <!-- Each: «Decision override: <headline> — rationale: <reason>» so downstream skills see the choice.  -->
