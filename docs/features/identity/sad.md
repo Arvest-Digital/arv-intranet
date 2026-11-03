@@ -255,25 +255,124 @@ C4Container
 <!--           кожним §5 AC — без обмеження. Не намагайся покрити все тут.                  -->
 <!-- 📌 Приклад: «methodist → web-app: складає чорновик → web-app → content-api: зберегти». -->
 
-**Critical flow 1: <flow name>**
+Participants are the §5 containers. Messages are semantic; endpoint-level detail arrives with `api-forge`. These three flows are the seeds — `complete-sequence-diagrams` covers every remaining AC.
+
+**Critical flow 1: Sign in with company Google (AC-01, AC-02, AC-03, AC-15)**
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant API
-    participant Service
-    participant DB
-    User->>API: <request>
-    API->>Service: <call>
-    Service->>DB: <write tx>
-    DB-->>Service: ok
-    Service-->>API: result
-    API-->>User: 201
+    actor P as Person
+    participant W as arv-web
+    participant G as Google sign-in
+    participant H as arv-api host
+    participant I as identity module
+    participant DB as Postgres
+    P->>W: Opens an intranet page without a session
+    W->>H: Begin sign-in, public route
+    H->>I: Build the Google sign-in address
+    I-->>W: Address with state and PKCE challenge, plus the verifier
+    W->>W: Keep state, verifier and returnTo in a 10-minute HttpOnly cookie
+    W-->>P: Redirect to Google
+    P->>G: Signs in with the company Google account
+    G-->>P: Redirect back to the sign-in return page with a one-time code
+    P->>W: Sign-in return with code and state
+    W->>W: Check state against the cookie
+    W->>H: Complete sign-in with the code and verifier, public route
+    H->>I: Complete sign-in
+    I->>G: Exchange the code for the ID token
+    G-->>I: ID token
+    I->>I: Check issuer, audience, expiry, verified email, hosted domain and email domain
+    alt Claims refused, not company-managed, not verified or other domain
+        I-->>W: Refused, generic reason, nothing stored or logged about the person
+        W-->>P: Only verified company Google accounts can sign in
+    else Not on the access list
+        I->>DB: Read the admins' names and emails
+        I-->>W: Not set up, with the admins to ask
+        W-->>P: Not on the access list yet, ask one of these admins
+    else On the access list, or the configured first admin while no admin exists
+        opt No user holds manage access and the email is the configured first admin
+            I->>DB: Upsert the user with the Google name and give them the access role Admin
+        end
+        I->>DB: Store the session token hash with expiry in 7 days
+        I-->>W: Session token
+        W->>W: Set the session cookie, HttpOnly, Secure, SameSite Lax
+        W-->>P: Redirect to returnTo if it is a same-origin path, else home
+    end
 ```
 
-<!-- For XS/S: 1 flow above is enough. For M+: add 2-4 more (e.g. failure-mode flow, async flow). -->
+**Critical flow 2: Access check on every request (AC-07, AC-17, AC-18, AC-19, AC-20; Fail closed)**
 
-**Critical flow 2: <e.g. async event propagation>** — <if applicable, otherwise N/A>.
+```mermaid
+sequenceDiagram
+    actor U as user
+    participant W as arv-web
+    participant H as arv-api host
+    participant I as identity module
+    participant F as Feature module
+    participant DB as Postgres
+    U->>W: Opens a page or saves a change
+    W->>H: Feature request with the session token as Bearer
+    H->>I: Resolve the actor
+    I->>DB: One query, session to user to access roles to granted permission keys
+    alt Database unreachable or query fails
+        DB-->>I: Error
+        I-->>H: Defect, never an anonymous fallback
+        H-->>W: Refused with 500
+        W-->>U: Something went wrong, nothing shown
+    else No session, expired after 7 days, or signed out
+        I-->>H: Unauthenticated
+        H-->>W: Unauthorized 401
+        W-->>U: Redirect to sign-in with returnTo
+    else Session revoked because the user was removed
+        I-->>H: Unauthenticated, access removed
+        H-->>W: Unauthorized 401 with reason
+        W->>W: Clear the session cookie
+        W-->>U: You no longer have access
+    else Valid session
+        I->>I: Keep only granted keys that a module still declares
+        I-->>H: Actor with id and permissions
+        H->>F: Run the use case as this actor
+        F->>F: requirePermission for the action
+        alt Permission not in the actor's set
+            F-->>H: PermissionDenied
+            H-->>W: Forbidden 403
+            W-->>U: You lack the permission for this
+        else Permission granted
+            F-->>H: Result
+            H-->>W: Result
+            W-->>U: Page or confirmation
+        end
+    end
+```
+
+**Critical flow 3: Admin change guarded against losing the last admin (AC-07, AC-11, AC-14)**
+
+```mermaid
+sequenceDiagram
+    actor A as admin
+    participant W as arv-web
+    participant H as arv-api host
+    participant I as identity module
+    participant DB as Postgres
+    A->>W: Removes a user, takes a role, edits or deletes an access role
+    W->>H: Admin change with the session token as Bearer
+    H->>I: Resolve the actor, then run the change as this actor
+    I->>I: requirePermission manage access
+    I->>DB: Begin transaction
+    I->>DB: Apply the change, and for a removal revoke all the user's sessions as access removed
+    I->>DB: Count users still holding manage access through a declared grant
+    alt No user would hold manage access
+        I->>DB: Roll back
+        I-->>H: LastAdminRequired
+        H-->>W: Conflict 409
+        W-->>A: The intranet must keep at least one admin, appoint another admin first
+    else At least one admin remains
+        I->>DB: Commit
+        I-->>H: Updated state
+        H-->>W: Updated state
+        W-->>A: Change saved, takes effect on each affected user's next request
+    end
+```
 
 ## 7. Deployment view
 
