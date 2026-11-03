@@ -47,6 +47,9 @@ When two goals conflict, the higher one wins: no cache or shortcut may let a req
 | Tech Lead | SAD approval; first-admin recovery runbook (PRD §8 Q4) | Yes |
 | Security Lead | Mandatory security review: new authentication boundary and new personal data (PRD §6.1) | Yes |
 
+**Decision overrides.**
+- Sign-in coverage KPI (PRD §7, ≥ 90% within 14 days) has no 14-day measurement path — Workers Logs retain sign-in events for 7 days and the KPI-source decision was dropped in §7 — overridden by author, rationale: the KPI does not affect any architectural decision; PRD owners may revise its measurement.
+
 <!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise.       -->
 <!-- Each: «Decision override: <headline> — rationale: <reason>» so downstream skills see the choice.  -->
 
@@ -388,10 +391,13 @@ No new deployable. Identity ships inside the existing `arv-web` and `arv-api` Wo
 - Secrets (`wrangler secret put`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 - Vars: `COMPANY_EMAIL_DOMAIN` (the single company domain, PRD §1), `FIRST_ADMIN_EMAIL` (AC-15), `SIGN_IN_RETURN_URL` (web's sign-in return page registered with Google).
 - Local development uses `.dev.vars` and a separate Google OAuth client whose redirect is the local web origin; production and local clients never share a secret.
+- **Custom domain for `arv-web`** (critic F6, 2026-11-03): today `apps/web/wrangler.jsonc` has no `routes`, so web is served on `workers.dev`. Identity adds a custom-domain route for `arv-web` on a company-controlled Cloudflare zone — needed for a stable Google redirect URI and for zone-level rules — plus a **Rate Limiting rule** on that zone for the sign-in and sign-in-return paths (§8). Without the zone the rule cannot apply (§11).
 - Google Cloud: one OAuth client of type «Web application» in the company's Google Cloud project, with the consent screen's user type set to **Internal**, so Google itself only admits accounts of the company's Google organisation — a second line of defence behind identity's `hd` / `email_verified` / domain checks (AC-02).
 
 **Monitoring:**
 - Workers Logs (observability is already enabled on both Workers): identity writes one structured event `identity.sign_in.succeeded` carrying the `userId` only — no email, no name, no Google claims. Refused sign-ins write nothing (AC-02, AC-03). Workers Logs keep events for 7 days.
+- Sign-in completion timing: web's sign-in return handler logs `signInCompleteMs` (from receiving Google's return to issuing the redirect to the first page); p95 read against 800 ms (PRD §6).
+- Google availability: identity logs `identity.google.unavailable` (timestamp only, no personal data) when Google's token endpoint fails or times out; these minutes are excluded from the availability figure (PRD §6 «excluding Google outages»).
 - Access-check overhead: the api's `authenticate` middleware logs `accessCheckMs` per request; p95 is read with a Workers Logs query against the 25 ms target (PRD §6, §7).
 - Availability of sign-in and the access check: share of non-5xx responses on the api's sign-in and authenticated routes in Workers Analytics, read monthly against 99.5% (PRD §6).
 - Tracing: Hono `requestId` already tags each api request; no further tracing in v1.
@@ -416,7 +422,7 @@ Repo conventions apply unchanged unless a row says otherwise; identity adds the 
 
 | Concept | Convention | Where defined |
 |---|---|---|
-| Logging | Repo default (Hono `logger`, `console`; Workers Logs). Identity never logs an email, name, session token, code or Google claim; refused sign-ins log nothing; one `identity.sign_in.succeeded` event with `userId` only | ARCHITECTURE.md · here · PRD §6.1 |
+| Logging | Repo default (Hono `logger`, `console`; Workers Logs). Identity never logs an email, name, session token, code or Google claim; refused sign-ins log nothing. Allowed identity events: `identity.sign_in.succeeded` (`userId` only), `identity.google.unavailable` (no personal data), and the timing fields `accessCheckMs` and `signInCompleteMs` | ARCHITECTURE.md · here · PRD §6.1 |
 | Authentication *(new)* | Session cookie `__Host-arv_session` — HttpOnly, Secure, `SameSite=Lax`, `Path=/`, lifetime no longer than the session's expiry — set and cleared only by the web server, which forwards the token to the api as `Authorization: Bearer`. The api's `authenticate` middleware refuses every route without a valid session except an explicit public list (sign-in begin/complete, `/health`) | [ADR-0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md), [ADR-0003](./adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md), [ADR-0007](./adr/0007-split-sign-in-into-a-web-browser-leg-and-an-identity-server-leg.md) |
 | Authorization *(new)* | Deny by default. Use cases call `requirePermission(permission)` from `@arv/kernel` over `CurrentActor`; the actor's set is granted keys ∩ catalog, resolved per request with no cache. No feature builds its own access check (PRD §7 shared-check adoption, checked at review) | [ADR-0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md) |
 | Permission declaration *(new)* | Each module declares its permissions in `src/permissions.ts`, exported from its root: key `<module>:<kebab-action>` (e.g. `identity:manage-access`, `scheduling:edit-allocations`), plain-language name, one-sentence description, feature; the host composition collects them; keys are never renamed once granted (rename = retire) | [ADR-0004](./adr/0004-declare-permissions-in-module-code-and-collect-them-in-the-host.md) |
@@ -499,7 +505,7 @@ Each top-3 goal from §1 expanded into full scenarios. Every number is quoted fr
 *Scenario 2c — Capacity headroom (PRD §6 Capacity headroom)*
 - **When:** the database holds 100 users and 50 access roles.
 - **Then:** the three latency targets above hold at 100 users and 50 access roles.
-- **How verify:** seeded load test in CI with **k6** (approved 2026-11-03 as a new CI tool — see §11): a CI job seeds `arv_test` with 100 users, 50 access roles and their sessions, starts the web and api Workers locally (`wrangler dev`) with Google replaced by a test double, and runs `e2e/load/identity.k6.js` against the access check, sign-in completion and admin actions with thresholds `p(95)<25`, `p(95)<800` and `p(95)<500` on the respective timings. Local Postgres is faster than Neon through Hyperdrive, so CI is a lower bound; production `accessCheckMs` remains the source of truth.
+- **How verify:** seeded load test in CI with **k6** (approved 2026-11-03 as a new CI tool — see §11): a CI job seeds `arv_test` with 100 users, 50 access roles and their sessions, starts the web and api Workers locally (`wrangler dev`) with Google replaced by a test double, and runs `e2e/load/identity.k6.js` with thresholds taken verbatim from PRD §6: **access check ≤ 25 ms p95** read from the `accessCheck` entry of the api's `Server-Timing` response header (the access-check step, not the whole request) as a k6 custom Trend, `p(95)<=25`; **sign-in completion ≤ 800 ms p95** on `http_req_duration` of the sign-in return request, `p(95)<=800`; **admin access actions ≤ 500 ms p95** on `http_req_duration` of the admin routes, `p(95)<=500`. Local Postgres is faster than Neon through Hyperdrive, so CI is a lower bound; production `accessCheckMs` remains the source of truth.
 
 **QG-3. Availability of sign-in and the access check**
 
@@ -534,6 +540,7 @@ Each top-3 goal from §1 expanded into full scenarios. Every number is quoted fr
 | Two admins remove each other at the same instant and both changes pass, leaving no admin (accepted by PRD §6.1) | Low | Recovered by the configured first admin signing in (AC-15) or the runbook above | Tech Lead |
 | Plain-language names and descriptions of the seven launch permissions are not agreed — PRD §8 Q1 | Low | Default to the glossary wording in each module's `permissions.ts`; agree before `/sdlc:break-tasks identity` | PM + scheduling owner |
 | k6 is a new CI tool, approved in §10 on 2026-11-03 after §2 was written, so §2's dependency list does not name it | Low | Pin the k6 version in the CI job; `break-tasks` plans the CI step and the seed script; treat this row as the §2 amendment | Tech Lead |
+| `arv-web` has no custom domain yet (`workers.dev`), so the zone-level sign-in rate limit (§8) and a stable Google redirect URI depend on adding one (§7) | Low | Custom-domain route and Rate Limiting rule are a deploy task planned by `break-tasks`; verify the rule matches the sign-in paths before launch | Tech Lead |
 | The sign-in rate limit (§8) blocks legitimate sign-ins when the whole office shares one public IP at the start of the day | Low | Set the per-IP threshold for ~30 people signing in within minutes; watch 429s on the sign-in paths during the first week | Tech Lead |
 | Google sign-in outage: nobody can start a new session | Low | Existing sessions keep working up to their 7-day expiry; excluded from the availability target (PRD §6) | Tech Lead |
 | Effort budget not set in the PRD (§2) | Low | PM sets it before `/sdlc:break-tasks identity` | PM |

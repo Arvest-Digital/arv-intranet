@@ -29,12 +29,12 @@ Each feature declares its own permissions (PRD §1), and admins pick them by pla
 ## Considered options
 
 1. **Declared in module code, collected by the host** — each module exports an array of declarations (key, name, description, feature; type in `@arv/kernel`) from its root; `apps/api/src/composition.ts` builds identity's `PermissionCatalog` port from all of them; identity stores grants by key; retired = granted key not in the catalog, computed on read.
-2. **A catalog table seeded by each feature's migrations** — `identity.permissions` rows inserted and retired by SQL migrations owned by each feature.
+2. **Code declarations synchronised into an identity-owned catalog table** — modules still declare permissions in code, but identity writes them into its own `identity.permissions` table (on deploy or on first request) and grants reference those rows; retired = rows no longer present in the latest declaration set.
 3. **One central list inside identity** — every permission of every feature in one identity file.
 
 ## Decision outcome
 
-**Chosen:** Option 1. The declaration lives next to the code that checks it, the deploy is the single source of truth, identity never imports a feature, and AC-16's «re-declared grants again» needs no migration because grants are stored by key. Option 2 has other features writing into identity's schema and lets code check a key the table doesn't have (caught only at runtime). Option 3 makes the foundation module know every feature's rights and contradicts «each feature declares its permissions».
+**Chosen:** Option 1. The declaration lives next to the code that checks it, the deploy is the single source of truth, identity never imports a feature, and AC-16's «re-declared grants again» needs no migration because grants are stored by key. Option 2 adds a synchronisation step with no hook to run it (Workers have no start-up phase, so it would run on deploy scripts or the first request) and a second copy of the catalog that can drift from the code; foreign keys on grants would also turn a retired permission into a delete instead of the flag AC-16 asks for. Option 3 makes the foundation module know every feature's rights and contradicts «each feature declares its permissions».
 
 ## Consequences
 
