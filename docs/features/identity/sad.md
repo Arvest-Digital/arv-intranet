@@ -382,18 +382,26 @@ sequenceDiagram
 <!-- 📌 Приклад: «500 IC → партиціонування за кварталом» (не «при зростанні подумаємо»).    -->
 <!-- 🎯 Можна N/A для XS/S функцій, що переюзають існуюче розгортання без змін.            -->
 
-<Topology in 2-3 sentences. Where it runs (k8s / VM / serverless), replicas, scaling thresholds.>
+No new deployable. Identity ships inside the existing `arv-web` and `arv-api` Workers (Cloudflare runs and scales them; there are no replicas to size) and the existing Neon Postgres 18 behind the `HYPERDRIVE` binding, whose main config keeps query caching disabled. Deploy order for the release: apply the `identity` schema migrations to Neon → deploy `arv-api` → deploy `arv-web` (web calls api endpoints that must already exist).
+
+**New configuration (api only — web holds no Google or identity settings, ADR-0007):**
+- Secrets (`wrangler secret put`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+- Vars: `COMPANY_EMAIL_DOMAIN` (the single company domain, PRD §1), `FIRST_ADMIN_EMAIL` (AC-15), `SIGN_IN_RETURN_URL` (web's sign-in return page registered with Google).
+- Local development uses `.dev.vars` and a separate Google OAuth client whose redirect is the local web origin; production and local clients never share a secret.
+- Google Cloud: one OAuth client of type «Web application» in the company's Google Cloud project, with the consent screen's user type set to **Internal**, so Google itself only admits accounts of the company's Google organisation — a second line of defence behind identity's `hd` / `email_verified` / domain checks (AC-02).
 
 **Monitoring:**
-- <Metrics — e.g. Prometheus `<metric_name>`>
-- <Alerts — e.g. "outbox lag > 10 min → page on-call">
-- <Tracing — e.g. OpenTelemetry HTTP spans>
+- Workers Logs (observability is already enabled on both Workers): identity writes one structured event `identity.sign_in.succeeded` carrying the `userId` only — no email, no name, no Google claims. Refused sign-ins write nothing (AC-02, AC-03). Workers Logs keep events for 7 days.
+- Access-check overhead: the api's `authenticate` middleware logs `accessCheckMs` per request; p95 is read with a Workers Logs query against the 25 ms target (PRD §6, §7).
+- Availability of sign-in and the access check: share of non-5xx responses on the api's sign-in and authenticated routes in Workers Analytics, read monthly against 99.5% (PRD §6).
+- Tracing: Hono `requestId` already tags each api request; no further tracing in v1.
+- Alerts: none in v1 (the repo has no alerting yet); the Tech Lead reviews the three numbers above weekly during the first month.
+
+**Neon compute:** production keeps Neon's default scale-to-zero (the compute suspends after a few idle minutes and the next query waits for it to wake). The cold-start effect on the 25 ms and 800 ms p95 targets is measured after launch from `accessCheckMs` and the sign-in timing, and scale-to-zero is turned off if either p95 is missed (§11).
 
 **Scaling thresholds:**
-- <e.g. 500 IC × 5 goals × 26 checkpoints/Q = 65k rows/year — comfortable in one table>
-- <e.g. partitioning by quarter at >500k rows/year>
-
-<!-- For XS/S that doesn't change deployment: <!-- N/A: feature reuses existing deployment unit -->. -->
+- Capacity target (PRD §6): 100 users and 50 access roles — at most a few hundred session rows (≤ 7 days each) and a few hundred role-permission rows; the hot path is one indexed lookup on the session token hash plus small joins. Comfortable in one schema with no partitioning.
+- Revisit only if users exceed ~1,000 or the access check's p95 approaches 25 ms with Neon awake.
 
 ## 8. Crosscutting concepts
 
