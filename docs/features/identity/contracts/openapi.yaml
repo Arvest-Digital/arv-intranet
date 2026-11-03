@@ -1,0 +1,1139 @@
+# Derived by sdlc api-forge (scenario A) from:
+#   fields + constraints  ← data-model.md (every field traces to a column, or is marked computed / catalog)
+#   error responses       ← sad.md §6 alt-branches (sequence gaps listed in api-sync-report.md, D-1)
+#   endpoint list + shape ← PRD.md §4 user stories / §5 acceptance criteria
+# Repo conventions (.claude/rules/openapi.md → "arv-intranet deviations"): unversioned module paths,
+# camelCase keys, envelope {error: {_tag, code, message, details?}}, cursor pages {items, hasNext, hasPrev, nextCursor}.
+# Paths (decided 2026-11-03): the existing access list stays at /users; everything new is under /identity/.
+openapi: 3.1.0
+
+info:
+  title: Identity API
+  version: 0.1.0
+  description: |
+    The intranet has no sign-in, so every request is anonymous and nobody can be granted a
+    permission; resource scheduling's launch is blocked until a real permission source exists, and
+    every later feature needs the same foundation (PRD §1). This API is that foundation. Staff on
+    the company email domain sign in with their company-managed Google account, but only if an
+    admin has put them on the **access list**. Admins compose **access roles** from the
+    **permissions** each feature declares in code (ADR-0004) and give each user zero or more roles.
+    Every authenticated request re-resolves the session, the access-list entry and the granted
+    permissions with no cache (ADR-0005), so a removal or a permission change applies from the
+    next request.
+
+    **Callers.** Only `arv-web`, through the `API` service binding. Web owns the browser leg of
+    sign-in (Google redirect, `state`, PKCE verifier, `returnTo`, the `__Host-arv_session` cookie)
+    and forwards the session token as `Authorization: Bearer` on every call. Identity owns the
+    server leg: code exchange, claim checks, access list, first-admin rule, sessions (ADR-0007).
+
+    **Permissions.** Everything except `/identity/sign-in/*` and `/identity/me` requires
+    `identity:manage-access` (AC-08). Manage access grants nothing else (AC-19). A permission key
+    a role still lists but no module declares is **retired**: it grants nothing, is flagged on the
+    role, and cannot be newly added (AC-16).
+
+    **Last admin (AC-14).** Removing a user, changing a user's roles, changing a role's
+    permissions and deleting a role all run in one transaction that is rolled back with
+    `409 identity.last_admin_required` if no user would still hold manage access.
+
+servers:
+  - url: https://api.internal
+    description: Private api Worker, reached only through the `API` service binding from arv-web
+  - url: http://localhost:8787
+    description: Local (wrangler dev, auxiliary worker)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: sign-in
+    description: Sign-in (public server leg), the current user, sign-out (US-01, US-02, US-06, US-08, US-09)
+  - name: access-list
+    description: Users on the access list and their access roles (US-03, US-05, US-06)
+  - name: access-roles
+    description: Access roles, the pre-selected mark and the permission catalog (US-04, US-05, US-06, US-07)
+
+paths:
+  # ───────────────────────────── sign-in (Critical flow 1, Flow 11) ─────────────────────────────
+  /identity/sign-in/begin:
+    post:
+      tags: [sign-in]
+      summary: Build Google's sign-in address
+      description: |
+        Critical flow 1, first leg (ADR-0007). Public. Identity builds Google's authorization-code +
+        PKCE address from its own configuration (client id, `SIGN_IN_RETURN_URL`) and returns it
+        with the `state` and the PKCE verifier. Web keeps `state`, `codeVerifier` and its own
+        `returnTo` in a 10-minute HttpOnly cookie; identity stores nothing.
+      operationId: beginSignIn
+      security: []
+      responses:
+        "200":
+          description: Google's address, the anti-forgery state and the PKCE verifier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignInRedirect" }
+              examples:
+                redirect: { $ref: "#/components/examples/SignInRedirect" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /identity/sign-in/complete:
+    post:
+      tags: [sign-in]
+      summary: Complete sign-in with Google's one-time code
+      description: |
+        Critical flow 1, server leg (AC-01, AC-02, AC-03, AC-15). Public. Web has already checked
+        `state` against its cookie. Identity exchanges the code with the client secret, checks
+        issuer, audience, expiry, `email_verified`, `hd` = company domain and the email's domain,
+        then applies the access list. If no user holds manage access and the email is
+        `FIRST_ADMIN_EMAIL`, the user is upserted under Google's name and given the access role
+        «Admin» first (AC-15). On success a session (sign-in + 7 days, absolute) is stored by token
+        hash and the raw token is returned once; expired sessions are purged in the same step.
+        Refusals record and log nothing about the person (AC-02, AC-03).
+      operationId: completeSignIn
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SignInCompletion" }
+            examples:
+              completion: { $ref: "#/components/examples/SignInCompletion" }
+      responses:
+        "200":
+          description: Signed in. Web sets `__Host-arv_session` to `sessionToken`, expiring at `expiresAt`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+              examples:
+                session: { $ref: "#/components/examples/Session" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "403":
+          description: |
+            `identity.sign_in_refused` — not company-managed, email not verified, other domain, or a
+            code Google rejects (AC-02; generic on purpose). `identity.not_on_access_list` — a
+            verified company account that is not on the access list; `details.admins` names every
+            admin to ask, empty when there is none («ask your manager», AC-03).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                refused: { $ref: "#/components/examples/SignInRefused" }
+                notOnAccessList: { $ref: "#/components/examples/NotOnAccessList" }
+                notOnAccessListNoAdmin: { $ref: "#/components/examples/NotOnAccessListNoAdmin" }
+        "500":
+          description: Google's token endpoint failed or timed out (logged as `identity.google.unavailable`, no personal data), or a database failure
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                internal: { $ref: "#/components/examples/InternalError" }
+
+  /identity/me:
+    get:
+      tags: [sign-in]
+      summary: Who is signed in and what they may do
+      description: |
+        Web's root gate calls this once per navigation (ADR-0002) to decide whether to render, and
+        which navigation to show (e.g. «Access» only to holders of `identity:manage-access`). No
+        permission needed. `permissions` is granted keys ∩ the catalog, resolved now (Critical flow 2).
+      operationId: getMe
+      responses:
+        "200":
+          description: The current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+              examples:
+                admin: { $ref: "#/components/examples/Me" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /identity/sign-out:
+    post:
+      tags: [sign-in]
+      summary: End this session
+      description: |
+        Flow 11 (AC-20). Deletes the session whose token is the Bearer token; other sessions of the
+        user stay. A session that is already expired, revoked or unknown never reaches identity —
+        the host's `authenticate` refuses it with 401 (SAD §8 keeps sign-out off the public list);
+        web treats that 401 exactly like 204 and clears its cookie either way.
+      operationId: signOut
+      responses:
+        "204": { description: Signed out; the token is unusable from anywhere }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ───────────────────────────── access list (Flows 4, 5, 8; Critical flow 3) ─────────────────────────────
+  /users:
+    get:
+      tags: [access-list]
+      summary: List the access list
+      description: AC-08 — requires `identity:manage-access`. Ordered by id (creation order); each user with their access roles and combined permissions (US-05).
+      operationId: listUsers
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of users
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPage" }
+              examples:
+                page: { $ref: "#/components/examples/UserPage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [access-list]
+      summary: Add a user to the access list
+      description: |
+        Flow 4 (AC-04, AC-05, AC-06, AC-13). The address is lower-cased and trimmed before the
+        domain and uniqueness checks. `accessRoleIds` is what the admin left ticked — the form
+        starts from the role marked `isPreselected` (read from `listAccessRoles`). The user can
+        sign in from this moment.
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreate" }
+            examples:
+              joiner: { $ref: "#/components/examples/UserCreate" }
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              examples:
+                created: { $ref: "#/components/examples/User" }
+        "400":
+          description: "`platform.validation_failed` (not an email address, empty name) or `identity.email_not_company_domain` (AC-05)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                otherDomain: { $ref: "#/components/examples/EmailNotCompanyDomain" }
+                invalid: { $ref: "#/components/examples/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AccessRoleNotFound" }
+        "409":
+          description: "`identity.email_taken` — the normalised address is already on the access list (AC-06)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                taken: { $ref: "#/components/examples/EmailTaken" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /users/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    get:
+      tags: [access-list]
+      summary: Get a user with their roles and combined permissions
+      description: Flow 8, first step (AC-12). Requires `identity:manage-access`. `combinedPermissions` is the union of what the roles grant, declared keys only.
+      operationId: getUser
+      responses:
+        "200":
+          description: The user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              examples:
+                user: { $ref: "#/components/examples/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [access-list]
+      summary: Correct a user's name
+      description: |
+        Flow 5 (AC-21). Only the name changes; roles and sessions are untouched. The email address
+        cannot be changed — a body carrying `email` fails validation (a new address is removed and
+        added as a new user, PRD §3).
+      operationId: renameUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserChange" }
+            examples:
+              rename: { $ref: "#/components/examples/UserChange" }
+      responses:
+        "200":
+          description: The user with the new name and the same roles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              examples:
+                renamed: { $ref: "#/components/examples/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [access-list]
+      summary: Remove a user from the access list
+      description: |
+        Critical flow 3 (AC-07, AC-14). In one transaction: revoke every session of the user as
+        `access-removed`, delete the user (their role assignments go with them), then the last-admin
+        check. The user's next request gets `401 identity.access_removed`.
+      operationId: removeUser
+      responses:
+        "204": { description: Removed; every session of the user is revoked }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "409": { $ref: "#/components/responses/LastAdminRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /users/{userId}/access-roles:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
+    put:
+      tags: [access-list]
+      summary: Set the user's access roles
+      description: |
+        Flow 8 (AC-12, AC-14). Replaces the user's assignments with exactly `accessRoleIds` (empty
+        allowed) in one transaction with the last-admin check. Applies from the user's next request.
+      operationId: setUserAccessRoles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserAccessRolesChange" }
+            examples:
+              planner: { $ref: "#/components/examples/UserAccessRolesChange" }
+      responses:
+        "200":
+          description: The user with the roles held and their combined permissions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+              examples:
+                updated: { $ref: "#/components/examples/User" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: "`identity.user_not_found` or `identity.access_role_not_found` (a ticked role was deleted meanwhile)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                user: { $ref: "#/components/examples/UserNotFound" }
+                role: { $ref: "#/components/examples/AccessRoleNotFound" }
+        "409": { $ref: "#/components/responses/LastAdminRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  # ───────────────────────────── access roles (Flows 6, 7, 9, 10; Critical flow 3) ─────────────────────────────
+  /identity/access-roles:
+    get:
+      tags: [access-roles]
+      summary: List access roles
+      description: |
+        Flow 10 (AC-16) and the add-user form (Flow 4, AC-13). Requires `identity:manage-access`.
+        Each role carries its declared permissions in plain words, its retired permission keys
+        (non-empty = flagged), its holder count and whether it is pre-selected. Ordered by id.
+      operationId: listAccessRoles
+      parameters:
+        - $ref: "#/components/parameters/After"
+        - $ref: "#/components/parameters/Before"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: A page of access roles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessRolePage" }
+              examples:
+                page: { $ref: "#/components/examples/AccessRolePage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [access-roles]
+      summary: Create an access role
+      description: |
+        Flow 6 (AC-09, AC-10, AC-16). The name is stored trimmed, unique ignoring case and
+        surrounding spaces. Every key must be declared by a module now. Nobody holds the new role
+        until it is assigned; it is not pre-selected.
+      operationId: createAccessRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccessRoleInput" }
+            examples:
+              planner: { $ref: "#/components/examples/AccessRoleInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessRole" }
+              examples:
+                created: { $ref: "#/components/examples/AccessRole" }
+        "400":
+          description: "`platform.validation_failed` or `identity.retired_permission` — a key no module declares (AC-16)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                retired: { $ref: "#/components/examples/RetiredPermission" }
+                invalid: { $ref: "#/components/examples/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/DuplicateAccessRoleName" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /identity/access-roles/{accessRoleId}:
+    parameters:
+      - $ref: "#/components/parameters/AccessRoleId"
+    get:
+      tags: [access-roles]
+      summary: Get an access role (and what deleting it would affect)
+      description: Flow 7, first step (AC-11). `holderCount` and `isPreselected` are the delete warning.
+      operationId: getAccessRole
+      responses:
+        "200":
+          description: The access role
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessRole" }
+              examples:
+                role: { $ref: "#/components/examples/AccessRole" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AccessRoleNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    put:
+      tags: [access-roles]
+      summary: Rename an access role and set its permissions
+      description: |
+        Flow 6 rename/change, Flow 10 «remove the retired permission», Critical flow 3 «remove
+        manage access from a role» (AC-10, AC-11, AC-14, AC-16). Replaces the name and the full key
+        set. A key may stay in the set only if it is declared or the role already grants it
+        (a retired key can be kept or removed, never added). Removing `identity:manage-access` runs
+        the last-admin check. Holders get the new set from their next request.
+      operationId: updateAccessRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccessRoleInput" }
+            examples:
+              withoutEditAllocations: { $ref: "#/components/examples/AccessRoleChange" }
+      responses:
+        "200":
+          description: The role as saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccessRole" }
+              examples:
+                saved: { $ref: "#/components/examples/AccessRole" }
+        "400":
+          description: "`platform.validation_failed` or `identity.retired_permission` (adding a key no module declares)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                retired: { $ref: "#/components/examples/RetiredPermission" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AccessRoleNotFound" }
+        "409":
+          description: "`identity.duplicate_access_role_name` (AC-10) or `identity.last_admin_required` (AC-14)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                duplicate: { $ref: "#/components/examples/DuplicateAccessRoleName" }
+                lastAdmin: { $ref: "#/components/examples/LastAdminRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      tags: [access-roles]
+      summary: Delete an access role
+      description: |
+        Flow 7 (AC-11, AC-14). Web shows the warning from `getAccessRole` first and calls this only
+        after the admin confirms. Deletes the role, its grants and its assignments, and clears the
+        pre-selected mark with it, in one transaction with the last-admin check.
+      operationId: deleteAccessRole
+      responses:
+        "204": { description: Deleted; former holders lose what only this role granted from their next request }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AccessRoleNotFound" }
+        "409": { $ref: "#/components/responses/LastAdminRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /identity/preselected-access-role:
+    put:
+      tags: [access-roles]
+      summary: Mark or clear the pre-selected access role
+      description: |
+        Flow 9 (AC-13). At most one role is marked; `accessRoleId: null` clears the mark. Changes
+        no existing user's roles.
+      operationId: setPreselectedAccessRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreselectedAccessRole" }
+            examples:
+              mark: { $ref: "#/components/examples/PreselectedAccessRole" }
+              clear: { $ref: "#/components/examples/PreselectedAccessRoleCleared" }
+      responses:
+        "200":
+          description: The mark as saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreselectedAccessRole" }
+              examples:
+                marked: { $ref: "#/components/examples/PreselectedAccessRole" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/AccessRoleNotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /identity/permissions:
+    get:
+      tags: [access-roles]
+      summary: The permission catalog
+      description: |
+        Flow 6, first step (US-04, AC-09). Every permission any module declares now, with its
+        plain-language name, one-sentence description and owning feature (ADR-0004). Computed from
+        code at composition, not stored, so it is not a paged entity list. Requires `identity:manage-access`.
+      operationId: listPermissions
+      responses:
+        "200":
+          description: The catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PermissionCatalog" }
+              examples:
+                catalog: { $ref: "#/components/examples/PermissionCatalog" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        The session token from `completeSignIn`, forwarded by arv-web from the `__Host-arv_session`
+        cookie (ADR-0003, ADR-0007). Opaque, not a JWT; identity stores only its SHA-256 hash.
+
+  parameters:
+    After:
+      in: query
+      name: after
+      description: Cursor — id of the last item seen; the page starts after it
+      schema: { type: string, format: uuid }
+    Before:
+      in: query
+      name: before
+      description: Cursor — id of the first item seen; the page ends before it
+      schema: { type: string, format: uuid }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { type: string, format: uuid }
+    AccessRoleId:
+      in: path
+      name: accessRoleId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    ValidationError:
+      description: Request failed schema validation (`platform.validation_failed`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            invalid: { $ref: "#/components/examples/ValidationFailed" }
+    Unauthenticated:
+      description: |
+        `platform.unauthenticated` — no session, expired after 7 days, or signed out (redirect to
+        sign-in). `identity.access_removed` — the user was removed from the access list (AC-07);
+        web clears the cookie and says «you no longer have access».
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            unauthenticated: { $ref: "#/components/examples/Unauthenticated" }
+            accessRemoved: { $ref: "#/components/examples/AccessRemoved" }
+    Forbidden:
+      description: "`identity.missing_permission` — the actor lacks `identity:manage-access` (AC-08); nothing of the access list or roles is returned"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            forbidden: { $ref: "#/components/examples/ForbiddenManageAccess" }
+    UserNotFound:
+      description: "`identity.user_not_found` — the user is no longer on the access list"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            notFound: { $ref: "#/components/examples/UserNotFound" }
+    AccessRoleNotFound:
+      description: "`identity.access_role_not_found` — the access role (or one of the chosen ones) no longer exists"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            notFound: { $ref: "#/components/examples/AccessRoleNotFound" }
+    DuplicateAccessRoleName:
+      description: "`identity.duplicate_access_role_name` — another role has the same name ignoring case and surrounding spaces (AC-10)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            duplicate: { $ref: "#/components/examples/DuplicateAccessRoleName" }
+    LastAdminRequired:
+      description: "`identity.last_admin_required` — after this change no user would hold manage access; nothing changed (AC-14)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            lastAdmin: { $ref: "#/components/examples/LastAdminRequired" }
+    InternalError:
+      description: "`platform.internal_error` — a defect, e.g. the database is unreachable; never an anonymous fallback (fail closed, PRD §6)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            internal: { $ref: "#/components/examples/InternalError" }
+
+  schemas:
+    # ── Error envelope (repo ApiErrorBody + resource-scheduling ADR-0010 details + code) ──
+    ApiErrorBody:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error: { $ref: "#/components/schemas/ApiError" }
+    ApiError:
+      type: object
+      required: [_tag, code, message]
+      additionalProperties: false
+      properties:
+        _tag:
+          description: HTTP kind of failure
+          type: string
+          enum: [ValidationError, Unauthenticated, Forbidden, NotFound, Conflict, InternalError]
+        code:
+          description: Machine-readable reason, `module.error_name`
+          type: string
+          pattern: "^[a-z_]+\\.[a-z_]+$"
+          enum:
+            - platform.validation_failed
+            - platform.unauthenticated
+            - platform.not_found
+            - platform.internal_error
+            - identity.access_removed
+            - identity.missing_permission
+            - identity.sign_in_refused
+            - identity.not_on_access_list
+            - identity.email_not_company_domain
+            - identity.email_taken
+            - identity.user_not_found
+            - identity.access_role_not_found
+            - identity.duplicate_access_role_name
+            - identity.retired_permission
+            - identity.last_admin_required
+        message:
+          type: string
+          description: Human-readable, safe to show; never contains a session token, Google claim or another person's data beyond what AC-03 allows
+        details:
+          description: Structured context; its shape follows `code`
+          anyOf:
+            - $ref: "#/components/schemas/ValidationIssues"
+            - $ref: "#/components/schemas/RuleViolations"
+            - $ref: "#/components/schemas/MissingPermissions"
+            - $ref: "#/components/schemas/NotOnAccessListDetails"
+
+    ValidationIssues:
+      description: "`platform.validation_failed`"
+      type: object
+      required: [issues]
+      additionalProperties: false
+      properties:
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            additionalProperties: false
+            properties:
+              path: { type: string, description: "Dotted path of the offending field, e.g. `email`" }
+              message: { type: string }
+    RuleViolations:
+      description: "Domain rules the input breaks: `identity.email_not_company_domain` (AC-05), `identity.retired_permission` (AC-16)"
+      type: object
+      required: [rules]
+      additionalProperties: false
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [not_company_domain, retired_permission]
+        permissionKeys:
+          description: "`retired_permission` — the keys no module declares"
+          type: array
+          items: { $ref: "#/components/schemas/PermissionKey" }
+    MissingPermissions:
+      description: "`identity.missing_permission` (AC-08)"
+      type: object
+      required: [missingPermissions]
+      additionalProperties: false
+      properties:
+        missingPermissions:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PermissionKey" }
+    NotOnAccessListDetails:
+      description: "`identity.not_on_access_list` (AC-03). Empty `admins` = no admin exists, «ask your manager»."
+      type: object
+      required: [admins]
+      additionalProperties: false
+      properties:
+        admins:
+          type: array
+          items: { $ref: "#/components/schemas/AdminContact" }
+
+    # ── Shared value types ──
+    Email:
+      description: Company-domain address, stored lower-cased and trimmed (AC-06); the domain is checked by the server (AC-05)
+      type: string
+      format: email
+      maxLength: 254
+    UserName:
+      description: Trimmed, non-empty (AC-04, AC-21)
+      type: string
+      minLength: 1
+      maxLength: 100
+    AccessRoleName:
+      description: Displayed as entered (trimmed); unique ignoring case and surrounding spaces (AC-10)
+      type: string
+      minLength: 1
+      maxLength: 100
+    PermissionKey:
+      description: "`<module>:<kebab-action>` (SAD §8), e.g. `identity:manage-access`, `scheduling:edit-allocations`"
+      type: string
+      maxLength: 100
+      pattern: "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$"
+    PermissionDeclaration:
+      description: One declared permission (ADR-0004), in plain words for admins (US-04)
+      type: object
+      required: [key, name, description, feature]
+      additionalProperties: false
+      properties:
+        key: { $ref: "#/components/schemas/PermissionKey" }
+        name: { type: string, description: Plain-language name }
+        description: { type: string, description: One sentence }
+        feature: { type: string, description: The feature that declares it }
+    AccessRoleRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: "#/components/schemas/AccessRoleName" }
+    AdminContact:
+      type: object
+      required: [name, email]
+      additionalProperties: false
+      properties:
+        name: { $ref: "#/components/schemas/UserName" }
+        email: { $ref: "#/components/schemas/Email" }
+
+    # ── Sign-in ──
+    SignInRedirect:
+      type: object
+      required: [authorizationUrl, state, codeVerifier]
+      additionalProperties: false
+      properties:
+        authorizationUrl: { type: string, format: uri, description: "Google's authorization address with `state` and the S256 PKCE challenge" }
+        state: { type: string, minLength: 1, description: Anti-forgery value web checks on return }
+        codeVerifier: { $ref: "#/components/schemas/CodeVerifier" }
+    CodeVerifier:
+      description: PKCE verifier (RFC 7636)
+      type: string
+      minLength: 43
+      maxLength: 128
+      pattern: "^[A-Za-z0-9._~-]+$"
+    SignInCompletion:
+      type: object
+      required: [code, codeVerifier]
+      additionalProperties: false
+      properties:
+        code: { type: string, minLength: 1, description: "Google's one-time authorization code" }
+        codeVerifier: { $ref: "#/components/schemas/CodeVerifier" }
+    Session:
+      type: object
+      required: [sessionToken, expiresAt]
+      additionalProperties: false
+      properties:
+        sessionToken:
+          description: 256 random bits, base64url; returned once, stored only as its SHA-256 hash
+          type: string
+          pattern: "^[A-Za-z0-9_-]{43}$"
+        expiresAt: { type: string, format: date-time, description: Sign-in + 7 days, absolute (AC-20) }
+    Me:
+      type: object
+      required: [id, email, name, permissions]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: "#/components/schemas/Email" }
+        name: { $ref: "#/components/schemas/UserName" }
+        permissions:
+          description: Granted keys that a module declares now (Critical flow 2)
+          type: array
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/PermissionKey" }
+
+    # ── Access list ──
+    User:
+      type: object
+      required: [id, email, name, accessRoles, combinedPermissions, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: "#/components/schemas/Email" }
+        name: { $ref: "#/components/schemas/UserName" }
+        accessRoles:
+          type: array
+          items: { $ref: "#/components/schemas/AccessRoleRef" }
+        combinedPermissions:
+          description: Union of what the roles grant, declared keys only, in plain words (AC-12)
+          type: array
+          items: { $ref: "#/components/schemas/PermissionDeclaration" }
+        createdAt: { type: string, format: date-time }
+    UserCreate:
+      type: object
+      required: [email, name, accessRoleIds]
+      additionalProperties: false
+      properties:
+        email: { $ref: "#/components/schemas/Email" }
+        name: { $ref: "#/components/schemas/UserName" }
+        accessRoleIds: { $ref: "#/components/schemas/AccessRoleIds" }
+    UserChange:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { $ref: "#/components/schemas/UserName" }
+    UserAccessRolesChange:
+      type: object
+      required: [accessRoleIds]
+      additionalProperties: false
+      properties:
+        accessRoleIds: { $ref: "#/components/schemas/AccessRoleIds" }
+    AccessRoleIds:
+      description: The roles held, zero or more (a set)
+      type: array
+      uniqueItems: true
+      items: { type: string, format: uuid }
+    UserPage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+
+    # ── Access roles ──
+    AccessRole:
+      type: object
+      required: [id, name, isPreselected, holderCount, permissions, retiredPermissionKeys, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: "#/components/schemas/AccessRoleName" }
+        isPreselected: { type: boolean, description: Ticked by default when adding someone (AC-13) }
+        holderCount: { type: integer, minimum: 0, description: Users holding it (AC-11 delete warning) }
+        permissions:
+          description: Granted keys that a module declares, in plain words
+          type: array
+          items: { $ref: "#/components/schemas/PermissionDeclaration" }
+        retiredPermissionKeys:
+          description: Granted keys no module declares; non-empty = the role is flagged (AC-16). They grant nothing.
+          type: array
+          items: { $ref: "#/components/schemas/PermissionKey" }
+        createdAt: { type: string, format: date-time }
+    AccessRoleInput:
+      description: Create (Flow 6) or full replace (Flow 6 rename / Flow 10 / Critical flow 3)
+      type: object
+      required: [name, permissionKeys]
+      additionalProperties: false
+      properties:
+        name: { $ref: "#/components/schemas/AccessRoleName" }
+        permissionKeys:
+          type: array
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/PermissionKey" }
+    AccessRolePage:
+      type: object
+      required: [items, hasNext, hasPrev, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AccessRole" }
+        hasNext: { type: boolean }
+        hasPrev: { type: boolean }
+        nextCursor: { type: [string, "null"], format: uuid }
+    PreselectedAccessRole:
+      type: object
+      required: [accessRoleId]
+      additionalProperties: false
+      properties:
+        accessRoleId: { type: [string, "null"], format: uuid, description: The marked role, or null for none }
+    PermissionCatalog:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PermissionDeclaration" }
+
+  examples:
+    # ── errors ──
+    ValidationFailed:
+      value:
+        error:
+          _tag: ValidationError
+          code: platform.validation_failed
+          message: "email: Invalid email address"
+          details:
+            issues: [{ path: email, message: Invalid email address }]
+    Unauthenticated:
+      value:
+        error: { _tag: Unauthenticated, code: platform.unauthenticated, message: Sign in to continue }
+    AccessRemoved:
+      value:
+        error: { _tag: Unauthenticated, code: identity.access_removed, message: You no longer have access to the intranet }
+    ForbiddenManageAccess:
+      value:
+        error:
+          _tag: Forbidden
+          code: identity.missing_permission
+          message: You lack the permission to manage access
+          details: { missingPermissions: ["identity:manage-access"] }
+    SignInRefused:
+      value:
+        error: { _tag: Forbidden, code: identity.sign_in_refused, message: Only verified company Google accounts can sign in }
+    NotOnAccessList:
+      value:
+        error:
+          _tag: Forbidden
+          code: identity.not_on_access_list
+          message: You are not on the intranet's access list yet. Ask one of these admins to add you.
+          details:
+            admins:
+              - { name: Test User 1, email: user-1@example.test }
+              - { name: Test User 2, email: user-2@example.test }
+    NotOnAccessListNoAdmin:
+      value:
+        error:
+          _tag: Forbidden
+          code: identity.not_on_access_list
+          message: You are not on the intranet's access list yet. Ask your manager.
+          details: { admins: [] }
+    EmailNotCompanyDomain:
+      value:
+        error:
+          _tag: ValidationError
+          code: identity.email_not_company_domain
+          message: Only company-domain addresses can be added
+          details: { rules: [not_company_domain] }
+    EmailTaken:
+      value:
+        error: { _tag: Conflict, code: identity.email_taken, message: This address is already on the access list }
+    UserNotFound:
+      value:
+        error: { _tag: NotFound, code: identity.user_not_found, message: This user is no longer on the access list }
+    AccessRoleNotFound:
+      value:
+        error: { _tag: NotFound, code: identity.access_role_not_found, message: This access role no longer exists }
+    DuplicateAccessRoleName:
+      value:
+        error: { _tag: Conflict, code: identity.duplicate_access_role_name, message: An access role with that name already exists }
+    RetiredPermission:
+      value:
+        error:
+          _tag: ValidationError
+          code: identity.retired_permission
+          message: "A retired permission cannot be added: scheduling:edit-allocations"
+          details: { rules: [retired_permission], permissionKeys: ["scheduling:edit-allocations"] }
+    LastAdminRequired:
+      value:
+        error:
+          _tag: Conflict
+          code: identity.last_admin_required
+          message: The intranet must keep at least one admin. Appoint another admin first.
+    InternalError:
+      value:
+        error: { _tag: InternalError, code: platform.internal_error, message: Internal server error }
+
+    # ── sign-in ──
+    SignInRedirect:
+      value:
+        authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client.apps.example.test&response_type=code&scope=openid%20email%20profile&redirect_uri=https%3A%2F%2Fintranet.example.test%2Fsign-in%2Freturn&state=st_0000000000000000&code_challenge=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&code_challenge_method=S256&hd=example.test"
+        state: st_0000000000000000
+        codeVerifier: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    SignInCompletion:
+      value:
+        code: test-authorization-code
+        codeVerifier: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+    Session:
+      value:
+        sessionToken: tttttttttttttttttttttttttttttttttttttttttt0
+        expiresAt: "2026-11-10T09:00:00.000Z"
+    Me:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000101
+        email: user-1@example.test
+        name: Test User 1
+        permissions: ["identity:manage-access", "scheduling:view-whole-board"]
+
+    # ── access list ──
+    UserCreate:
+      value:
+        email: user-3@example.test
+        name: Test User 3
+        accessRoleIds: [01933b8e-0000-7000-8000-000000000203]
+    UserChange:
+      value:
+        name: Test User 3
+    UserAccessRolesChange:
+      value:
+        accessRoleIds: [01933b8e-0000-7000-8000-000000000203, 01933b8e-0000-7000-8000-000000000202]
+    User:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000103
+        email: user-3@example.test
+        name: Test User 3
+        accessRoles:
+          - { id: 01933b8e-0000-7000-8000-000000000202, name: Planner }
+          - { id: 01933b8e-0000-7000-8000-000000000203, name: Staff }
+        combinedPermissions:
+          - key: "scheduling:view-whole-board"
+            name: View the whole board
+            description: See every resource's allocations on the schedule board.
+            feature: Resource scheduling
+          - key: "scheduling:edit-allocations"
+            name: Edit allocations
+            description: Create, change and remove allocations on the schedule board.
+            feature: Resource scheduling
+        createdAt: "2026-11-03T09:00:00.000Z"
+    UserPage:
+      value:
+        items:
+          - id: 01933b8e-0000-7000-8000-000000000101
+            email: user-1@example.test
+            name: Test User 1
+            accessRoles: [{ id: 01933b8e-0000-7000-8000-000000000201, name: Admin }]
+            combinedPermissions:
+              - key: "identity:manage-access"
+                name: Manage access
+                description: Add and remove people on the access list, and compose and assign access roles.
+                feature: Identity
+            createdAt: "2026-11-01T09:00:00.000Z"
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+
+    # ── access roles ──
+    AccessRoleInput:
+      value:
+        name: Planner
+        permissionKeys: ["scheduling:view-whole-board", "scheduling:edit-allocations"]
+    AccessRoleChange:
+      value:
+        name: Planner
+        permissionKeys: ["scheduling:view-whole-board"]
+    AccessRole:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000202
+        name: Planner
+        isPreselected: false
+        holderCount: 5
+        permissions:
+          - key: "scheduling:view-whole-board"
+            name: View the whole board
+            description: See every resource's allocations on the schedule board.
+            feature: Resource scheduling
+        retiredPermissionKeys: ["scheduling:edit-allocations"]
+        createdAt: "2026-11-02T09:00:00.000Z"
+    AccessRolePage:
+      value:
+        items:
+          - id: 01933b8e-0000-7000-8000-000000000201
+            name: Admin
+            isPreselected: false
+            holderCount: 2
+            permissions:
+              - key: "identity:manage-access"
+                name: Manage access
+                description: Add and remove people on the access list, and compose and assign access roles.
+                feature: Identity
+            retiredPermissionKeys: []
+            createdAt: "2026-11-01T09:00:00.000Z"
+          - id: 01933b8e-0000-7000-8000-000000000203
+            name: Staff
+            isPreselected: true
+            holderCount: 25
+            permissions: []
+            retiredPermissionKeys: []
+            createdAt: "2026-11-01T09:05:00.000Z"
+        hasNext: false
+        hasPrev: false
+        nextCursor: null
+    PreselectedAccessRole:
+      value:
+        accessRoleId: 01933b8e-0000-7000-8000-000000000203
+    PreselectedAccessRoleCleared:
+      value:
+        accessRoleId: null
+    PermissionCatalog:
+      value:
+        items:
+          - key: "identity:manage-access"
+            name: Manage access
+            description: Add and remove people on the access list, and compose and assign access roles.
+            feature: Identity
+          - key: "scheduling:view-whole-board"
+            name: View the whole board
+            description: See every resource's allocations on the schedule board.
+            feature: Resource scheduling
