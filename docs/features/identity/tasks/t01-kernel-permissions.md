@@ -7,7 +7,7 @@ acs: ["AC-17", "AC-18", "AC-19"]
 files_hint: ["packages/kernel/src/actor.ts", "packages/kernel/src/permission.ts", "packages/kernel/src/index.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T01 — Add Permission, requirePermission and the permission set on Actor.User in the kernel

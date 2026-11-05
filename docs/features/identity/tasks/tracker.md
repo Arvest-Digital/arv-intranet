@@ -5,7 +5,7 @@
 
 | # | Task | Layer | Owner | Estimate | Blocked by | Status |
 |---|---|---|---|---|---|---|
-| T01 | [Add Permission, requirePermission and the permission set on Actor.User in the kernel](./t01-kernel-permissions.md) | domain | TBD (backend lead) | M | — | todo |
+| T01 | [Add Permission, requirePermission and the permission set on Actor.User in the kernel](./t01-kernel-permissions.md) | domain | TBD (backend lead) | M | — | done |
 | T02 | [Add Unauthorized and Forbidden contract errors and map the kernel permission errors once in platform](./t02-contract-errors.md) | ports | TBD (backend lead) | M | T01 | todo |
 | T03 | [Implement UnitOfWorkLive with a CurrentTx FiberRef read by query()](./t03-unit-of-work-live.md) | infra | TBD (backend lead) | M | — | todo |
 | T04 | [Promote the staged identity migrations: sessions, access roles, grants and assignments](./t04-migration-identity-tables.md) | migration | TBD (backend lead) | M | — | todo |
