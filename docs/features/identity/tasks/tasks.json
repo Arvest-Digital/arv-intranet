@@ -315,7 +315,7 @@
       "layer": "ui",
       "deps": ["T17", "T22"],
       "acs": ["AC-01", "AC-02", "AC-03", "AC-15", "AC-20"],
-      "dod": "Route tests with `app/test/fake-api.ts`: state mismatch refuses; each completion outcome renders its screen; a successful return sets the cookie and redirects to the given path (AC-01). Route test: sign-out clears the cookie and calls the api (AC-20).",
+      "dod": "Route test: GET sign-in renders the button and does not call api begin or redirect to Google; POST begins and redirects to Google (AC-20). Route tests with `app/test/fake-api.ts`: state mismatch refuses; each completion outcome renders its screen; a successful return sets the cookie and redirects to the given path (AC-01). Route test: sign-out clears the cookie and calls the api (AC-20).",
       "files_hint": [
         "apps/web/app/features/identity/routes/sign-in.tsx",
         "apps/web/app/features/identity/routes/sign-in-return.tsx",
@@ -330,7 +330,7 @@
       "layer": "ui",
       "deps": ["T17", "T20", "T22"],
       "acs": ["AC-01", "AC-03", "AC-07", "AC-08", "AC-20"],
-      "dod": "Route tests: anonymous visit to `/board` redirects to sign-in with `returnTo=/board`; access-removed clears the cookie and shows the message; a non-admin sees no «Access» link.",
+      "dod": "Route tests: anonymous visit to `/board` redirects to the sign-in page with `returnTo=/board` (not to Google); access-removed clears the cookie and shows the message; a non-admin sees no «Access» link.",
       "files_hint": [
         "apps/web/app/root.tsx",
         "apps/web/app/routes/home.tsx",

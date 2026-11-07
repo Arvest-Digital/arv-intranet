@@ -153,7 +153,7 @@ C4Context
 
 **Top strategic choices (the seeds for ADRs):**
 
-1. **UI-architecture (web-frontend): server-rendered, one sign-in gate at the web root** ([ADR-0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md)). Screens are React Router loaders and actions that reuse the existing shadcn components in `apps/web/app/shared/ui` (Button, Input, Select, Table, Dialog, DropdownMenu) and the theme tokens in `app.css`; no new styling system. The session cookie is HttpOnly, Secure, `SameSite=Lax`, set and read only by the web server. A gate on the root route asks the api once per navigation who the user is and what they may do (for navigation such as showing «Access» only to admins); without a valid session it redirects to sign-in, carrying the page first asked for as a same-origin relative path (AC-01). Only the sign-in, sign-in-return, sign-out and «not set up yet» routes sit outside the gate. The api still refuses every unauthenticated request on its own (§8) — the web gate is for UX and so that no page shell renders anonymously (AC-03, AC-20). Serves QG-1.
+1. **UI-architecture (web-frontend): server-rendered, one sign-in gate at the web root** ([ADR-0002](./adr/0002-gate-every-web-page-at-the-root-with-a-server-only-session-cookie.md)). Screens are React Router loaders and actions that reuse the existing shadcn components in `apps/web/app/shared/ui` (Button, Input, Select, Table, Dialog, DropdownMenu) and the theme tokens in `app.css`; no new styling system. The session cookie is HttpOnly, Secure, `SameSite=Lax`, set and read only by the web server. A gate on the root route asks the api once per navigation who the user is and what they may do (for navigation such as showing «Access» only to admins); without a valid session it redirects to the sign-in page, carrying the page first asked for as a same-origin relative path (AC-01). The sign-in page only shows a «Sign in with Google» button; the Google redirect starts when the person chooses it, never on page load — otherwise, after sign-out (still signed in to Google, consent screen Internal) Google would hand the person straight back and sign them in again, and sign-out would not hold (AC-20). Only the sign-in, sign-in-return, sign-out and «not set up yet» routes sit outside the gate. The api still refuses every unauthenticated request on its own (§8) — the web gate is for UX and so that no page shell renders anonymously (AC-03, AC-20). Serves QG-1.
 2. **Authentication: Google OpenID Connect with server-side sessions owned by identity** ([ADR-0003](./adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md); resolves PRD §8 Q3 and the open «authentication source» question in repo ADR 0001). Sign-in uses the authorization-code flow with PKCE; the ID token is accepted only when its issuer, audience and expiry are valid, `email_verified` is true, the `hd` (hosted-domain) claim equals the configured company domain, and the email is on that domain (AC-02). A session is a random 256-bit token in the cookie; Postgres keeps only its SHA-256 hash, the user, and an absolute expiry of sign-in + 7 days. Sign-out ends that one session (AC-20); removal from the access list ends all of the user's sessions (AC-07). Because sessions are rows, the session lookup joins the same query as the access-list and permission lookup — no extra round-trip (QG-2).
 3. **Permissions are declared in code by the module that checks them; the api host collects them into one catalog** ([ADR-0004](./adr/0004-declare-permissions-in-module-code-and-collect-them-in-the-host.md)). Each module exports its declarations — key (e.g. `scheduling:edit-allocations`, `identity:manage-access`), plain-language name, one-sentence description, feature — from its root; `apps/api/src/composition.ts`, the only place that knows every module, builds identity's `PermissionCatalog` port from them. Identity stores grants by key and never imports a feature module. A key an access role still grants but no module declares is a **retired permission**: it grants nothing, is flagged to admins, and cannot be added to a role; if a module declares it again under the same key, roles that still list it grant it again (AC-16).
 4. **One shared check over a per-request, uncached actor** ([ADR-0005](./adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md); implements resource-scheduling's [ADR-0004](../resource-scheduling/adr/0004-resolve-permissions-into-actor-per-request.md)). On every authenticated request `IdentityApi.resolveActor` runs one query — session → user on the access list → access roles → granted keys — intersects the keys with the catalog, and the host puts the result on `Actor.User { id, permissions }` in `@arv/kernel`. Features call one `requirePermission(permission)` from `@arv/kernel`, which fails with a shared `PermissionDenied` (an anonymous actor fails with `Unauthenticated`); `@arv/platform` maps them once to new shared contract errors `Forbidden` (403) and `Unauthorized` (401). Nothing is cached anywhere — not in the isolate, not in Hyperdrive — so a revocation applies from the next request (QG-1, PRD §6 Revocation). Manage access grants nothing beyond itself (AC-19); a permission no module declares is never in the set (AC-18).
@@ -210,7 +210,7 @@ apps/api/src/
 └── env.ts                 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (secrets); COMPANY_EMAIL_DOMAIN,
                            FIRST_ADMIN_EMAIL, SIGN_IN_RETURN_URL (vars)
 apps/web/app/
-├── root.tsx               root gate (ADR-0002): session → me → redirect to sign-in with returnTo
+├── root.tsx               root gate (ADR-0002): session → me → redirect to the sign-in page with returnTo
 ├── shared/lib/            session.server.ts (session + sign-in-state cookies); api.server.ts forwards Bearer
 └── features/identity/     routes: sign-in, sign-in-return, sign-out, not-set-up, access/users, access/roles;
                            components from shared/ui; identity.server.ts (hc<IdentityRoutes>)
@@ -271,6 +271,9 @@ sequenceDiagram
     participant I as identity module
     participant DB as Postgres
     P->>W: Opens an intranet page without a session
+    W-->>P: Redirect to the sign-in page with returnTo
+    W-->>P: Sign-in page with a «Sign in with Google» button, no redirect to Google yet
+    P->>W: Chooses to sign in with Google, returnTo carried with the choice
     W->>H: Begin sign-in, public route
     H->>I: Build the Google sign-in address
     I-->>W: Address with state and PKCE challenge, plus the verifier
@@ -325,7 +328,7 @@ sequenceDiagram
     else No session, expired after 7 days, or signed out
         I-->>H: Unauthenticated
         H-->>W: Unauthorized 401
-        W-->>U: Redirect to sign-in with returnTo
+        W-->>U: Redirect to the sign-in page with returnTo
     else Session revoked because the user was removed
         I-->>H: Unauthenticated, access removed
         H-->>W: Unauthorized 401 with reason
@@ -666,7 +669,7 @@ sequenceDiagram
         S-->>UI: Signed out
     end
     UI->>UI: Clear the session cookie
-    UI-->>U: Show the sign-in page, still signed in to Google
+    UI-->>U: Show the sign-in page, still signed in to Google; nothing starts sign-in until the user chooses it
     Note over U,UI: Postcondition: the token is unusable from anywhere and other devices stay signed in
 ```
 
