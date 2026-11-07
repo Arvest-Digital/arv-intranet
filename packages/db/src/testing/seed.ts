@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { Db } from '../database';
+import type { Executor } from '../database';
 
 // Seeds identity.users with raw SQL: @arv/db sits below the modules and can't import their tables.
 
@@ -17,7 +17,7 @@ export function makeUser(overrides: Partial<UserSeed> = {}): UserSeed {
   };
 }
 
-export async function seedUsers(db: Db, rows: ReadonlyArray<UserSeed>) {
+export async function seedUsers(db: Executor, rows: ReadonlyArray<UserSeed>) {
   if (rows.length === 0) return [];
   const values = sql.join(
     rows.map(

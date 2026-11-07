@@ -46,7 +46,7 @@ The api has no public URL; only web can call it. Today it has one entry point, `
 - **Organise by business capability, not by technical layer.** Code that changes together lives in `modules/<name>`.
 - **Dependencies point inward.** Domain ← application ← adapters. The domain knows nothing about Hono, Drizzle or Postgres.
 - **Boundaries are enforced, not just agreed.** Each module is a pnpm package; undeclared imports don't resolve. Biome forbids imports that cross a layer, and `pnpm check:modules` checks the module graph below.
-- **The package graph is acyclic.** `apps → modules → platform → db · kernel · contracts`. Nothing imports upward, and nothing imports `apps/*`.
+- **The package graph is acyclic.** `apps → modules → platform → db · kernel · contracts` (`db → kernel` too: it implements the kernel's `UnitOfWork` port). Nothing imports upward, and nothing imports `apps/*`.
 - **One deployable, many seams.** Module facades are plain Effect services, so a module can later move into its own Worker behind a service binding without changing its callers.
 - **Effect is the dependency-injection mechanism.** Ports are `Context.Tag`s, adapters are `Layer`s, and use cases are plain Effect functions whose requirements show up in their types.
 
@@ -69,7 +69,7 @@ arv-intranet/
 │   ├── kernel/                    @arv/kernel: shared branded IDs, Actor + CurrentActor,
 │   │                                DomainEvent, UnitOfWork + DomainEvents ports. effect only.
 │   ├── contracts/                 @arv/contracts: wire DTOs. /shared, /identity, … effect only.
-│   ├── db/                        @arv/db: Database, query, DbError, /testing, /migrate. No tables.
+│   ├── db/                        @arv/db: Database, query, DbError, UnitOfWorkLive, /testing, /migrate. No tables.
 │   ├── platform/                  @arv/platform: /http (runEffect, validate, toHttpError)
 │   ├── migrations/                @arv/migrations: leaf. drizzle.config, drizzle/ SQL, db:* scripts
 │   └── tsconfig/
@@ -90,6 +90,7 @@ flowchart TB
   mods --> db
   platform --> contracts
   platform --> kernel
+  db --> kernel
   migrations["@arv/migrations · leaf"] -. "reads schema.ts files by path" .-> mods
   db["@arv/db"]
   kernel["@arv/kernel"]
@@ -209,7 +210,7 @@ create: (input) =>
 | Facade command | Rare: the caller must know the outcome right away | Joins the caller's `UnitOfWork` while both share a database. Becomes an event + compensation if either moves out. | `IdentityApi.provisionUser(…)` |
 | Domain event via outbox | Side effects the publisher shouldn't know about | Eventual, at-least-once | `RequestApproved` → notifications, audit |
 
-**Status.** The `UnitOfWork` and `DomainEvents` ports exist in `@arv/kernel`. Their implementations are added with the first real asynchronous use case: `UnitOfWorkLive` (runs `db.transaction` and puts the transaction in a `CurrentTx` FiberRef that `query()` reads), `DomainEventsLive` (inserts into `platform.outbox`), a Cron relay that forwards unsent rows to a Queue, and Queue consumers that dedupe through `platform.inbox`. Repositories need no changes then, because they already go through `query()`.
+**Status.** The `UnitOfWork` and `DomainEvents` ports exist in `@arv/kernel`. `UnitOfWorkLive` is in `@arv/db` and provided by the host's app Layer: `transactional(effect)` runs one `db.transaction` and puts the transaction in the `CurrentTx` FiberRef that `query()` reads, so every repository call inside it (in any module, forked fibers included) joins it with no change to the repository. Success commits; a failure, defect or interruption rolls back and is re-raised unchanged; a nested `transactional` joins the outer transaction (no savepoints). A failed COMMIT is a defect. The rest is added with the first real asynchronous use case: `DomainEventsLive` (inserts into `platform.outbox`), a Cron relay that forwards unsent rows to a Queue, and Queue consumers that dedupe through `platform.inbox`. Repositories need no changes then, because they already go through `query()`.
 
 ```mermaid
 sequenceDiagram

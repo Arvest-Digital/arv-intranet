@@ -192,7 +192,7 @@ Keep this package free of DB, Hono and React imports, and of domain logic. It ma
 
 ### packages/kernel and packages/platform
 
-- **`@arv/kernel`** (depends on `effect` only): branded IDs shared across modules (`UserId`), `Actor` and the `CurrentActor` tag, the `DomainEvent` base schema, and the `UnitOfWork` and `DomainEvents` ports. No implementations.
+- **`@arv/kernel`** (depends on `effect` only): branded IDs shared across modules (`UserId`), `Actor` and the `CurrentActor` tag, the `DomainEvent` base schema, and the `UnitOfWork` and `DomainEvents` ports. No implementations (`UnitOfWorkLive` is in `@arv/db`).
 - **`@arv/platform/http`**: `runEffect` (runs a route's Effect with the app Layer from the Hono context and maps the result to a response), `validate` (Hono validator backed by an Effect Schema), `toHttpError`, `errorBody`, and the `HttpEnv` type module routers use. It never imports a module or `apps/*`.
 
 ### packages/db and packages/migrations: database
@@ -201,6 +201,7 @@ Keep this package free of DB, Hono and React imports, and of domain logic. It ma
 
 - `Database`: an Effect Tag providing the Drizzle instance. `DatabaseLive(connectionString)`: a Layer that creates a lazy `pg.Pool`.
 - `query((db) => promise)`: runs a Drizzle query on the request's `Database` and turns failures into `DbError`. Repositories turn `DbError` into a defect with `Effect.orDie`.
+- `UnitOfWorkLive`: implements the kernel's `UnitOfWork`. `transactional(effect)` runs the effect in one `db.transaction`; `query()` picks the transaction up from the `CurrentTx` FiberRef, so repositories join it unchanged. Nested calls join the outer transaction.
 - `@arv/db/migrate`: applies migrations (test setup).
 - `@arv/db/testing`: helpers shared by integration and e2e tests:
   - `connectDb`, `resetDatabase`: open a connection; truncate every application table (tables are discovered from `information_schema`, so there's nothing to register).

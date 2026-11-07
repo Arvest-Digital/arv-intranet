@@ -231,6 +231,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@arv/kernel':
+        specifier: workspace:*
+        version: link:../kernel
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)

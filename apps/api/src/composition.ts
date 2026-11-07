@@ -1,4 +1,4 @@
-import { DatabaseLive } from '@arv/db';
+import { DatabaseLive, UnitOfWorkLive } from '@arv/db';
 import { IdentityModuleLive } from '@arv/identity/layer';
 import { type Actor, CurrentActor } from '@arv/kernel';
 import { Layer } from 'effect';
@@ -15,7 +15,8 @@ const ModulesLive = Layer.empty.pipe(
 /** Built per request: Workers bindings and connections are request-scoped. */
 export const makeAppLayer = (env: Bindings, actor: Actor) =>
   ModulesLive.pipe(
-    Layer.provideMerge(Layer.succeed(CurrentActor, actor)),
+    Layer.provideMerge(Layer.merge(UnitOfWorkLive, Layer.succeed(CurrentActor, actor))),
+    // One Database for the request: modules and UnitOfWork share it.
     Layer.provide(DatabaseLive(env.HYPERDRIVE.connectionString)),
   );
 
