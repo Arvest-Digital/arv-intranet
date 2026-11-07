@@ -29,10 +29,10 @@ Files: `packages/kernel/src/actor.ts`, `packages/kernel/src/permission.ts`, `pac
 
 ## Definition of Done
 
-- [ ] Unit tests: anonymous actor → `Unauthenticated`; user without the key → `PermissionDenied` naming it; user with it → success.
-- [ ] Unit test (AC-19): a user holding only `identity:manage-access` is denied `scheduling:edit-allocations`.
-- [ ] Unit test (AC-18): a key nobody holds is refused for every actor, an admin included.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Unit tests: anonymous actor → `Unauthenticated`; user without the key → `PermissionDenied` naming it; user with it → success.
+- [x] Unit test (AC-19): a user holding only `identity:manage-access` is denied `scheduling:edit-allocations`.
+- [x] Unit test (AC-18): a key nobody holds is refused for every actor, an admin included.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

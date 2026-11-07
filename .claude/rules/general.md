@@ -10,7 +10,7 @@ Read `ARCHITECTURE.md` before any structural change (new module, package, layer,
 
 ## Boundaries
 
-- Package direction: `apps → modules → @arv/platform → @arv/db · @arv/kernel · @arv/contracts`. Never import upward. No package imports from `apps/*`.
+- Package direction: `apps → modules → @arv/platform → @arv/db · @arv/kernel · @arv/contracts`, plus `@arv/db → @arv/kernel` (`UnitOfWorkLive` implements the kernel port). Never import upward. No package imports from `apps/*`.
 - Modules talk to each other only through the other module's facade (root export of `@arv/<module>`). Never import another module's internals, tables, repositories or `./layer`.
 - A new edge between modules must be added to the `module-graph` block in `ARCHITECTURE.md` (checked by `pnpm check:modules`). Ask before adding one; never add a cycle.
 - Web must never import `@arv/db`, `@arv/kernel`, `@arv/platform` or any module package; it uses `@arv/contracts/*` and `import type` from `@arv/api`.
