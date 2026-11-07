@@ -6,11 +6,7 @@
       "title": "Add Permission, requirePermission and the permission set on Actor.User in the kernel",
       "layer": "domain",
       "deps": [],
-      "acs": [
-        "AC-17",
-        "AC-18",
-        "AC-19"
-      ],
+      "acs": ["AC-17", "AC-18", "AC-19"],
       "dod": "Unit tests: anonymous actor → `Unauthenticated`; user without the key → `PermissionDenied` naming it; user with it → success. Unit test (AC-19): a user holding only `identity:manage-access` is denied `scheduling:edit-allocations`. Unit test (AC-18): a key nobody holds is refused for every actor, an admin included.",
       "files_hint": [
         "packages/kernel/src/actor.ts",
@@ -22,16 +18,8 @@
       "id": "T02",
       "title": "Add Unauthorized and Forbidden contract errors and map the kernel permission errors once in platform",
       "layer": "ports",
-      "deps": [
-        "T01"
-      ],
-      "acs": [
-        "AC-08",
-        "AC-17",
-        "AC-18",
-        "AC-19",
-        "AC-20"
-      ],
+      "deps": ["T01"],
+      "acs": ["AC-08", "AC-17", "AC-18", "AC-19", "AC-20"],
       "dod": "Unit tests: each new error maps to its status and to a body that decodes against the OpenAPI `ApiError` example. Unit test: an effect failing with `PermissionDenied` run through `runEffect` answers 403; with `Unauthenticated { reason: 'access-removed' }` answers 401 with that reason. Existing `NotFound` / `Conflict` behaviour unchanged (identity tests green).",
       "files_hint": [
         "packages/contracts/src/shared/errors.ts",
@@ -45,9 +33,7 @@
       "title": "Implement UnitOfWorkLive with a CurrentTx FiberRef read by query()",
       "layer": "infra",
       "deps": [],
-      "acs": [
-        "AC-14"
-      ],
+      "acs": ["AC-14"],
       "dod": "Integration test (real `arv_test`): two writes then a failure inside `transactional` leave no rows; without the failure both rows exist. Integration test: a nested `transactional` joins the outer one.",
       "files_hint": [
         "packages/db/src/unit-of-work.ts",
@@ -61,13 +47,7 @@
       "title": "Promote the staged identity migrations: sessions, access roles, grants and assignments",
       "layer": "migration",
       "deps": [],
-      "acs": [
-        "AC-06",
-        "AC-07",
-        "AC-10",
-        "AC-13",
-        "AC-20"
-      ],
+      "acs": ["AC-06", "AC-07", "AC-10", "AC-13", "AC-20"],
       "dod": "Staged migrations promoted: the generated SQL matches the staged `.up.sql` (names, FK actions, partial and expression indexes); `pnpm db:migrate` applies on a clean DB and `pnpm db:status` is clean. The staged `.down.sql` files reverse the generated migration on a dev DB (manual check, noted in the PR). Integration test: «Planner» then «planner » violates the name-key unique; two pre-selected roles violate the partial unique; deleting a user nulls `sessions.user_id` and cascades `user_access_roles`.",
       "files_hint": [
         "docs/features/identity/migrations/20261103120000_create_sessions.up.sql",
@@ -84,13 +64,8 @@
       "id": "T05",
       "title": "Add identity test fixtures to @arv/db/testing",
       "layer": "tests",
-      "deps": [
-        "T04"
-      ],
-      "acs": [
-        "AC-14",
-        "AC-20"
-      ],
+      "deps": ["T04"],
+      "acs": ["AC-14", "AC-20"],
       "dod": "Integration test: `seedAdmin` + `seedSessions` produce rows the T09 resolve query can read (smoke-tested with raw SQL here). PII guard: no real domain or name in any default.",
       "files_hint": [
         "packages/db/src/testing/seed.ts",
@@ -102,16 +77,8 @@
       "id": "T06",
       "title": "Model company email, user name, access-role name key and retired permissions in the identity domain",
       "layer": "domain",
-      "deps": [
-        "T01"
-      ],
-      "acs": [
-        "AC-05",
-        "AC-06",
-        "AC-10",
-        "AC-16",
-        "AC-21"
-      ],
+      "deps": ["T01"],
+      "acs": ["AC-05", "AC-06", "AC-10", "AC-16", "AC-21"],
       "dod": "Unit tests: «Anna@» and « anna@ » normalise to the same email (AC-06); an other-domain or invalid address → `NotCompanyAddress` (AC-05). Unit tests: «Planner» and «planner » share a name key (AC-10); a role's retired keys are exactly those not in the declared set (AC-16).",
       "files_hint": [
         "modules/identity/src/domain/user.ts",
@@ -125,15 +92,8 @@
       "id": "T07",
       "title": "Model sign-in eligibility, sessions, the first-admin rule and the last-admin rule",
       "layer": "domain",
-      "deps": [
-        "T01"
-      ],
-      "acs": [
-        "AC-02",
-        "AC-14",
-        "AC-15",
-        "AC-20"
-      ],
+      "deps": ["T01"],
+      "acs": ["AC-02", "AC-14", "AC-15", "AC-20"],
       "dod": "Unit tests, one per refused claim (AC-02): unverified, missing `hd`, other `hd`, other email domain, missing email. Unit tests: expiry exactly at 7 days is refused; a revoked session reports `access-removed` (AC-07, AC-20); token hash is deterministic and the token is 32 random bytes. Unit tests: the first-admin rule applies only while no admin exists (AC-15); the last-admin rule refuses at 0 and allows at ≥1 (AC-14).",
       "files_hint": [
         "modules/identity/src/domain/sign-in-eligibility.ts",
@@ -148,16 +108,8 @@
       "id": "T08",
       "title": "Declare identity:manage-access and define identity's application ports with in-memory fakes",
       "layer": "app",
-      "deps": [
-        "T06",
-        "T07"
-      ],
-      "acs": [
-        "AC-08",
-        "AC-16",
-        "AC-18",
-        "AC-19"
-      ],
+      "deps": ["T06", "T07"],
+      "acs": ["AC-08", "AC-16", "AC-18", "AC-19"],
       "dod": "Unit test: every declaration's key matches `<module>:<kebab-action>`, and `identity:manage-access` is exported from `@arv/identity`. Unit test: the fake `PermissionCatalog` reports a key as undeclared once it's removed (AC-16, AC-18).",
       "files_hint": [
         "modules/identity/src/permissions.ts",
@@ -170,19 +122,8 @@
       "id": "T09",
       "title": "Implement the Drizzle user and session repositories with the one-query actor lookup",
       "layer": "infra",
-      "deps": [
-        "T03",
-        "T04",
-        "T05",
-        "T08"
-      ],
-      "acs": [
-        "AC-06",
-        "AC-07",
-        "AC-12",
-        "AC-20",
-        "AC-21"
-      ],
+      "deps": ["T03", "T04", "T05", "T08"],
+      "acs": ["AC-06", "AC-07", "AC-12", "AC-20", "AC-21"],
       "dod": "Integration tests: `resolve` returns the union of keys across several roles (AC-12); expired → `expired`; revoked → `revoked`; unknown hash → `unknown`. Integration test: «Anna@» after «anna@» → `EmailTaken` (AC-06); rename keeps assignments (AC-21); delete inside a transaction with `revokeAllForUser` leaves revoked rows with `user_id` NULL (AC-07). Integration test: `deleteByHash` removes only that session (AC-20).",
       "files_hint": [
         "modules/identity/src/infrastructure/drizzle-user-repository.ts",
@@ -194,21 +135,8 @@
       "id": "T10",
       "title": "Implement the Drizzle access-role repository with the manage-access holder queries",
       "layer": "infra",
-      "deps": [
-        "T03",
-        "T04",
-        "T05",
-        "T08"
-      ],
-      "acs": [
-        "AC-03",
-        "AC-09",
-        "AC-10",
-        "AC-11",
-        "AC-13",
-        "AC-14",
-        "AC-15"
-      ],
+      "deps": ["T03", "T04", "T05", "T08"],
+      "acs": ["AC-03", "AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-15"],
       "dod": "Integration tests: «planner » after «Planner» → `AccessRoleNameTaken` (AC-10); setting a second pre-selected role clears the first (AC-13). Integration tests: holder count after deleting a role is 0 (AC-11); `countManageAccessHolders` counts distinct users across two admin roles (AC-14); `listAdmins` returns name and email only (AC-03). Integration test: `ensureAdminRole` reuses an existing «admin» role and adds manage access (AC-15).",
       "files_hint": [
         "modules/identity/src/infrastructure/drizzle-access-role-repository.ts",
@@ -219,13 +147,8 @@
       "id": "T11",
       "title": "Implement the GoogleSignIn adapter on a pinned OIDC library",
       "layer": "infra",
-      "deps": [
-        "T08"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-02"
-      ],
+      "deps": ["T08"],
+      "acs": ["AC-01", "AC-02"],
       "dod": "Unit tests with a stubbed `fetch` and a locally signed JWT: wrong issuer, wrong audience, expired token and bad signature each → refused; a valid token → claims. Unit test: a token-endpoint failure logs only `identity.google.unavailable`, with no email, name or code.",
       "files_hint": [
         "modules/identity/src/infrastructure/google-sign-in.ts",
@@ -238,18 +161,8 @@
       "id": "T12",
       "title": "Implement resolveActor and sign-out, and wire identity's adapters in the module layer",
       "layer": "app",
-      "deps": [
-        "T09",
-        "T10",
-        "T11"
-      ],
-      "acs": [
-        "AC-07",
-        "AC-17",
-        "AC-18",
-        "AC-19",
-        "AC-20"
-      ],
+      "deps": ["T09", "T10", "T11"],
+      "acs": ["AC-07", "AC-17", "AC-18", "AC-19", "AC-20"],
       "dod": "Unit tests (fakes): a retired key held by a role is not in the actor's set (AC-16/AC-18); after a fake role change the next resolve reflects it (AC-17); manage access alone yields exactly `{identity:manage-access}` (AC-19). Unit test: a failing `SessionRepository` produces a defect, not `Anonymous` (QG-1 fail closed). Unit test: sign-out removes one session and leaves the user's other session valid (AC-20).",
       "files_hint": [
         "modules/identity/src/application/resolve-actor.ts",
@@ -263,17 +176,8 @@
       "id": "T13",
       "title": "Implement begin and complete sign-in, with the first-admin bootstrap and the not-set-up answer",
       "layer": "app",
-      "deps": [
-        "T09",
-        "T10",
-        "T11"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-02",
-        "AC-03",
-        "AC-15"
-      ],
+      "deps": ["T09", "T10", "T11"],
+      "acs": ["AC-01", "AC-02", "AC-03", "AC-15"],
       "dod": "Unit tests (fakes): a listed user gets a session expiring in 7 days (AC-01); each refused claim stores and logs nothing (AC-02); an unlisted person gets `NotSetUp` with the admins' names and emails, or an empty list (AC-03). Unit tests (AC-15): the configured address becomes admin only while no admin exists, keeps existing roles, and reuses an existing «Admin» role. Once an admin exists, the address gets nothing extra.",
       "files_hint": [
         "modules/identity/src/application/begin-sign-in.ts",
@@ -285,20 +189,8 @@
       "id": "T14",
       "title": "Implement the access-list use cases: list, add, rename, remove and assign access roles under the last-admin guard",
       "layer": "app",
-      "deps": [
-        "T09",
-        "T10"
-      ],
-      "acs": [
-        "AC-04",
-        "AC-05",
-        "AC-06",
-        "AC-07",
-        "AC-08",
-        "AC-12",
-        "AC-14",
-        "AC-21"
-      ],
+      "deps": ["T09", "T10"],
+      "acs": ["AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-12", "AC-14", "AC-21"],
       "dod": "Unit tests (fakes) for each AC listed, including: removing the only admin, or taking «Admin» from them, → `LastAdminRequired` with nothing changed (AC-14). Unit test: a caller without manage access is refused before any read (AC-08).",
       "files_hint": [
         "modules/identity/src/application/access-list/",
@@ -312,17 +204,8 @@
       "id": "T15",
       "title": "Implement the access-role use cases: compose, rename, delete with warning, pre-select and list permissions",
       "layer": "app",
-      "deps": [
-        "T10"
-      ],
-      "acs": [
-        "AC-09",
-        "AC-10",
-        "AC-11",
-        "AC-13",
-        "AC-14",
-        "AC-16"
-      ],
+      "deps": ["T10"],
+      "acs": ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"],
       "dod": "Unit tests (fakes) for each AC listed, including: deleting the pre-selected role clears the mark (AC-11), and a re-declared key is granted again and loses its flag (AC-16). Unit test: deleting «Admin», or removing manage access from it, while it's the only source of admins → `LastAdminRequired` (AC-14).",
       "files_hint": [
         "modules/identity/src/application/access-roles/",
@@ -335,37 +218,16 @@
       "title": "Add the identity contract schemas for sign-in, me, the access list, access roles and permissions",
       "layer": "ports",
       "deps": [],
-      "acs": [
-        "AC-01",
-        "AC-03",
-        "AC-04",
-        "AC-09",
-        "AC-12",
-        "AC-13",
-        "AC-16"
-      ],
+      "acs": ["AC-01", "AC-03", "AC-04", "AC-09", "AC-12", "AC-13", "AC-16"],
       "dod": "Unit tests: each schema decodes its openapi.yaml example and rejects one malformed variant.",
-      "files_hint": [
-        "packages/contracts/src/identity/"
-      ]
+      "files_hint": ["packages/contracts/src/identity/"]
     },
     {
       "id": "T17",
       "title": "Expose sign-in begin and complete, me and sign-out routes",
       "layer": "ports",
-      "deps": [
-        "T02",
-        "T12",
-        "T13",
-        "T16"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-02",
-        "AC-03",
-        "AC-15",
-        "AC-20"
-      ],
+      "deps": ["T02", "T12", "T13", "T16"],
+      "acs": ["AC-01", "AC-02", "AC-03", "AC-15", "AC-20"],
       "dod": "Integration tests (Google replaced by a fake `GoogleSignIn` Layer): a listed user gets a token (AC-01); a refused claim answers the refused body (AC-02); an unlisted person gets not-set-up with admins (AC-03); the first-admin path (AC-15). Integration test: after sign-out, `me` with that token → 401 (AC-20).",
       "files_hint": [
         "modules/identity/src/http/sign-in-routes.ts",
@@ -378,21 +240,8 @@
       "id": "T18",
       "title": "Expose the access-list endpoints behind manage access",
       "layer": "ports",
-      "deps": [
-        "T02",
-        "T14",
-        "T16"
-      ],
-      "acs": [
-        "AC-04",
-        "AC-05",
-        "AC-06",
-        "AC-07",
-        "AC-08",
-        "AC-12",
-        "AC-14",
-        "AC-21"
-      ],
+      "deps": ["T02", "T14", "T16"],
+      "acs": ["AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-12", "AC-14", "AC-21"],
       "dod": "Integration tests, one per AC listed. AC-08: a non-admin gets 403 and no list data. AC-14: removing the last admin → 409 and the DB is unchanged.",
       "files_hint": [
         "modules/identity/src/http/access-list-routes.ts",
@@ -405,19 +254,8 @@
       "id": "T19",
       "title": "Expose the access-role, pre-selected-role and permission-catalog endpoints",
       "layer": "ports",
-      "deps": [
-        "T02",
-        "T15",
-        "T16"
-      ],
-      "acs": [
-        "AC-09",
-        "AC-10",
-        "AC-11",
-        "AC-13",
-        "AC-14",
-        "AC-16"
-      ],
+      "deps": ["T02", "T15", "T16"],
+      "acs": ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"],
       "dod": "Integration tests, one per AC listed. AC-16: with a test-only catalog that stops declaring a key, the role is flagged, the key can't be added, and re-declaring it clears the flag.",
       "files_hint": [
         "modules/identity/src/http/access-role-routes.ts",
@@ -430,16 +268,8 @@
       "id": "T20",
       "title": "Wire authenticate, the permission catalog and identity config in the api host",
       "layer": "wiring",
-      "deps": [
-        "T12",
-        "T17"
-      ],
-      "acs": [
-        "AC-03",
-        "AC-07",
-        "AC-18",
-        "AC-20"
-      ],
+      "deps": ["T12", "T17"],
+      "acs": ["AC-03", "AC-07", "AC-18", "AC-20"],
       "dod": "Integration test: every non-public route answers 401 to an anonymous request (route list taken from the app, not hand-written). Integration test: a revoked session → 401 with reason `access-removed` (AC-07); the `Server-Timing` header carries `accessCheck`.",
       "files_hint": [
         "apps/api/src/middleware/authenticate.ts",
@@ -455,18 +285,8 @@
       "id": "T21",
       "title": "Add the QG-1 revocation, session-lifetime and fail-closed integration suites",
       "layer": "tests",
-      "deps": [
-        "T18",
-        "T19",
-        "T20"
-      ],
-      "acs": [
-        "AC-07",
-        "AC-11",
-        "AC-17",
-        "AC-18",
-        "AC-20"
-      ],
+      "deps": ["T18", "T19", "T20"],
+      "acs": ["AC-07", "AC-11", "AC-17", "AC-18", "AC-20"],
       "dod": "All three suites green in `pnpm test:integration`, and each fails if a cache is introduced (sad §11).",
       "files_hint": [
         "apps/api/test/integration/identity/revocation.test.ts",
@@ -478,13 +298,8 @@
       "id": "T22",
       "title": "Add the web session and sign-in-state cookies, Bearer forwarding, the returnTo check and the Origin check",
       "layer": "ui",
-      "deps": [
-        "T16"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-20"
-      ],
+      "deps": ["T16"],
+      "acs": ["AC-01", "AC-20"],
       "dod": "Unit tests: cookie attributes; `safeReturnTo` for `/board`, `//evil`, `https://evil`, `javascript:` and empty; Origin check rejects a foreign origin on POST.",
       "files_hint": [
         "apps/web/app/shared/lib/session.server.ts",
@@ -498,17 +313,8 @@
       "id": "T23",
       "title": "Build the sign-in, sign-in-return, sign-out, not-set-up and refused screens",
       "layer": "ui",
-      "deps": [
-        "T17",
-        "T22"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-02",
-        "AC-03",
-        "AC-15",
-        "AC-20"
-      ],
+      "deps": ["T17", "T22"],
+      "acs": ["AC-01", "AC-02", "AC-03", "AC-15", "AC-20"],
       "dod": "Route tests with `app/test/fake-api.ts`: state mismatch refuses; each completion outcome renders its screen; a successful return sets the cookie and redirects to the given path (AC-01). Route test: sign-out clears the cookie and calls the api (AC-20).",
       "files_hint": [
         "apps/web/app/features/identity/routes/sign-in.tsx",
@@ -522,18 +328,8 @@
       "id": "T24",
       "title": "Gate every page at the root and show navigation by permission",
       "layer": "ui",
-      "deps": [
-        "T17",
-        "T20",
-        "T22"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-03",
-        "AC-07",
-        "AC-08",
-        "AC-20"
-      ],
+      "deps": ["T17", "T20", "T22"],
+      "acs": ["AC-01", "AC-03", "AC-07", "AC-08", "AC-20"],
       "dod": "Route tests: anonymous visit to `/board` redirects to sign-in with `returnTo=/board`; access-removed clears the cookie and shows the message; a non-admin sees no «Access» link.",
       "files_hint": [
         "apps/web/app/root.tsx",
@@ -545,20 +341,8 @@
       "id": "T25",
       "title": "Build the access-list screens: list, add with pre-selected role, rename, remove and assign roles",
       "layer": "ui",
-      "deps": [
-        "T18",
-        "T24"
-      ],
-      "acs": [
-        "AC-04",
-        "AC-05",
-        "AC-06",
-        "AC-07",
-        "AC-12",
-        "AC-13",
-        "AC-14",
-        "AC-21"
-      ],
+      "deps": ["T18", "T24"],
+      "acs": ["AC-04", "AC-05", "AC-06", "AC-07", "AC-12", "AC-13", "AC-14", "AC-21"],
       "dod": "Component and route tests: the pre-selected role is ticked by default and can be unticked (AC-13); the last-admin 409 shows «appoint another admin first» (AC-14); rename keeps roles (AC-21).",
       "files_hint": [
         "apps/web/app/features/identity/routes/access-users.tsx",
@@ -574,18 +358,8 @@
       "id": "T26",
       "title": "Build the access-role screens: compose, rename, delete with warning, pre-select and retired flags",
       "layer": "ui",
-      "deps": [
-        "T19",
-        "T24"
-      ],
-      "acs": [
-        "AC-09",
-        "AC-10",
-        "AC-11",
-        "AC-13",
-        "AC-14",
-        "AC-16"
-      ],
+      "deps": ["T19", "T24"],
+      "acs": ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"],
       "dod": "Component tests: a retired key renders flagged and isn't offered in the picker (AC-16); the delete warning shows the count and the pre-selected note (AC-11); the duplicate-name 409 shows inline (AC-10).",
       "files_hint": [
         "apps/web/app/features/identity/routes/access-roles.tsx",
@@ -600,39 +374,17 @@
       "id": "T27",
       "title": "Add the identity end-to-end tests over seeded sessions",
       "layer": "tests",
-      "deps": [
-        "T23",
-        "T25",
-        "T26"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-03",
-        "AC-04",
-        "AC-07",
-        "AC-09",
-        "AC-12",
-        "AC-20"
-      ],
+      "deps": ["T23", "T25", "T26"],
+      "acs": ["AC-01", "AC-03", "AC-04", "AC-07", "AC-09", "AC-12", "AC-20"],
       "dod": "`pnpm test:e2e` green locally and in CI.",
-      "files_hint": [
-        "e2e/tests/identity/",
-        "e2e/db.ts",
-        "e2e/global-setup.ts"
-      ]
+      "files_hint": ["e2e/tests/identity/", "e2e/db.ts", "e2e/global-setup.ts"]
     },
     {
       "id": "T28",
       "title": "Add the seeded k6 load test and its CI job for the three latency targets",
       "layer": "tests",
-      "deps": [
-        "T20",
-        "T23"
-      ],
-      "acs": [
-        "AC-01",
-        "AC-17"
-      ],
+      "deps": ["T20", "T23"],
+      "acs": ["AC-01", "AC-17"],
       "dod": "The CI job runs the scenario and fails when a threshold is breached (shown once in the PR by a temporarily lowered threshold).",
       "files_hint": [
         "e2e/load/identity.k6.js",
@@ -645,13 +397,8 @@
       "id": "T29",
       "title": "Update ARCHITECTURE.md and repo ADR 0001, and add the deploy checklist and the first-admin recovery runbook",
       "layer": "docs",
-      "deps": [
-        "T20"
-      ],
-      "acs": [
-        "AC-02",
-        "AC-15"
-      ],
+      "deps": ["T20"],
+      "acs": ["AC-02", "AC-15"],
       "dod": "`pnpm lint` (module graph unchanged: `identity → (none)`) clean. The runbook is reviewed by the Tech Lead.",
       "files_hint": [
         "ARCHITECTURE.md",
