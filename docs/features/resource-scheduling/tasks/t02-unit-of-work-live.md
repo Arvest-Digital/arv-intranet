@@ -7,7 +7,7 @@ acs: ["AC-07b", "AC-25", "AC-31"]
 files_hint: ["packages/db/src/unit-of-work.ts", "packages/db/src/database.ts", "packages/db/src/index.ts", "ARCHITECTURE.md"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T02 — Implement UnitOfWorkLive with a CurrentTx FiberRef read by query()
@@ -28,10 +28,10 @@ Files: `packages/db/src/unit-of-work.ts`, `packages/db/src/database.ts`, `packag
 
 ## Definition of Done
 
-- [ ] Integration test (real `arv_test` DB): two writes inside `transactional` followed by a failure leave no rows; without the failure both rows exist.
-- [ ] Integration test: a nested `transactional` joins the outer one (rollback of the outer rolls back the inner write).
-- [ ] `pnpm test:integration` green.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Integration test (real `arv_test` DB): two writes inside `transactional` followed by a failure leave no rows; without the failure both rows exist.
+- [x] Integration test: a nested `transactional` joins the outer one (rollback of the outer rolls back the inner write).
+- [x] `pnpm test:integration` green.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 
