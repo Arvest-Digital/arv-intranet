@@ -11,8 +11,11 @@ export const presentUser = (user: User) => encodeUser(user);
 export const toContractError = (error: UserNotFound | EmailTaken) => {
   switch (error._tag) {
     case 'UserNotFound':
-      return new NotFound({ resource: 'User', id: error.id });
+      return new NotFound({ resource: 'User', id: error.id, code: 'identity.user_not_found' });
     case 'EmailTaken':
-      return new Conflict({ message: `User with email ${error.email} already exists` });
+      return new Conflict({
+        message: `User with email ${error.email} already exists`,
+        code: 'identity.email_taken',
+      });
   }
 };

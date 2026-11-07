@@ -15,10 +15,13 @@ const app = new Hono<AppEnv>()
   .use(provideAppLayer())
   .route('/', identityRoutes);
 
-app.notFound((c) => c.json(errorBody('NotFound', 'Route not found'), 404));
+app.notFound((c) => c.json(errorBody('NotFound', 'platform.not_found', 'Route not found'), 404));
 app.onError((err, c) => {
   console.error(err);
-  return c.json(errorBody('InternalError', 'Internal server error'), 500);
+  return c.json(
+    errorBody('InternalError', 'platform.internal_error', 'Internal server error'),
+    500,
+  );
 });
 
 export type AppType = typeof app;

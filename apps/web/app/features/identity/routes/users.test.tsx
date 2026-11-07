@@ -28,7 +28,12 @@ describe('users loader', () => {
   });
 
   it('throws a 502 when the API fails', async () => {
-    const api = fakeApi(() => json({ error: { _tag: 'InternalError', message: 'x' } }, 500));
+    const api = fakeApi(() =>
+      json(
+        { error: { _tag: 'InternalError', code: 'platform.internal_error', message: 'x' } },
+        500,
+      ),
+    );
     await expect(
       loader(args({ context: api.context, request: new Request('http://web/users') })),
     ).rejects.toMatchObject({ init: { status: 502 } });
@@ -56,7 +61,12 @@ describe('users action', () => {
   });
 
   it('returns the API error message', async () => {
-    const api = fakeApi(() => json({ error: { _tag: 'Conflict', message: 'Email taken' } }, 409));
+    const api = fakeApi(() =>
+      json(
+        { error: { _tag: 'Conflict', code: 'identity.email_taken', message: 'Email taken' } },
+        409,
+      ),
+    );
     const result = await submit(api, { name: 'Ann', email: 'ann@arvest.digital' });
 
     expect(result).toMatchObject({ data: { error: 'Email taken' }, init: { status: 409 } });

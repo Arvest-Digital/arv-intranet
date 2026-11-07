@@ -16,7 +16,7 @@
     },
     {
       "id": "T02",
-      "title": "Add Unauthorized and Forbidden contract errors and map the kernel permission errors once in platform",
+      "title": "Add Unauthenticated and Forbidden contract errors and map the kernel permission errors once in platform",
       "layer": "ports",
       "deps": ["T01"],
       "acs": ["AC-08", "AC-17", "AC-18", "AC-19", "AC-20"],

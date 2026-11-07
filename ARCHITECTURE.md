@@ -89,6 +89,7 @@ flowchart TB
   mods --> contracts["@arv/contracts"]
   mods --> db
   platform --> contracts
+  platform --> kernel
   migrations["@arv/migrations · leaf"] -. "reads schema.ts files by path" .-> mods
   db["@arv/db"]
   kernel["@arv/kernel"]
@@ -237,6 +238,7 @@ There are three kinds of failure, and each is handled in one place. Adding a mod
 ```mermaid
 flowchart LR
   de["expected: domain error<br/>EmailTaken"] --> pr["presenter<br/>toContractError"] --> ce["contract error<br/>Conflict"] --> th["toHttpError"] --> r1["404 / 409"]
+  ae["refused: kernel<br/>PermissionDenied / Unauthenticated"] --> rf["runEffect<br/>toContractError"] --> r4["403 Forbidden / 401 Unauthenticated"]
   ve["bad input: Schema<br/>decode failure"] --> va["validate"] --> r2["400 ValidationError"]
   db["defect: pg / Drizzle"] --> od["adapter orDie"] --> re["runEffect logs Cause"] --> r3["500 InternalError"]
 ```
@@ -244,7 +246,8 @@ flowchart LR
 - Domain errors are `Schema.TaggedError`s in the module's `domain/errors.ts`.
 - The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared` (`NotFound`, `Conflict`).
 - `ContractError` and `toHttpError` live in `@arv/platform/http`. Only a new *kind* of HTTP failure needs a new contract error there, which should be rare.
-- Every error response has the shape `{ error: { _tag, message } }` (`ApiErrorBody`).
+- Access refusals from the kernel's `requirePermission` are mapped once, in `runEffect`: `PermissionDenied` → 403 `Forbidden` (code `<module>.missing_permission`, from the permission key's prefix), `Unauthenticated` → 401 `Unauthenticated` (`platform.unauthenticated`, or `identity.access_removed` when `reason: 'access-removed'`). Presenters never see them (ADR-0005).
+- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, host-level failures use `platform.*`.
 
 ## Web
 
