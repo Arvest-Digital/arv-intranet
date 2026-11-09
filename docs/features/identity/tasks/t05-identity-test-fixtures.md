@@ -7,7 +7,7 @@ acs: ["AC-14", "AC-20"]
 files_hint: ["packages/db/src/testing/seed.ts", "packages/db/src/testing/index.ts", "packages/db/src/testing/reset.ts"]
 owner: "TBD (backend lead)"
 estimate: "S"
-status: "todo"
+status: "done"
 ---
 
 # T05 — Add identity test fixtures to @arv/db/testing
