@@ -383,24 +383,29 @@ describe('setUserAccessRoles (AC-12, AC-14)', () => {
   it('assigns another role and returns the combined permissions as declarations', async () => {
     const { fakes, roles, ann, anna } = setup();
 
+    // Anna keeps «Staff» and «Planner» (both grant view-the-board) and also gets «People admin».
     const result = Either.getOrThrow(
       await run(
-        setUserAccessRoles(anna.id, [roles.planner.id, roles.peopleAdmin.id]),
+        setUserAccessRoles(anna.id, [roles.staff.id, roles.planner.id, roles.peopleAdmin.id]),
         fakes.layer,
         adminActor(ann.id),
       ),
     );
 
-    expect(result.accessRoles.map((r) => r.name).sort()).toEqual(['People admin', 'Planner']);
-    // Union of both roles, declared keys only (the retired key grants nothing), no duplicates.
-    expect(result.combinedPermissions).toEqual(
-      fakes.catalog
-        .declarations()
-        .filter((d) => [VIEW_BOARD, EDIT_ALLOCATIONS, MANAGE_PEOPLE].includes(d.key)),
-    );
-    expect(result.combinedPermissions[0]).toMatchObject({ name: expect.any(String) });
+    expect(result.accessRoles.map((r) => r.name).sort()).toEqual([
+      'People admin',
+      'Planner',
+      'Staff',
+    ]);
+    // Union of the roles in plain words: declared keys only (the retired key grants nothing),
+    // the shared view-the-board key once, in catalog order.
+    expect(result.combinedPermissions.map(({ key, name }) => ({ key, name }))).toEqual([
+      { key: VIEW_BOARD, name: 'View the whole board' },
+      { key: EDIT_ALLOCATIONS, name: 'Edit allocations' },
+      { key: MANAGE_PEOPLE, name: 'Manage people' },
+    ]);
     expect(fakes.snapshot().userRoles(anna.id).sort()).toEqual(
-      [roles.planner.id, roles.peopleAdmin.id].sort(),
+      [roles.staff.id, roles.planner.id, roles.peopleAdmin.id].sort(),
     );
   });
 
