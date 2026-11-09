@@ -11,7 +11,7 @@
 | T04 | [Promote the staged identity migrations: sessions, access roles, grants and assignments](./t04-migration-identity-tables.md) | migration | TBD (backend lead) | M | — | done |
 | T05 | [Add identity test fixtures to @arv/db/testing](./t05-identity-test-fixtures.md) | tests | TBD (backend lead) | S | T04 | todo |
 | T06 | [Model company email, user name, access-role name key and retired permissions in the identity domain](./t06-domain-user-access-role.md) | domain | TBD (backend lead) | M | T01 | done |
-| T07 | [Model sign-in eligibility, sessions, the first-admin rule and the last-admin rule](./t07-domain-sign-in-session.md) | domain | TBD (backend lead) | M | T01 | todo |
+| T07 | [Model sign-in eligibility, sessions, the first-admin rule and the last-admin rule](./t07-domain-sign-in-session.md) | domain | TBD (backend lead) | M | T01 | done |
 | T08 | [Declare identity:manage-access and define identity's application ports with in-memory fakes](./t08-ports-and-permission-declaration.md) | app | TBD (backend lead) | M | T06, T07 | todo |
 | T09 | [Implement the Drizzle user and session repositories with the one-query actor lookup](./t09-user-session-repositories.md) | infra | TBD (backend lead) | L | T03, T04, T05, T08 | todo |
 | T10 | [Implement the Drizzle access-role repository with the manage-access holder queries](./t10-access-role-repository.md) | infra | TBD (backend lead) | L | T03, T04, T05, T08 | todo |

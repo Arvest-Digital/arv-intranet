@@ -7,7 +7,7 @@ acs: ["AC-02", "AC-14", "AC-15", "AC-20"]
 files_hint: ["modules/identity/src/domain/sign-in-eligibility.ts", "modules/identity/src/domain/session.ts", "modules/identity/src/domain/last-admin.ts", "modules/identity/src/domain/sign-in-eligibility.test.ts", "modules/identity/src/domain/session.test.ts", "modules/identity/src/domain/last-admin.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T07 — Model sign-in eligibility, sessions, the first-admin rule and the last-admin rule
