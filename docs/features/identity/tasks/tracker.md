@@ -20,7 +20,7 @@
 | T13 | [Implement begin and complete sign-in, with the first-admin bootstrap and the not-set-up answer](./t13-sign-in-use-cases.md) | app | TBD (backend lead) | L | T09, T10, T11 | todo |
 | T14 | [Implement the access-list use cases: list, add, rename, remove and assign access roles under the last-admin guard](./t14-access-list-use-cases.md) | app | TBD (backend lead) | L | T09, T10 | todo |
 | T15 | [Implement the access-role use cases: compose, rename, delete with warning, pre-select and list permissions](./t15-access-role-use-cases.md) | app | TBD (backend lead) | L | T10 | todo |
-| T16 | [Add the identity contract schemas for sign-in, me, the access list, access roles and permissions](./t16-contracts-identity-dtos.md) | ports | TBD (backend lead) | M | — | todo |
+| T16 | [Add the identity contract schemas for sign-in, me, the access list, access roles and permissions](./t16-contracts-identity-dtos.md) | ports | TBD (backend lead) | M | — | done |
 | T17 | [Expose sign-in begin and complete, me and sign-out routes](./t17-http-sign-in-me-sign-out.md) | ports | TBD (backend lead) | M | T02, T12, T13, T16 | todo |
 | T18 | [Expose the access-list endpoints behind manage access](./t18-http-access-list.md) | ports | TBD (backend lead) | M | T02, T14, T16 | todo |
 | T19 | [Expose the access-role, pre-selected-role and permission-catalog endpoints](./t19-http-access-roles.md) | ports | TBD (backend lead) | M | T02, T15, T16 | todo |
