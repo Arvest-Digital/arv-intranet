@@ -7,7 +7,7 @@ acs: ["AC-08", "AC-16", "AC-18", "AC-19"]
 files_hint: ["modules/identity/src/permissions.ts", "modules/identity/src/application/ports.ts", "modules/identity/src/application/testing.ts", "modules/identity/src/index.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T08 — Declare identity:manage-access and define identity's application ports with in-memory fakes

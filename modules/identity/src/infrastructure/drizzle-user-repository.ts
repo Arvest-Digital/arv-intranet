@@ -10,6 +10,9 @@ type Row = typeof users.$inferSelect;
 
 const toUser = (row: Row) => new User({ ...row, id: UserId.make(row.id) });
 
+// The extended port's access-role and lifecycle methods land with the adapter work in T09.
+const notImplemented = (method: string) => Effect.dieMessage(`not implemented (T09): ${method}`);
+
 export const DrizzleUserRepositoryLive = Layer.effect(
   UserRepository,
   Effect.gen(function* () {
@@ -34,13 +37,19 @@ export const DrizzleUserRepositoryLive = Layer.effect(
         ),
       findById: (id) => findOne(eq(users.id, id)),
       findByEmail: (email) => findOne(eq(users.email, email)),
-      create: (input) =>
-        run(
-          query((db) => db.insert(users).values(input).returning()).pipe(
-            // INSERT … RETURNING always yields the inserted row.
-            Effect.map((rows) => toUser(rows[0] as Row)),
-          ),
-        ),
+      create: (input, accessRoleIds = []) =>
+        accessRoleIds.length > 0
+          ? notImplemented('create with access roles')
+          : run(
+              query((db) => db.insert(users).values(input).returning()).pipe(
+                // INSERT … RETURNING always yields the inserted row.
+                Effect.map((rows) => toUser(rows[0] as Row)),
+              ),
+            ),
+      rename: () => notImplemented('rename'),
+      delete: () => notImplemented('delete'),
+      accessRoleIds: () => notImplemented('accessRoleIds'),
+      setAccessRoles: () => notImplemented('setAccessRoles'),
     };
   }),
 );
