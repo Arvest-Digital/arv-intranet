@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-02"]
 files_hint: ["modules/identity/src/infrastructure/google-sign-in.ts", "modules/identity/src/infrastructure/google-sign-in.test.ts", "modules/identity/package.json", "pnpm-lock.yaml"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T11 — Implement the GoogleSignIn adapter on a pinned OIDC library
