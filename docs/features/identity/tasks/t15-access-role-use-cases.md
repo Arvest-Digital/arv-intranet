@@ -7,7 +7,7 @@ acs: ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"]
 files_hint: ["modules/identity/src/application/access-roles/", "modules/identity/src/application/list-permissions.ts", "modules/identity/src/application/access-roles.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T15 — Implement the access-role use cases: compose, rename, delete with warning, pre-select and list permissions

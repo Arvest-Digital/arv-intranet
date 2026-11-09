@@ -7,7 +7,7 @@ acs: ["AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-12", "AC-14", "AC-21"]
 files_hint: ["modules/identity/src/application/access-list/", "modules/identity/src/application/create-user.ts", "modules/identity/src/application/get-user.ts", "modules/identity/src/application/list-users.ts", "modules/identity/src/application/users.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T14 — Implement the access-list use cases: list, add, rename, remove and assign access roles under the last-admin guard
