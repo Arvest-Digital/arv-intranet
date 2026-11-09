@@ -318,13 +318,17 @@ describe('retired permissions (AC-16)', () => {
 
   it('a re-declared key loses its flag and the role grants it again', async () => {
     const { fakes, planner, holder, admin } = retiredSetup();
+    const keys = await grantedKeys(fakes, holder.id, 'pat');
+    // While retired, the stored key is still listed but grants nothing.
+    expect(keys).toContain(EDIT_ALLOCATIONS);
+    expect(keys.filter(fakes.catalog.isDeclared)).not.toContain(EDIT_ALLOCATIONS);
+
     fakes.declare(editAllocations);
     const role = Either.getOrThrow(await admin(getAccessRole(planner.id)));
     expect(role).toMatchObject({
       permissions: [viewBoard, editAllocations],
       retiredPermissionKeys: [],
     });
-    const keys = await grantedKeys(fakes, holder.id, 'pat');
     expect(keys.filter(fakes.catalog.isDeclared)).toContain(EDIT_ALLOCATIONS);
   });
 });
