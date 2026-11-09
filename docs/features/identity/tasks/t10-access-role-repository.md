@@ -7,7 +7,7 @@ acs: ["AC-03", "AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-15"]
 files_hint: ["modules/identity/src/infrastructure/drizzle-access-role-repository.ts", "apps/api/test/integration/identity/access-role-repository.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T10 — Implement the Drizzle access-role repository with the manage-access holder queries
