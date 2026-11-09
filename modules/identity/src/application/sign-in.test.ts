@@ -1,6 +1,6 @@
 import { Effect, Either, Layer, TestClock, TestContext } from 'effect';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
-import { hashSessionToken, SESSION_LIFETIME_MS } from '../domain/session';
+import { hashSessionToken } from '../domain/session';
 import type { SignInClaims } from '../domain/sign-in-eligibility';
 import { MANAGE_ACCESS } from '../permissions';
 import { beginSignIn, pkceChallenge } from './begin-sign-in';
@@ -10,6 +10,8 @@ import { type IdentityFakes, makeIdentityFakes } from './testing';
 
 const NOW = Date.parse('2026-03-02T09:00:00.000Z');
 const VERIFIER = 'v'.repeat(43);
+/** Spelled out, not imported: the test must fail if the domain constant drifts from AC-01. */
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const claimsFor = (email: string, name = 'Google Name'): SignInClaims => ({
   email,
@@ -94,7 +96,7 @@ describe('completeSignIn: a listed user (AC-01)', () => {
     const result = Either.getOrThrow(await signIn(fakes, claimsFor('bob@arvest.digital')));
 
     expect(result.userId).toBe(bob.id);
-    expect(result.expiresAt).toEqual(new Date(NOW + SESSION_LIFETIME_MS));
+    expect(result.expiresAt).toEqual(new Date(NOW + SEVEN_DAYS_MS));
     expect(result.sessionToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const tokenHash = await Effect.runPromise(hashSessionToken(result.sessionToken));
     expect(fakes.snapshot().sessions).toEqual([
