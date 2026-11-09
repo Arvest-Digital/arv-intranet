@@ -1,15 +1,34 @@
 import { DatabaseLive, UnitOfWorkLive } from '@arv/db';
-import { IdentityModuleLive } from '@arv/identity/layer';
+import { identityPermissions } from '@arv/identity';
+import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
 import { type Actor, CurrentActor } from '@arv/kernel';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
+
+/**
+ * Interim until T20 reads `IdentityConfig` and the Google secret from env: no sign-in route is
+ * mounted yet, so nothing reads them. The catalog is every module's declarations (identity's today).
+ */
+const IdentityHostLive = Layer.merge(
+  permissionCatalogLayer(identityPermissions),
+  Layer.succeed(IdentityConfig, {
+    companyDomain: '',
+    firstAdminEmail: '',
+    signInReturnUrl: '',
+    googleClientId: 'unset-until-t20',
+  }),
+);
+
+const IdentityLive = IdentityModuleLive({ google: { clientSecret: 'unset-until-t20' } }).pipe(
+  Layer.provide(IdentityHostLive),
+);
 
 /**
  * The only place that knows every module. Stack module Layers in dependency order, dependents
  * first and the foundation last, so a cycle between modules can't be expressed.
  */
 const ModulesLive = Layer.empty.pipe(
-  Layer.provideMerge(IdentityModuleLive), // foundation
+  Layer.provideMerge(IdentityLive), // foundation
 );
 
 /** Built per request: Workers bindings and connections are request-scoped. */
@@ -25,4 +44,4 @@ export type AppServices = Layer.Layer.Success<ReturnType<typeof makeAppLayer>>;
 
 /** Just enough to resolve the actor, before the full app Layer exists. */
 export const makeIdentityLayer = (env: Bindings) =>
-  IdentityModuleLive.pipe(Layer.provide(DatabaseLive(env.HYPERDRIVE.connectionString)));
+  IdentityLive.pipe(Layer.provide(DatabaseLive(env.HYPERDRIVE.connectionString)));
