@@ -7,7 +7,7 @@ acs: ["AC-06", "AC-07", "AC-10", "AC-13", "AC-20"]
 files_hint: ["docs/features/identity/migrations/20261103120000_create_sessions.up.sql", "docs/features/identity/migrations/20261103120000_create_sessions.down.sql", "docs/features/identity/migrations/20261103120001_create_access_roles.up.sql", "docs/features/identity/migrations/20261103120001_create_access_roles.down.sql", "docs/features/identity/migrations/20261103120002_create_user_access_roles.up.sql", "docs/features/identity/migrations/20261103120002_create_user_access_roles.down.sql", "modules/identity/src/infrastructure/schema.ts", "packages/migrations/drizzle/"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T04 — Promote the staged identity migrations: sessions, access roles, grants and assignments
