@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-02", "AC-03", "AC-15", "AC-20"]
 files_hint: ["modules/identity/src/http/sign-in-routes.ts", "modules/identity/src/http/routes.ts", "modules/identity/src/http/presenter.ts", "apps/api/test/integration/identity/sign-in.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T17 — Expose sign-in begin and complete, me and sign-out routes
