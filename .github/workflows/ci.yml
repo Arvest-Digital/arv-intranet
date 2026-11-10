@@ -37,6 +37,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Service containers take no command: raise max_connections like docker-compose.yml does
+      # (workerd keeps every socket of an integration test file open until the file ends).
+      - name: Raise Postgres max_connections
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U arv -d arv_test -c "ALTER SYSTEM SET max_connections = 300"
+          docker restart ${{ job.services.postgres.id }}
+          until docker exec ${{ job.services.postgres.id }} pg_isready -U arv -d arv_test; do sleep 1; done
 
       - run: pnpm lint
       - run: pnpm typecheck
