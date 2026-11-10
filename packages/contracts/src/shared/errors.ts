@@ -50,6 +50,16 @@ export class Forbidden extends Schema.TaggedError<Forbidden>()('Forbidden', {
   }
 }
 
+/**
+ * 403 for a module rule other than a missing permission (e.g. `identity.sign_in_refused`). Like
+ * `Conflict`, the presenter always names the code and the message; the wire `_tag` is `Forbidden`.
+ */
+export class Refused extends Schema.TaggedError<Refused>()('Refused', {
+  message: Schema.String,
+  code: ErrorCode,
+  details: Schema.optional(ErrorDetails),
+}) {}
+
 /** HTTP kind of failure: the `_tag` of every error body. */
 export const ApiErrorTag = Schema.Literal(
   'ValidationError',

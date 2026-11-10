@@ -4,6 +4,7 @@ import {
   type Conflict,
   Forbidden,
   type NotFound,
+  type Refused,
   Unauthenticated,
 } from '@arv/contracts/shared';
 import type { PermissionDenied, Unauthenticated as UnauthenticatedActor } from '@arv/kernel';
@@ -13,7 +14,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
  * Every expected failure a route may produce. Modules map their domain errors to these in their
  * presenter; infrastructure failures are defects and never appear here.
  */
-export type ContractError = NotFound | Conflict | Unauthenticated | Forbidden;
+export type ContractError = NotFound | Conflict | Unauthenticated | Forbidden | Refused;
 
 /** The kernel's access-check failures (`requirePermission`). `runEffect` maps them, not presenters. */
 export type AccessError = PermissionDenied | UnauthenticatedActor;
@@ -74,6 +75,11 @@ export function toHttpError(error: ContractError): {
             : 'platform.unauthenticated',
           error.message,
         ),
+      };
+    case 'Refused':
+      return {
+        status: 403,
+        body: errorBody('Forbidden', error.code, error.message, error.details),
       };
     case 'Forbidden':
       return {
