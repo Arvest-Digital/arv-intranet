@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { UserRepository } from '../application/ports';
 import { EmailTaken, UserNotFound } from '../domain/errors';
 import { presentUser, toContractError } from './presenter';
+import { signInRoutes } from './sign-in-routes';
 
 // TODO(identity T18): the scaffold `/users` handlers below, kept inline only so the web's typed
 // client keeps compiling. T18 replaces them with the guarded access-list use cases
@@ -33,6 +34,7 @@ const scaffoldCreateUser = (input: { readonly email: string; readonly name: stri
 
 /** Mounted at `/` by the host, so paths here are the public paths. */
 export const identityRoutes = new Hono<HttpEnv>()
+  .route('/', signInRoutes)
   .get('/users', (c) =>
     runEffect(c, scaffoldListUsers.pipe(Effect.map((list) => list.map(presentUser)))),
   )
