@@ -1,4 +1,5 @@
 import { data, Form, useNavigation } from 'react-router';
+import { getSessionToken } from '~/shared/lib/session.server';
 import { Button } from '~/shared/ui/button';
 import { UserList } from '../components/user-list';
 import { identityGateway } from '../identity.server';
@@ -6,15 +7,17 @@ import type { Route } from './+types/users';
 
 export const meta: Route.MetaFunction = () => [{ title: 'Users · ARV Intranet' }];
 
-export async function loader({ context }: Route.LoaderArgs) {
-  const result = await identityGateway(context.cloudflare.env.API).listUsers();
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const gateway = identityGateway(context.cloudflare.env.API, await getSessionToken(request));
+  const result = await gateway.listUsers();
   if (!result.ok) throw data('Failed to load users', { status: 502 });
   return { users: result.value };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
   const form = await request.formData();
-  const result = await identityGateway(context.cloudflare.env.API).createUser({
+  const gateway = identityGateway(context.cloudflare.env.API, await getSessionToken(request));
+  const result = await gateway.createUser({
     email: String(form.get('email') ?? '').trim(),
     name: String(form.get('name') ?? '').trim(),
     // TODO(identity T25): the add form ticks the pre-selected access role (AC-13).
