@@ -7,7 +7,7 @@ acs: ["AC-07", "AC-11", "AC-17", "AC-18", "AC-20"]
 files_hint: ["apps/api/test/integration/identity/revocation.test.ts", "apps/api/test/integration/identity/sessions.test.ts", "apps/api/test/integration/identity/fail-closed.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T21 — Add the QG-1 revocation, session-lifetime and fail-closed integration suites
@@ -28,8 +28,8 @@ Files: `apps/api/test/integration/identity/revocation.test.ts`, `apps/api/test/i
 
 ## Definition of Done
 
-- [ ] All three suites green in `pnpm test:integration`, and each fails if a cache is introduced (sad §11).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
+- [x] All three suites green in `pnpm test:integration`, and each fails if a cache is introduced (sad §11).
+- [x] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
 
 ## Notes
 
