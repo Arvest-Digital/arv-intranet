@@ -60,6 +60,17 @@ export class Refused extends Schema.TaggedError<Refused>()('Refused', {
   details: Schema.optional(ErrorDetails),
 }) {}
 
+/**
+ * 400 for a module rule the input breaks beyond schema validation (e.g.
+ * `identity.email_not_company_domain`). Like `Conflict`, the presenter always names the code and
+ * the message; the wire `_tag` is `ValidationError`.
+ */
+export class Invalid extends Schema.TaggedError<Invalid>()('Invalid', {
+  message: Schema.String,
+  code: ErrorCode,
+  details: Schema.optional(ErrorDetails),
+}) {}
+
 /** HTTP kind of failure: the `_tag` of every error body. */
 export const ApiErrorTag = Schema.Literal(
   'ValidationError',

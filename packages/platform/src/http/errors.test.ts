@@ -2,6 +2,7 @@ import {
   ApiErrorBody,
   Conflict,
   Forbidden,
+  Invalid,
   NotFound,
   Unauthenticated,
 } from '@arv/contracts/shared';
@@ -84,6 +85,25 @@ describe('toHttpError', () => {
       code: 'identity.last_admin_required',
       message: 'The intranet must keep at least one admin.',
       details: { userId: 'x' },
+    });
+  });
+});
+
+describe('toHttpError for module rules', () => {
+  it('maps Invalid to 400 ValidationError with its message, code and details', () => {
+    const { status, body } = toHttpError(
+      new Invalid({
+        message: 'Only company-domain addresses can be added',
+        code: 'identity.email_not_company_domain',
+        details: { rules: ['not_company_domain'] },
+      }),
+    );
+    expect(status).toBe(400);
+    expect(decoded(body)).toEqual({
+      _tag: 'ValidationError',
+      code: 'identity.email_not_company_domain',
+      message: 'Only company-domain addresses can be added',
+      details: { rules: ['not_company_domain'] },
     });
   });
 });

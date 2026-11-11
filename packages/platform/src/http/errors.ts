@@ -3,6 +3,7 @@ import {
   type ApiErrorTag,
   type Conflict,
   Forbidden,
+  type Invalid,
   type NotFound,
   type Refused,
   Unauthenticated,
@@ -14,7 +15,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
  * Every expected failure a route may produce. Modules map their domain errors to these in their
  * presenter; infrastructure failures are defects and never appear here.
  */
-export type ContractError = NotFound | Conflict | Unauthenticated | Forbidden | Refused;
+export type ContractError = NotFound | Conflict | Invalid | Unauthenticated | Forbidden | Refused;
 
 /** The kernel's access-check failures (`requirePermission`). `runEffect` maps them, not presenters. */
 export type AccessError = PermissionDenied | UnauthenticatedActor;
@@ -59,6 +60,11 @@ export function toHttpError(error: ContractError): {
       return {
         status: 404,
         body: errorBody(error._tag, error.code ?? 'platform.not_found', error.message),
+      };
+    case 'Invalid':
+      return {
+        status: 400,
+        body: errorBody('ValidationError', error.code, error.message, error.details),
       };
     case 'Conflict':
       return {
