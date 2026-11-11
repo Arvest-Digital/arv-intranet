@@ -7,7 +7,7 @@ acs: ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"]
 files_hint: ["modules/identity/src/http/access-role-routes.ts", "modules/identity/src/http/routes.ts", "modules/identity/src/http/presenter.ts", "apps/api/test/integration/identity/access-roles.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T19 — Expose the access-role, pre-selected-role and permission-catalog endpoints
@@ -26,8 +26,8 @@ Files: `modules/identity/src/http/access-role-routes.ts`, `modules/identity/src/
 
 ## Definition of Done
 
-- [ ] Integration tests, one per AC listed. AC-16: with a test-only catalog that stops declaring a key, the role is flagged, the key can't be added, and re-declaring it clears the flag.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
+- [x] Integration tests, one per AC listed. AC-16: with a test-only catalog that stops declaring a key, the role is flagged, the key can't be added, and re-declaring it clears the flag.
+- [x] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
 
 ## Notes
 

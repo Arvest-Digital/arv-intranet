@@ -23,7 +23,7 @@
 | T16 | [Add the identity contract schemas for sign-in, me, the access list, access roles and permissions](./t16-contracts-identity-dtos.md) | ports | TBD (backend lead) | M | — | done |
 | T17 | [Expose sign-in begin and complete, me and sign-out routes](./t17-http-sign-in-me-sign-out.md) | ports | TBD (backend lead) | M | T02, T12, T13, T16 | done |
 | T18 | [Expose the access-list endpoints behind manage access](./t18-http-access-list.md) | ports | TBD (backend lead) | M | T02, T14, T16 | done |
-| T19 | [Expose the access-role, pre-selected-role and permission-catalog endpoints](./t19-http-access-roles.md) | ports | TBD (backend lead) | M | T02, T15, T16 | todo |
+| T19 | [Expose the access-role, pre-selected-role and permission-catalog endpoints](./t19-http-access-roles.md) | ports | TBD (backend lead) | M | T02, T15, T16 | done |
 | T20 | [Wire authenticate, the permission catalog and identity config in the api host](./t20-host-authenticate-composition.md) | wiring | TBD (backend lead) | M | T12, T17 | todo |
 | T21 | [Add the QG-1 revocation, session-lifetime and fail-closed integration suites](./t21-qg1-revocation-sessions-fail-closed.md) | tests | TBD (backend lead) | L | T18, T19, T20 | todo |
 | T22 | [Add the web session and sign-in-state cookies, Bearer forwarding, the returnTo check and the Origin check](./t22-web-session-plumbing.md) | ui | TBD (frontend lead) | M | T16 | todo |
