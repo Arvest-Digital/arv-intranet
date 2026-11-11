@@ -8,6 +8,15 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
+  // Identity configuration (sad §7). Secrets are not here: set GOOGLE_CLIENT_ID and
+  // GOOGLE_CLIENT_SECRET with `wrangler secret put`; locally copy .dev.vars.example to .dev.vars.
+  "vars": {
+    "COMPANY_EMAIL_DOMAIN": "arvest.digital",
+    // Empty: no first admin is made (AC-15). Set at deploy time, never committed.
+    "FIRST_ADMIN_EMAIL": "",
+    // The web's sign-in return page registered with Google; set at deploy time.
+    "SIGN_IN_RETURN_URL": ""
+  },
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",

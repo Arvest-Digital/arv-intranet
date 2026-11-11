@@ -33,9 +33,8 @@ import { api, resetDb, withDb } from '../../helpers';
  *
  * Sign-in runs through a test copy of the host pipeline: the real `authenticate` middleware, then
  * identity's real module Layer on the test database, with Google's code exchange replaced by a fake
- * `GoogleSignIn` (the authorization address is still built by the real adapter). Until T20 reads
- * `IdentityConfig` from env, the host's own composition has no company domain, so every sign-in
- * through it would be refused. `me` and `sign-out` are also checked through the real Worker.
+ * `GoogleSignIn` (the authorization address is still built by the real adapter), so a code
+ * exchange never reaches Google. `me` and `sign-out` are also checked through the real Worker.
  */
 
 beforeEach(resetDb);

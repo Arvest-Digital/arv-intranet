@@ -536,7 +536,7 @@ describe('DELETE /users/:userId', () => {
       { userId: null, revokedReason: 'access-removed' },
     ]);
 
-    // Their next request resolves to «access removed». The host's 401 answer for it is T20's.
+    // Their next request resolves to «access removed» (the host's 401: host/authenticate.test.ts).
     for (const token of [member.token, secondDevice!.token]) {
       expect(await resolve(token)).toEqual(
         Exit.fail(new Unauthenticated({ reason: 'access-removed' })),
