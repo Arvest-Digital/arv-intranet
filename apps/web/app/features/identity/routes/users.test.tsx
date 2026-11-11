@@ -10,15 +10,18 @@ const ann = {
   id: '6f1c1f0e-4d6a-4b8e-9b3a-2f0a3c5d7e91',
   email: 'ann@arvest.digital',
   name: 'Ann',
+  accessRoles: [],
+  combinedPermissions: [],
   createdAt: '2026-10-13T10:00:00.000Z',
 };
+const page = (items: unknown[]) => ({ items, hasNext: false, hasPrev: false, nextCursor: null });
 
 // Loader/action args beyond context and request aren't used by these routes.
 const args = (extra: { context: unknown; request: Request }) => ({ params: {}, ...extra }) as never;
 
 describe('users loader', () => {
   it('fetches users through the API binding and decodes dates', async () => {
-    const api = fakeApi(() => json([ann]));
+    const api = fakeApi(() => json(page([ann])));
     const result = await loader(
       args({ context: api.context, request: new Request('http://web/users') }),
     );
@@ -57,7 +60,11 @@ describe('users action', () => {
     const result = await submit(api, { name: '  Ann ', email: 'ann@arvest.digital' });
 
     expect(result).toEqual({ error: null });
-    expect(await api.requests[0]!.json()).toEqual({ name: 'Ann', email: 'ann@arvest.digital' });
+    expect(await api.requests[0]!.json()).toEqual({
+      name: 'Ann',
+      email: 'ann@arvest.digital',
+      accessRoleIds: [],
+    });
   });
 
   it('returns the API error message', async () => {

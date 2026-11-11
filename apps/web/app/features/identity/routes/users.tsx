@@ -17,6 +17,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const result = await identityGateway(context.cloudflare.env.API).createUser({
     email: String(form.get('email') ?? '').trim(),
     name: String(form.get('name') ?? '').trim(),
+    // TODO(identity T25): the add form ticks the pre-selected access role (AC-13).
+    accessRoleIds: [],
   });
   if (result.ok) return { error: null };
   return data({ error: result.message }, { status: result.status });

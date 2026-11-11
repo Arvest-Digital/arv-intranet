@@ -1,6 +1,7 @@
 import { Either, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import {
+  PageQuery,
   UserAccessRolesChange,
   UserChange,
   UserCreate,
@@ -158,5 +159,29 @@ describe('UserAccessRolesChange', () => {
 
   it('rejects a non-UUID role id', () => {
     expect(isLeft(decode({ accessRoleIds: ['planner'] }))).toBe(true);
+  });
+});
+
+describe('PageQuery', () => {
+  const decode = Schema.decodeUnknownEither(PageQuery);
+  const id = '01933b8e-0000-7000-8000-000000000101';
+
+  it.each([
+    ['no parameters', {}, {}],
+    ['after with a string limit', { after: id, limit: '20' }, { after: id, limit: 20 }],
+    ['before', { before: id }, { before: id }],
+  ])('decodes %s', (_, input, expected) => {
+    expect(decode(input)).toEqual(Either.right(expected));
+  });
+
+  it.each([
+    ['both after and before', { after: id, before: id }],
+    ['a non-UUID cursor', { after: 'page-2' }],
+    ['a zero limit', { limit: '0' }],
+    ['a limit above 100', { limit: '101' }],
+    ['a fractional limit', { limit: '2.5' }],
+    ['a non-numeric limit', { limit: 'ten' }],
+  ])('rejects %s', (_, input) => {
+    expect(isLeft(decode(input))).toBe(true);
   });
 });

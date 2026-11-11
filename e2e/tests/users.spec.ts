@@ -2,6 +2,10 @@ import { connectDb, makeUser, resetDatabase, seedUsers } from '@arv/db/testing';
 import { expect, test } from '@playwright/test';
 import { TEST_DATABASE_URL } from '../db';
 
+// The api now refuses the access list to anonymous callers (identity T18), and web forwards no
+// session until T22. T27 replaces these with end-to-end tests over seeded sessions.
+test.fixme(true, 'needs a signed-in admin: web session plumbing (T22) and T27');
+
 test.beforeEach(async () => {
   const { db, close } = await connectDb(TEST_DATABASE_URL);
   try {

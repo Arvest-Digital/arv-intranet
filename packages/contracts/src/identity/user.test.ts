@@ -1,6 +1,6 @@
 import { Either, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { CreateUserInput, User } from './user';
+import { User } from './user';
 
 describe('User', () => {
   const encoded = {
@@ -24,25 +24,5 @@ describe('User', () => {
   it('rejects a non-UUID id', () => {
     const result = Schema.decodeUnknownEither(User)({ ...encoded, id: '42' });
     expect(Either.isLeft(result)).toBe(true);
-  });
-});
-
-describe('CreateUserInput', () => {
-  const decode = Schema.decodeUnknownEither(CreateUserInput);
-
-  it('accepts a valid input', () => {
-    expect(decode({ email: 'ann@arvest.digital', name: 'Ann' })).toEqual(
-      Either.right({ email: 'ann@arvest.digital', name: 'Ann' }),
-    );
-  });
-
-  it.each([
-    ['invalid email', { email: 'not-an-email', name: 'Ann' }],
-    ['empty name', { email: 'ann@arvest.digital', name: '' }],
-    ['untrimmed name', { email: 'ann@arvest.digital', name: ' Ann ' }],
-    ['too long name', { email: 'ann@arvest.digital', name: 'x'.repeat(101) }],
-    ['missing field', { email: 'ann@arvest.digital' }],
-  ])('rejects %s', (_, input) => {
-    expect(Either.isLeft(decode(input))).toBe(true);
   });
 });

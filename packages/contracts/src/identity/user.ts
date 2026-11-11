@@ -5,7 +5,9 @@ const Email = Schema.String.pipe(
   Schema.maxLength(254),
 );
 
-/** A user as returned by the API. `createdAt` travels over the wire as an ISO string. */
+/**
+ * The scaffold user shape the web's user list still renders; T25 moves it to `UserWithAccessRoles`.
+ * A user as returned by the API. `createdAt` travels over the wire as an ISO string. */
 export const User = Schema.Struct({
   id: Schema.UUID,
   email: Email,
@@ -14,13 +16,3 @@ export const User = Schema.Struct({
 });
 export type User = typeof User.Type;
 export type UserEncoded = typeof User.Encoded;
-
-export const CreateUserInput = Schema.Struct({
-  email: Email,
-  name: Schema.NonEmptyTrimmedString.pipe(Schema.maxLength(100)),
-});
-export type CreateUserInput = typeof CreateUserInput.Type;
-
-export const UserIdParam = Schema.Struct({
-  id: Schema.UUID,
-});

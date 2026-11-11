@@ -19,8 +19,9 @@ const IdentityHostLive = Layer.merge(
   }),
 );
 
+// provideMerge: route handlers read the catalog too (combined permissions on the access list).
 const IdentityLive = IdentityModuleLive({ google: { clientSecret: 'unset-until-t20' } }).pipe(
-  Layer.provide(IdentityHostLive),
+  Layer.provideMerge(IdentityHostLive),
 );
 
 /**

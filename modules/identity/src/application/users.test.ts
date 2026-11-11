@@ -163,11 +163,26 @@ describe('listUsers / getUser', () => {
   it('lists every user with roles and combined permissions', async () => {
     const { fakes, roles, ann, anna } = setup();
     const result = Either.getOrThrow(await run(listUsers(), fakes.layer, adminActor(ann.id)));
-    expect(result.map((entry) => entry.user.id)).toEqual([ann.id, anna.id]);
-    expect(result[1]?.accessRoles).toEqual([
+    expect(result.items.map((entry) => entry.user.id)).toEqual([ann.id, anna.id]);
+    expect(result).toMatchObject({ hasNext: false, hasPrev: false, nextCursor: null });
+    expect(result.items[1]?.accessRoles).toEqual([
       { id: roles.staff.id, name: 'Staff' },
       { id: roles.planner.id, name: 'Planner' },
     ]);
+  });
+
+  it('describes only the requested page', async () => {
+    const { fakes, ann, anna } = setup();
+    const result = Either.getOrThrow(
+      await run(listUsers({ limit: 1 }), fakes.layer, adminActor(ann.id)),
+    );
+    expect(result.items.map((entry) => entry.user.id)).toEqual([ann.id]);
+    expect(result).toMatchObject({ hasNext: true, hasPrev: false, nextCursor: ann.id });
+
+    const next = Either.getOrThrow(
+      await run(listUsers({ after: ann.id }), fakes.layer, adminActor(ann.id)),
+    );
+    expect(next.items.map((entry) => entry.user.id)).toEqual([anna.id]);
   });
 
   it('returns one user, or UserNotFound', async () => {
