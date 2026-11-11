@@ -7,7 +7,7 @@ acs: ["AC-03", "AC-07", "AC-18", "AC-20"]
 files_hint: ["apps/api/src/middleware/authenticate.ts", "apps/api/src/composition.ts", "apps/api/src/env.ts", "apps/api/src/index.ts", "apps/api/wrangler.jsonc", "apps/api/.dev.vars.example", "apps/api/src/middleware/permission-source.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T20 — Wire authenticate, the permission catalog and identity config in the api host
@@ -29,9 +29,9 @@ Files: `apps/api/src/middleware/authenticate.ts`, `apps/api/src/composition.ts`,
 
 ## Definition of Done
 
-- [ ] Integration test: every non-public route answers 401 to an anonymous request (route list taken from the app, not hand-written).
-- [ ] Integration test: a revoked session → 401 with reason `access-removed` (AC-07); the `Server-Timing` header carries `accessCheck`.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
+- [x] Integration test: every non-public route answers 401 to an anonymous request (route list taken from the app, not hand-written).
+- [x] Integration test: a revoked session → 401 with reason `access-removed` (AC-07); the `Server-Timing` header carries `accessCheck`.
+- [x] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
 
 ## Notes
 
