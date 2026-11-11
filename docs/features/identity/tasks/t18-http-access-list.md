@@ -7,7 +7,7 @@ acs: ["AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-12", "AC-14", "AC-21"]
 files_hint: ["modules/identity/src/http/access-list-routes.ts", "modules/identity/src/http/routes.ts", "modules/identity/src/http/presenter.ts", "apps/api/test/integration/identity/users.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T18 — Expose the access-list endpoints behind manage access
@@ -27,8 +27,8 @@ Files: `modules/identity/src/http/access-list-routes.ts`, `modules/identity/src/
 
 ## Definition of Done
 
-- [ ] Integration tests, one per AC listed. AC-08: a non-admin gets 403 and no list data. AC-14: removing the last admin → 409 and the DB is unchanged.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
+- [x] Integration tests, one per AC listed. AC-08: a non-admin gets 403 and no list data. AC-14: removing the last admin → 409 and the DB is unchanged.
+- [x] `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration` clean
 
 ## Notes
 
