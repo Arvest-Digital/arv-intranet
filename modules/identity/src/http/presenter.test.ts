@@ -4,14 +4,23 @@ import { Effect, Either } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { AccessRoleId } from '../application/ports';
 import {
+  AccessRoleNameTaken,
   AccessRoleNotFound,
   EmailTaken,
   LastAdminRequired,
   NotCompanyAddress,
+  RetiredPermissionNotAssignable,
   UserNotFound,
 } from '../domain/errors';
 import { User } from '../domain/user';
-import { mapAccessListErrors, presentUserAccess, toAccessListContractError } from './presenter';
+import {
+  mapAccessListErrors,
+  mapAccessRoleErrors,
+  presentAccessRole,
+  presentUserAccess,
+  toAccessListContractError,
+  toAccessRoleContractError,
+} from './presenter';
 
 const user = new User({
   id: UserId.make('01933b8e-0000-7000-8000-000000000103'),
@@ -71,6 +80,55 @@ describe('mapAccessListErrors', () => {
   it('lets the kernel access errors through for runEffect to map', () => {
     const denied = new PermissionDenied({ permission: Permission.make('identity:manage-access') });
     const result = Effect.runSync(Effect.either(mapAccessListErrors(Effect.fail(denied))));
+    expect(result).toEqual(Either.left(denied));
+  });
+});
+
+describe('presentAccessRole', () => {
+  it('encodes declared and retired keys apart and createdAt as ISO', () => {
+    const view = {
+      id: AccessRoleId.make('01933b8e-0000-7000-8000-000000000202'),
+      name: 'Planner',
+      isPreselected: true,
+      holderCount: 2,
+      permissions: [],
+      retiredPermissionKeys: ['scheduling:edit-allocations'],
+      createdAt: new Date('2026-11-03T09:00:00Z'),
+    };
+    expect(presentAccessRole(view)).toEqual({ ...view, createdAt: '2026-11-03T09:00:00.000Z' });
+  });
+});
+
+describe('toAccessRoleContractError', () => {
+  it.each([
+    [new AccessRoleNotFound({ id: 'x' }), 'NotFound', IdentityErrorCodes.accessRoleNotFound],
+    [
+      new AccessRoleNameTaken({ name: 'Planner' }),
+      'Conflict',
+      IdentityErrorCodes.duplicateAccessRoleName,
+    ],
+    [new LastAdminRequired(), 'Conflict', IdentityErrorCodes.lastAdminRequired],
+  ])('maps %s', (error, tag, code) => {
+    expect(toAccessRoleContractError(error)).toMatchObject({ _tag: tag, code });
+  });
+
+  it('answers a retired key as 400 naming the refused keys (AC-16)', () => {
+    const error = toAccessRoleContractError(
+      new RetiredPermissionNotAssignable({ keys: ['scheduling:edit-allocations'] }),
+    );
+    expect(error).toMatchObject({
+      _tag: 'Invalid',
+      code: IdentityErrorCodes.retiredPermission,
+      message: 'A retired permission cannot be added: scheduling:edit-allocations',
+      details: { rules: ['retired_permission'], permissionKeys: ['scheduling:edit-allocations'] },
+    });
+  });
+});
+
+describe('mapAccessRoleErrors', () => {
+  it('lets the kernel access errors through for runEffect to map', () => {
+    const denied = new PermissionDenied({ permission: Permission.make('identity:manage-access') });
+    const result = Effect.runSync(Effect.either(mapAccessRoleErrors(Effect.fail(denied))));
     expect(result).toEqual(Either.left(denied));
   });
 });

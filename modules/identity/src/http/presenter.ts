@@ -1,7 +1,11 @@
 import {
+  AccessRole,
+  AccessRolePage,
   IdentityErrorCodes,
   Me,
   type NotOnAccessListDetails,
+  PermissionCatalog,
+  PreselectedAccessRole,
   type RuleViolations,
   Session,
   SignInRedirect,
@@ -9,18 +13,22 @@ import {
   UserWithAccessRoles,
 } from '@arv/contracts/identity';
 import { Conflict, Invalid, NotFound, Refused } from '@arv/contracts/shared';
+import type { PermissionDeclaration } from '@arv/kernel';
 import { Effect, Schema } from 'effect';
 import type { UserAccess } from '../application/access-list';
+import type { AccessRoleView } from '../application/access-roles';
 import type { SignInStart } from '../application/begin-sign-in';
 import type { NotSetUp, SignedIn } from '../application/complete-sign-in';
 import type { MeView } from '../application/get-me';
 import type { Page } from '../application/page';
-import type { SignInRefused } from '../application/ports';
+import type { AccessRoleId, SignInRefused } from '../application/ports';
 import type {
+  AccessRoleNameTaken,
   AccessRoleNotFound,
   EmailTaken,
   LastAdminRequired,
   NotCompanyAddress,
+  RetiredPermissionNotAssignable,
   UserNotFound,
 } from '../domain/errors';
 
@@ -106,6 +114,75 @@ export const mapAccessListErrors = <A, E extends { readonly _tag: string }, R>(
     isAccessListError(error)
       ? toAccessListContractError(error)
       : (error as Exclude<E, AccessListError>),
+  );
+
+/** OpenAPI `AccessRole`: granted keys split into declared and retired, `createdAt` as ISO. */
+export const presentAccessRole = (view: AccessRoleView) => Schema.encodeSync(AccessRole)(view);
+
+export const presentAccessRolePage = (page: Page<AccessRoleView>) =>
+  Schema.encodeSync(AccessRolePage)(page);
+
+export const presentPreselectedAccessRole = (mark: {
+  readonly accessRoleId: AccessRoleId | null;
+}) => Schema.encodeSync(PreselectedAccessRole)(mark);
+
+export const presentPermissionCatalog = (declarations: ReadonlyArray<PermissionDeclaration>) =>
+  Schema.encodeSync(PermissionCatalog)({ items: declarations });
+
+/** The domain failures of the access-role use cases (openapi.yaml `access-roles` tag). */
+export type AccessRoleError =
+  | AccessRoleNotFound
+  | AccessRoleNameTaken
+  | RetiredPermissionNotAssignable
+  | LastAdminRequired;
+
+const ACCESS_ROLE_ERROR_TAGS: ReadonlySet<string> = new Set<AccessRoleError['_tag']>([
+  'AccessRoleNotFound',
+  'AccessRoleNameTaken',
+  'RetiredPermissionNotAssignable',
+  'LastAdminRequired',
+]);
+
+const isAccessRoleError = (error: { readonly _tag: string }): error is AccessRoleError =>
+  ACCESS_ROLE_ERROR_TAGS.has(error._tag);
+
+/** Messages are the contract's (openapi.yaml `components.examples`). */
+export const toAccessRoleContractError = (error: AccessRoleError) => {
+  switch (error._tag) {
+    case 'AccessRoleNotFound':
+    case 'LastAdminRequired':
+      return toAccessListContractError(error);
+    case 'AccessRoleNameTaken':
+      return new Conflict({
+        message: 'An access role with that name already exists',
+        code: IdentityErrorCodes.duplicateAccessRoleName,
+      });
+    case 'RetiredPermissionNotAssignable': {
+      // The keys are the caller's own input, so naming them leaks nothing (AC-16).
+      const details: RuleViolations = {
+        rules: ['retired_permission'],
+        permissionKeys: [...error.keys],
+      };
+      return new Invalid({
+        message: `A retired permission cannot be added: ${error.keys.join(', ')}`,
+        code: IdentityErrorCodes.retiredPermission,
+        details,
+      });
+    }
+  }
+};
+
+/**
+ * Maps the access-role domain failures to contract errors and lets every other failure through
+ * (the kernel's access errors, which `runEffect` maps once).
+ */
+export const mapAccessRoleErrors = <A, E extends { readonly _tag: string }, R>(
+  effect: Effect.Effect<A, E, R>,
+) =>
+  Effect.mapError(effect, (error) =>
+    isAccessRoleError(error)
+      ? toAccessRoleContractError(error)
+      : (error as Exclude<E, AccessRoleError>),
   );
 
 export const presentSignInStart = (start: SignInStart) => Schema.encodeSync(SignInRedirect)(start);
