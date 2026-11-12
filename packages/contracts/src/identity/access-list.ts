@@ -10,8 +10,7 @@ import {
 
 /**
  * A user on the access list with their access roles and combined permissions (OpenAPI `User`;
- * `getUser`, `createUser`, `renameUser`, `setUserAccessRoles`). Named apart from the scaffold `User`
- * in `user.ts` until the access-list routes and screens move over to this shape.
+ * `getUser`, `createUser`, `renameUser`, `setUserAccessRoles`).
  */
 export const UserWithAccessRoles = Schema.Struct({
   id: Schema.UUID,

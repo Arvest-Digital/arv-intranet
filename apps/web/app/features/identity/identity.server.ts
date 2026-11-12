@@ -1,9 +1,12 @@
 import type { IdentityRoutes } from '@arv/api';
 import {
+  type AccessRole,
+  AccessRolePage,
   type AdminContact,
   IdentityErrorCodes,
   Me,
   NotOnAccessListDetails,
+  PAGE_LIMIT_MAX,
   Session,
   type SignInCompletion,
   SignInRedirect,
@@ -16,6 +19,7 @@ import { hc } from 'hono/client';
 import { API_BASE_URL, type ApiResult, bindingFetch, failure } from '../../shared/lib/api.server';
 
 const decodeUserPage = Schema.decodeUnknownSync(UserPage);
+const decodeAccessRolePage = Schema.decodeUnknownSync(AccessRolePage);
 const decodeUser = Schema.decodeUnknownSync(UserWithAccessRoles);
 const decodeSignInRedirect = Schema.decodeUnknownSync(SignInRedirect);
 const decodeSession = Schema.decodeUnknownSync(Session);
@@ -30,6 +34,9 @@ export type SignInOutcome =
   /** A verified company account not on the access list, with the admins to ask (AC-03). */
   | { readonly kind: 'not-set-up'; readonly admins: ReadonlyArray<AdminContact> }
   | { readonly kind: 'failed'; readonly status: number; readonly message: string };
+
+/** Which page of the access list: after or before a user id seen, never both. */
+export type UserPageCursor = { readonly after?: string; readonly before?: string };
 
 /**
  * Identity API calls for loaders and actions. `sessionToken` (from `getSessionToken`) is forwarded
@@ -81,17 +88,60 @@ export function identityGateway(api: Fetcher, sessionToken: string | null) {
       return { ok: true, value: null };
     },
 
-    // TODO(identity T25): pages beyond the first; the scaffold screen shows the first 50 only.
-    async listUsers(): Promise<ApiResult<ReadonlyArray<UserWithAccessRoles>>> {
-      const res = await client.users.$get({ query: {} });
-      if (!res.ok) return failure(res, 'Could not load users');
-      return { ok: true, value: decodeUserPage(await res.json()).items };
+    /** One page of the access list, after or before a user id seen (AC-08: 403 without manage access). */
+    async listUsers(page: UserPageCursor = {}): Promise<ApiResult<UserPage>> {
+      const res = await client.users.$get({ query: page });
+      if (!res.ok) return failure(res, 'Could not load the access list');
+      return { ok: true, value: decodeUserPage(await res.json()) };
     },
 
+    /** Adds someone with the access roles left ticked in the form (AC-04, AC-13). */
     async createUser(input: UserCreate): Promise<ApiResult<UserWithAccessRoles>> {
       const res = await client.users.$post({ json: input });
-      if (!res.ok) return failure(res, 'Could not create user');
+      if (!res.ok) return failure(res, 'Could not add the user');
       return { ok: true, value: decodeUser(await res.json()) };
+    },
+
+    /** Corrects the name only; roles and sessions stay (AC-21). */
+    async renameUser(userId: string, name: string): Promise<ApiResult<UserWithAccessRoles>> {
+      const res = await client.users[':userId'].$patch({ param: { userId }, json: { name } });
+      if (!res.ok) return failure(res, 'Could not rename the user');
+      return { ok: true, value: decodeUser(await res.json()) };
+    },
+
+    /** Removes the user with their roles and sessions (AC-07); refused for the last admin (AC-14). */
+    async removeUser(userId: string): Promise<ApiResult<null>> {
+      const res = await client.users[':userId'].$delete({ param: { userId } });
+      if (!res.ok) return failure(res, 'Could not remove the user');
+      return { ok: true, value: null };
+    },
+
+    /** Sets exactly these access roles (AC-12); refused for the last admin (AC-14). */
+    async setUserAccessRoles(
+      userId: string,
+      accessRoleIds: ReadonlyArray<string>,
+    ): Promise<ApiResult<UserWithAccessRoles>> {
+      const res = await client.users[':userId']['access-roles'].$put({
+        param: { userId },
+        json: { accessRoleIds: [...accessRoleIds] },
+      });
+      if (!res.ok) return failure(res, "Could not change the user's access roles");
+      return { ok: true, value: decodeUser(await res.json()) };
+    },
+
+    /** Every access role, following the pages (a handful of roles, so a few calls at most). */
+    async listAccessRoles(): Promise<ApiResult<ReadonlyArray<AccessRole>>> {
+      const roles: AccessRole[] = [];
+      let after: string | undefined;
+      for (;;) {
+        const query = { limit: PAGE_LIMIT_MAX, ...(after ? { after } : {}) };
+        const res = await client.identity['access-roles'].$get({ query });
+        if (!res.ok) return failure(res, 'Could not load the access roles');
+        const page = decodeAccessRolePage(await res.json());
+        roles.push(...page.items);
+        if (!page.hasNext || !page.nextCursor) return { ok: true, value: roles };
+        after = page.nextCursor;
+      }
     },
   };
 }

@@ -28,9 +28,8 @@ export function AppNav({ me }: { me: Me }) {
       <NavLink to="/" end className={linkClass}>
         Home
       </NavLink>
-      {/* TODO(identity T25): point at the access-list screens once they replace /users. */}
       {canManageAccess(me) ? (
-        <NavLink to="/users" className={linkClass}>
+        <NavLink to="/access/users" className={linkClass}>
           Access
         </NavLink>
       ) : null}

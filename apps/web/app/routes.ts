@@ -5,7 +5,7 @@ export default [
   route('sign-in', 'features/identity/routes/sign-in.tsx'),
   route('sign-in/return', 'features/identity/routes/sign-in-return.tsx'),
   route('sign-out', 'features/identity/routes/sign-out.tsx'),
-  route('users', 'features/identity/routes/users.tsx'),
+  route('access/users', 'features/identity/routes/access-users.tsx'),
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),
