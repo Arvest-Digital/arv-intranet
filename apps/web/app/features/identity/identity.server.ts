@@ -1,12 +1,16 @@
 import type { IdentityRoutes } from '@arv/api';
 import {
-  type AccessRole,
+  AccessRole,
+  type AccessRoleInput,
   AccessRolePage,
   type AdminContact,
   IdentityErrorCodes,
   Me,
   NotOnAccessListDetails,
   PAGE_LIMIT_MAX,
+  PermissionCatalog,
+  type PermissionDeclaration,
+  PreselectedAccessRole,
   Session,
   type SignInCompletion,
   SignInRedirect,
@@ -20,6 +24,9 @@ import { API_BASE_URL, type ApiResult, bindingFetch, failure } from '../../share
 
 const decodeUserPage = Schema.decodeUnknownSync(UserPage);
 const decodeAccessRolePage = Schema.decodeUnknownSync(AccessRolePage);
+const decodeAccessRole = Schema.decodeUnknownSync(AccessRole);
+const decodePermissionCatalog = Schema.decodeUnknownSync(PermissionCatalog);
+const decodePreselected = Schema.decodeUnknownSync(PreselectedAccessRole);
 const decodeUser = Schema.decodeUnknownSync(UserWithAccessRoles);
 const decodeSignInRedirect = Schema.decodeUnknownSync(SignInRedirect);
 const decodeSession = Schema.decodeUnknownSync(Session);
@@ -142,6 +149,55 @@ export function identityGateway(api: Fetcher, sessionToken: string | null) {
         if (!page.hasNext || !page.nextCursor) return { ok: true, value: roles };
         after = page.nextCursor;
       }
+    },
+
+    /** Every permission a module declares now, in plain words (AC-09); retired keys are absent. */
+    async listPermissions(): Promise<ApiResult<ReadonlyArray<PermissionDeclaration>>> {
+      const res = await client.identity.permissions.$get();
+      if (!res.ok) return failure(res, 'Could not load the permissions');
+      return { ok: true, value: decodePermissionCatalog(await res.json()).items };
+    },
+
+    /** Composes a role from declared permissions; held by nobody yet (AC-09, AC-10, AC-16). */
+    async createAccessRole(input: AccessRoleInput): Promise<ApiResult<AccessRole>> {
+      const res = await client.identity['access-roles'].$post({
+        json: { name: input.name, permissionKeys: [...input.permissionKeys] },
+      });
+      if (!res.ok) return failure(res, 'Could not create the access role');
+      return { ok: true, value: decodeAccessRole(await res.json()) };
+    },
+
+    /** Renames and sets the full key set; a retired key may be kept, never added (AC-10, AC-16). */
+    async updateAccessRole(
+      accessRoleId: string,
+      input: AccessRoleInput,
+    ): Promise<ApiResult<AccessRole>> {
+      const res = await client.identity['access-roles'][':accessRoleId'].$put({
+        param: { accessRoleId },
+        json: { name: input.name, permissionKeys: [...input.permissionKeys] },
+      });
+      if (!res.ok) return failure(res, 'Could not save the access role');
+      return { ok: true, value: decodeAccessRole(await res.json()) };
+    },
+
+    /** Deletes the role and takes it from its holders (AC-11); refused for the last admin (AC-14). */
+    async deleteAccessRole(accessRoleId: string): Promise<ApiResult<null>> {
+      const res = await client.identity['access-roles'][':accessRoleId'].$delete({
+        param: { accessRoleId },
+      });
+      if (!res.ok) return failure(res, 'Could not delete the access role');
+      return { ok: true, value: null };
+    },
+
+    /** Marks the role pre-selected for new people, or clears the mark with `null` (AC-13). */
+    async setPreselectedAccessRole(
+      accessRoleId: string | null,
+    ): Promise<ApiResult<PreselectedAccessRole>> {
+      const res = await client.identity['preselected-access-role'].$put({
+        json: { accessRoleId },
+      });
+      if (!res.ok) return failure(res, 'Could not change the pre-selected access role');
+      return { ok: true, value: decodePreselected(await res.json()) };
     },
   };
 }

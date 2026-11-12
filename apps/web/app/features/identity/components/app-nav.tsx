@@ -1,6 +1,6 @@
 import type { Me } from '@arv/contracts/identity';
 import { ChevronDownIcon, LogOutIcon } from 'lucide-react';
-import { NavLink, useSubmit } from 'react-router';
+import { NavLink, useMatch, useSubmit } from 'react-router';
 import { cn } from '~/shared/lib/utils';
 import { ThemeToggle } from '~/shared/theme/theme-toggle';
 import { Button } from '~/shared/ui/button';
@@ -23,13 +23,18 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 /** The app shell's navigation: links by permission, theme and the signed-in user's menu. */
 export function AppNav({ me }: { me: Me }) {
+  // «Access» covers both the access list and the access roles.
+  const inAccess = useMatch('/access/*') !== null;
   return (
     <nav aria-label="Main" className="mb-6 flex items-center gap-1 text-sm">
       <NavLink to="/" end className={linkClass}>
         Home
       </NavLink>
       {canManageAccess(me) ? (
-        <NavLink to="/access/users" className={linkClass}>
+        <NavLink
+          to="/access/users"
+          className={({ isActive }) => linkClass({ isActive: isActive || inAccess })}
+        >
           Access
         </NavLink>
       ) : null}

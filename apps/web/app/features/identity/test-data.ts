@@ -53,3 +53,16 @@ export const anna: UserWithAccessRoles = {
   combinedPermissions: [editAllocations],
   createdAt: new Date('2026-10-13T10:00:00.000Z'),
 };
+
+/** The permission catalog: what modules declare now. */
+export const catalog = [manageAccess, editAllocations];
+
+/** «Planner» after scheduling stopped declaring `scheduling:view-board` (AC-16). */
+export const retiredPlanner = role({
+  id: '0d4b6c1e-1a2b-4c3d-8e4f-5a6b7c8d9e04',
+  name: 'Board planner',
+  holderCount: 5,
+  isPreselected: true,
+  permissions: [editAllocations],
+  retiredPermissionKeys: ['scheduling:view-board'],
+});

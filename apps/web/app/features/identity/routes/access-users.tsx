@@ -4,6 +4,7 @@ import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-chec
 import { getSessionToken } from '~/shared/lib/session.server';
 import { buttonVariants } from '~/shared/ui/button';
 import { type AccessListActionResult, Intent } from '../components/access-list-form';
+import { AccessTabs } from '../components/access-tabs';
 import { AddUserDialog } from '../components/add-user-dialog';
 import { UserList } from '../components/user-list';
 import { refusalResponse } from '../gate.server';
@@ -87,6 +88,7 @@ export default function AccessUsers({ loaderData }: Route.ComponentProps) {
   const first = page.items[0];
   return (
     <main>
+      <AccessTabs />
       <div className="mb-6 flex items-center gap-4">
         <h1 className="text-2xl font-semibold">Access list</h1>
         <div className="ml-auto">
