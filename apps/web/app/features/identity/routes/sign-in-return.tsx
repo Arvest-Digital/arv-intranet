@@ -1,15 +1,8 @@
 import { data, redirect } from 'react-router';
 import { commitSession, destroySignInState, getSignInState } from '~/shared/lib/session.server';
-import {
-  NotSetUpScreen,
-  PUBLIC_SCREEN,
-  RefusedScreen,
-  SignInProblemScreen,
-} from '../components/public-screens';
+import { NotSetUpScreen, RefusedScreen, SignInProblemScreen } from '../components/public-screens';
 import { identityGateway } from '../identity.server';
 import type { Route } from './+types/sign-in-return';
-
-export const handle = PUBLIC_SCREEN;
 
 export const meta: Route.MetaFunction = () => [{ title: 'Sign in · ARV Intranet' }];
 

@@ -9,4 +9,6 @@ export default [
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),
+  // Last: unknown paths still pass the root gate before their 404.
+  route('*', 'routes/not-found.tsx'),
 ] satisfies RouteConfig;

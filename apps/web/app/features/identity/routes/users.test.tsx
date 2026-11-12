@@ -41,6 +41,17 @@ describe('users loader', () => {
       loader(args({ context: api.context, request: new Request('http://web/users') })),
     ).rejects.toMatchObject({ init: { status: 502 } });
   });
+  it('refuses with «missing permission» when the API answers 403 (AC-08)', async () => {
+    const api = fakeApi(() =>
+      json(
+        { error: { _tag: 'Forbidden', code: 'identity.missing_permission', message: 'x' } },
+        403,
+      ),
+    );
+    await expect(
+      loader(args({ context: api.context, request: new Request('http://web/users') })),
+    ).rejects.toMatchObject({ data: { reason: 'missing-permission' }, init: { status: 403 } });
+  });
 });
 
 describe('users action', () => {

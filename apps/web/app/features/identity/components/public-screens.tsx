@@ -3,9 +3,6 @@ import { CircleCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '~/shared/ui/button';
 
-/** Route `handle` for screens shown without the app shell (outside the root gate, T24). */
-export const PUBLIC_SCREEN = { publicScreen: true } as const;
-
 /** Full-height, centred column with the brand above one card (design 1–3). */
 export function PublicScreen({ titleId, children }: { titleId: string; children: ReactNode }) {
   return (

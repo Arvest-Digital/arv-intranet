@@ -2,6 +2,7 @@ import { data, Form, useNavigation } from 'react-router';
 import { getSessionToken } from '~/shared/lib/session.server';
 import { Button } from '~/shared/ui/button';
 import { UserList } from '../components/user-list';
+import { refusalResponse } from '../gate.server';
 import { identityGateway } from '../identity.server';
 import type { Route } from './+types/users';
 
@@ -10,7 +11,10 @@ export const meta: Route.MetaFunction = () => [{ title: 'Users · ARV Intranet' 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const gateway = identityGateway(context.cloudflare.env.API, await getSessionToken(request));
   const result = await gateway.listUsers();
-  if (!result.ok) throw data('Failed to load users', { status: 502 });
+  if (!result.ok) {
+    // 403 → «you lack the permission to manage access», showing nothing of the list (AC-08).
+    throw (await refusalResponse(result, request)) ?? data('Failed to load users', { status: 502 });
+  }
   return { users: result.value };
 }
 
@@ -24,6 +28,8 @@ export async function action({ request, context }: Route.ActionArgs) {
     accessRoleIds: [],
   });
   if (result.ok) return { error: null };
+  const refused = await refusalResponse(result, request);
+  if (refused) throw refused;
   return data({ error: result.message }, { status: result.status });
 }
 

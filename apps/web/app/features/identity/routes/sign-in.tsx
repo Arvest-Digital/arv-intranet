@@ -2,17 +2,9 @@ import { data, redirect } from 'react-router';
 import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-check.server';
 import { safeReturnTo } from '~/shared/lib/return-to';
 import { commitSignInState } from '~/shared/lib/session.server';
-import {
-  CardHead,
-  PUBLIC_SCREEN,
-  PublicScreen,
-  SignedOutNote,
-  SignInForm,
-} from '../components/public-screens';
+import { CardHead, PublicScreen, SignedOutNote, SignInForm } from '../components/public-screens';
 import { identityGateway } from '../identity.server';
 import type { Route } from './+types/sign-in';
-
-export const handle = PUBLIC_SCREEN;
 
 export const meta: Route.MetaFunction = () => [{ title: 'Sign in · ARV Intranet' }];
 
