@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-02", "AC-03", "AC-15", "AC-20"]
 files_hint: ["apps/web/app/features/identity/routes/sign-in.tsx", "apps/web/app/features/identity/routes/sign-in-return.tsx", "apps/web/app/features/identity/routes/sign-out.tsx", "apps/web/app/features/identity/routes/not-set-up.tsx", "apps/web/app/routes.ts"]
 owner: "TBD (frontend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T23 — Build the sign-in, sign-in-return, sign-out, not-set-up and refused screens
@@ -31,10 +31,10 @@ Files: `apps/web/app/features/identity/routes/sign-in.tsx`, `apps/web/app/featur
 
 ## Definition of Done
 
-- [ ] Route test: GET sign-in renders the button and does not call api begin or redirect to Google; POST begins and redirects to Google (AC-20).
-- [ ] Route tests with `app/test/fake-api.ts`: state mismatch refuses; each completion outcome renders its screen; a successful return sets the cookie and redirects to the given path (AC-01).
-- [ ] Route test: sign-out clears the cookie and calls the api (AC-20).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Route test: GET sign-in renders the button and does not call api begin or redirect to Google; POST begins and redirects to Google (AC-20).
+- [x] Route tests with `app/test/fake-api.ts`: state mismatch refuses; each completion outcome renders its screen; a successful return sets the cookie and redirects to the given path (AC-01).
+- [x] Route test: sign-out clears the cookie and calls the api (AC-20).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

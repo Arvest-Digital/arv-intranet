@@ -27,7 +27,7 @@
 | T20 | [Wire authenticate, the permission catalog and identity config in the api host](./t20-host-authenticate-composition.md) | wiring | TBD (backend lead) | M | T12, T17 | done |
 | T21 | [Add the QG-1 revocation, session-lifetime and fail-closed integration suites](./t21-qg1-revocation-sessions-fail-closed.md) | tests | TBD (backend lead) | L | T18, T19, T20 | done |
 | T22 | [Add the web session and sign-in-state cookies, Bearer forwarding, the returnTo check and the Origin check](./t22-web-session-plumbing.md) | ui | TBD (frontend lead) | M | T16 | done |
-| T23 | [Build the sign-in, sign-in-return, sign-out, not-set-up and refused screens](./t23-web-sign-in-screens.md) | ui | TBD (frontend lead) | L | T17, T22 | todo |
+| T23 | [Build the sign-in, sign-in-return, sign-out, not-set-up and refused screens](./t23-web-sign-in-screens.md) | ui | TBD (frontend lead) | L | T17, T22 | done |
 | T24 | [Gate every page at the root and show navigation by permission](./t24-web-root-gate.md) | ui | TBD (frontend lead) | M | T17, T20, T22 | todo |
 | T25 | [Build the access-list screens: list, add with pre-selected role, rename, remove and assign roles](./t25-web-access-list-screens.md) | ui | TBD (frontend lead) | M | T18, T24 | todo |
 | T26 | [Build the access-role screens: compose, rename, delete with warning, pre-select and retired flags](./t26-web-access-role-screens.md) | ui | TBD (frontend lead) | L | T19, T24 | todo |
