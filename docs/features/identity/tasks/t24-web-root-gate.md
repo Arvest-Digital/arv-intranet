@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-03", "AC-07", "AC-08", "AC-20"]
 files_hint: ["apps/web/app/root.tsx", "apps/web/app/routes/home.tsx", "apps/web/app/features/identity/components/app-nav.tsx"]
 owner: "TBD (frontend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T24 — Gate every page at the root and show navigation by permission
@@ -28,8 +28,8 @@ Files: `apps/web/app/root.tsx`, `apps/web/app/routes/home.tsx`, `apps/web/app/fe
 
 ## Definition of Done
 
-- [ ] Route tests: anonymous visit to `/board` redirects to the sign-in page with `returnTo=/board` (not to Google); access-removed clears the cookie and shows the message; a non-admin sees no «Access» link.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Route tests: anonymous visit to `/board` redirects to the sign-in page with `returnTo=/board` (not to Google); access-removed clears the cookie and shows the message; a non-admin sees no «Access» link.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
