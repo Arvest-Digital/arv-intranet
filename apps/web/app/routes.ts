@@ -2,6 +2,9 @@ import { index, type RouteConfig, route } from '@react-router/dev/routes';
 
 export default [
   index('routes/home.tsx'),
+  route('sign-in', 'features/identity/routes/sign-in.tsx'),
+  route('sign-in/return', 'features/identity/routes/sign-in-return.tsx'),
+  route('sign-out', 'features/identity/routes/sign-out.tsx'),
   route('users', 'features/identity/routes/users.tsx'),
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.

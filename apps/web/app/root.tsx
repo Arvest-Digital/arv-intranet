@@ -6,6 +6,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useMatches,
 } from 'react-router';
 import { SYSTEM_THEME_SCRIPT, themeClass } from '~/shared/theme/theme';
 import { getTheme } from '~/shared/theme/theme.server';
@@ -23,6 +24,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 export function Layout({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
   useThemeClass(theme);
+  // Sign-in screens sit outside the app shell: no navigation, full-height centred card.
+  const publicScreen = useMatches().some(
+    (match) => (match.handle as { publicScreen?: boolean } | undefined)?.publicScreen,
+  );
 
   return (
     // `system` adds `.dark` in the browser (script below), so the server class can differ.
@@ -37,13 +42,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
       </head>
-      <body className="mx-auto max-w-3xl px-4 py-8">
-        <nav className="mb-6 flex items-center gap-2 text-sm">
-          <NavLink to="/">Home</NavLink> · <NavLink to="/users">Users</NavLink>
-          <div className="ml-auto">
-            <ThemeToggle />
-          </div>
-        </nav>
+      <body className={publicScreen ? undefined : 'mx-auto max-w-3xl px-4 py-8'}>
+        {publicScreen ? null : (
+          <nav className="mb-6 flex items-center gap-2 text-sm">
+            <NavLink to="/">Home</NavLink> · <NavLink to="/users">Users</NavLink>
+            <div className="ml-auto">
+              <ThemeToggle />
+            </div>
+          </nav>
+        )}
         {children}
         <ScrollRestoration />
         <Scripts />
