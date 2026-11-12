@@ -29,7 +29,7 @@
 | T22 | [Add the web session and sign-in-state cookies, Bearer forwarding, the returnTo check and the Origin check](./t22-web-session-plumbing.md) | ui | TBD (frontend lead) | M | T16 | done |
 | T23 | [Build the sign-in, sign-in-return, sign-out, not-set-up and refused screens](./t23-web-sign-in-screens.md) | ui | TBD (frontend lead) | L | T17, T22 | done |
 | T24 | [Gate every page at the root and show navigation by permission](./t24-web-root-gate.md) | ui | TBD (frontend lead) | M | T17, T20, T22 | done |
-| T25 | [Build the access-list screens: list, add with pre-selected role, rename, remove and assign roles](./t25-web-access-list-screens.md) | ui | TBD (frontend lead) | M | T18, T24 | todo |
+| T25 | [Build the access-list screens: list, add with pre-selected role, rename, remove and assign roles](./t25-web-access-list-screens.md) | ui | TBD (frontend lead) | M | T18, T24 | done |
 | T26 | [Build the access-role screens: compose, rename, delete with warning, pre-select and retired flags](./t26-web-access-role-screens.md) | ui | TBD (frontend lead) | L | T19, T24 | todo |
 | T27 | [Add the identity end-to-end tests over seeded sessions](./t27-e2e-identity.md) | tests | TBD (backend lead) | M | T23, T25, T26 | todo |
 | T28 | [Add the seeded k6 load test and its CI job for the three latency targets](./t28-k6-load-test-ci.md) | tests | TBD (backend lead) | L | T20, T23 | todo |
