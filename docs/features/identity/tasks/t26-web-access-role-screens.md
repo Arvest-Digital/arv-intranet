@@ -7,7 +7,7 @@ acs: ["AC-09", "AC-10", "AC-11", "AC-13", "AC-14", "AC-16"]
 files_hint: ["apps/web/app/features/identity/routes/access-roles.tsx", "apps/web/app/features/identity/components/access-role-form.tsx", "apps/web/app/features/identity/components/permission-picker.tsx", "apps/web/app/features/identity/components/delete-role-dialog.tsx", "apps/web/app/features/identity/identity.server.ts", "apps/web/app/routes.ts"]
 owner: "TBD (frontend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T26 — Build the access-role screens: compose, rename, delete with warning, pre-select and retired flags
@@ -29,8 +29,8 @@ Files: `apps/web/app/features/identity/routes/access-roles.tsx`, `apps/web/app/f
 
 ## Definition of Done
 
-- [ ] Component tests: a retired key renders flagged and isn't offered in the picker (AC-16); the delete warning shows the count and the pre-selected note (AC-11); the duplicate-name 409 shows inline (AC-10).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Component tests: a retired key renders flagged and isn't offered in the picker (AC-16); the delete warning shows the count and the pre-selected note (AC-11); the duplicate-name 409 shows inline (AC-10).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
