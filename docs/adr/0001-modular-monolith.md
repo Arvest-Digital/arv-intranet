@@ -37,5 +37,5 @@ We want strong boundaries between domains without paying for microservices now: 
 ## Open questions
 
 - **Domain list.** Only `identity` exists today. The real list of modules and the edges between them must be agreed by the team before more modules are added; `ARCHITECTURE.md` shows examples.
-- **Authentication source.** Cloudflare Access JWT, an SSO provider, or our own sessions. Until it's decided, `IdentityApi.resolveActor` returns an anonymous actor for every request and does not read the token.
+- ~~**Authentication source.**~~ Resolved on 2026-11-03 by identity [ADR-0003](../features/identity/adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md): Google OpenID Connect sign-in with server-side sessions kept in the `identity` module. The api's `authenticate` middleware resolves the actor through `IdentityApi.resolveActor` on every request and refuses any route outside a short public list when there is no valid session. Permissions are declared per module and checked with the kernel's `requirePermission` (identity ADR-0004 and ADR-0005).
 - **Events.** The `UnitOfWork` and `DomainEvents` ports exist; the outbox, Cron relay and Queue consumer are added with the first asynchronous use case.
