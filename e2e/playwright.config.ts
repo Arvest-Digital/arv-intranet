@@ -23,6 +23,12 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: TEST_DATABASE_URL,
+      // The api builds its Google adapter per request and refuses an empty secret. Google is
+      // never called in e2e (sessions are seeded), so placeholders stand in for `.dev.vars`,
+      // which CI doesn't have. Passed to the Workers as bindings from the process env.
+      CLOUDFLARE_INCLUDE_PROCESS_ENV: 'true',
+      GOOGLE_CLIENT_ID: 'e2e-client.apps.example.test',
+      GOOGLE_CLIENT_SECRET: 'e2e-placeholder-secret',
     },
   },
 });
