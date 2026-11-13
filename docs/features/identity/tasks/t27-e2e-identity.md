@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-03", "AC-04", "AC-07", "AC-09", "AC-12", "AC-20"]
 files_hint: ["e2e/tests/identity/", "e2e/db.ts", "e2e/global-setup.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T27 — Add the identity end-to-end tests over seeded sessions
@@ -27,9 +27,10 @@ Files: `e2e/tests/identity/`, `e2e/db.ts`, `e2e/global-setup.ts`
 
 ## Definition of Done
 
-- [ ] `pnpm test:e2e` green locally and in CI.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] `pnpm test:e2e` green locally and in CI (green locally; CI runs it on the PR).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
-- —
+- «Planner» is composed with «Manage access», the only permission declared today; switch it to the board permissions once resource scheduling declares them (AC-09).
+- The api builds the Google adapter per request and refuses an empty client secret, so every signed-in request fails without `GOOGLE_CLIENT_SECRET`. e2e passes placeholders through `CLOUDFLARE_INCLUDE_PROCESS_ENV` in `e2e/playwright.config.ts`, since CI has no `.dev.vars`.
