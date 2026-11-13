@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "test:e2e": "playwright test",
+    "load:seed": "node --disable-warning=ExperimentalWarning --import ./load/ts-resolve.mjs load/seed.ts",
+    "load:api": "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=${TEST_DATABASE_URL:-postgres://arv:arv@localhost:5432/arv_test} pnpm --filter @arv/api exec wrangler dev --port 8787 --ip 127.0.0.1 --show-interactive-dev-session=false --var COMPANY_EMAIL_DOMAIN:example.test --var GOOGLE_CLIENT_ID:load-client.apps.example.test --var GOOGLE_CLIENT_SECRET:load-placeholder-secret",
+    "load:run": "k6 run load/identity.k6.js",
     "typecheck": "tsc"
   },
   "devDependencies": {
