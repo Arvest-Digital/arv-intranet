@@ -12,8 +12,11 @@ import {
 import { FormError, useDialogFetcher } from './access-list-form';
 import { RoleIntent } from './access-role-form';
 
-const holders = (count: number) =>
-  count === 1 ? '1 user holds' : `${count === 0 ? 'No' : count} users hold`;
+const holders = (count: number) => {
+  if (count === 0) return 'Nobody holds it.';
+  const who = count === 1 ? '1 user holds it.' : `${count} users hold it.`;
+  return `${who} They lose what it grants unless another of their roles grants it.`;
+};
 
 /**
  * Warns before deleting: how many hold the role and whether it is pre-selected, then confirms
@@ -30,7 +33,7 @@ export function DeleteRoleDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent showCloseButton={false}>
         <DeleteRoleForm role={role} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
@@ -38,30 +41,27 @@ export function DeleteRoleDialog({
 }
 
 function DeleteRoleForm({ role, onDone }: { role: AccessRole; onDone: () => void }) {
-  const { fetcher, submitting, error } = useDialogFetcher(onDone);
+  const { fetcher, submitting, failure } = useDialogFetcher(onDone);
   return (
-    <fetcher.Form method="post" className="grid gap-6">
-      <DialogHeader>
+    <fetcher.Form method="post" className="flex flex-col gap-4">
+      <DialogHeader className="pr-0">
         <DialogTitle>Delete {role.name}?</DialogTitle>
-        <DialogDescription>
-          {holders(role.holderCount)} this role.
-          {role.holderCount > 0
-            ? ' From their next action they lose what it grants, unless another of their roles grants it.'
-            : null}
+        <DialogDescription render={<div className="flex flex-col gap-2" />}>
+          <p>{holders(role.holderCount)}</p>
+          {role.isPreselected ? (
+            <p>
+              {role.name} is pre-selected for new users. After deleting, no role is pre-selected.
+            </p>
+          ) : null}
         </DialogDescription>
       </DialogHeader>
-      {role.isPreselected ? (
-        <p>
-          {role.name} is pre-selected for new people. After deleting it, no role is pre-selected.
-        </p>
-      ) : null}
       <input type="hidden" name="intent" value={RoleIntent.remove} />
       <input type="hidden" name="accessRoleId" value={role.id} />
-      <FormError error={error} />
+      <FormError error={failure?.error ?? null} />
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
         <Button type="submit" variant="destructive" disabled={submitting}>
-          {submitting ? 'Deleting…' : 'Delete'}
+          {submitting ? 'Deleting…' : 'Delete role'}
         </Button>
       </DialogFooter>
     </fetcher.Form>

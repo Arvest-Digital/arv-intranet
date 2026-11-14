@@ -1,7 +1,8 @@
-import { type AccessRole, isRetired, type PermissionDeclaration } from '@arv/contracts/identity';
+import { type AccessRole, isRetired } from '@arv/contracts/identity';
 import { MoreHorizontalIcon, TriangleAlertIcon } from 'lucide-react';
 import { useState } from 'react';
-import { useFetcher } from 'react-router';
+import { Link, useFetcher, useNavigate } from 'react-router';
+import { Badge } from '~/shared/ui/badge';
 import { Button } from '~/shared/ui/button';
 import {
   DropdownMenu,
@@ -12,95 +13,75 @@ import {
 } from '~/shared/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/shared/ui/table';
 import { type AccessListActionResult, FormError } from './access-list-form';
-import { EditAccessRoleDialog, RoleIntent } from './access-role-form';
+import { RoleIntent } from './access-role-form';
 import { DeleteRoleDialog } from './delete-role-dialog';
+
+/** Where a role is edited. */
+export const roleEditPath = (role: Pick<AccessRole, 'id'>) => `/access/roles/${role.id}`;
 
 /**
  * The access roles: permissions in plain words, holders, the pre-selected mark (AC-13) and a flag
- * naming every retired permission a role still grants (AC-16).
+ * on every role that still grants a retired permission (AC-16).
  */
-export function AccessRoleList({
-  roles,
-  catalog,
-}: {
-  roles: ReadonlyArray<AccessRole>;
-  catalog: ReadonlyArray<PermissionDeclaration>;
-}) {
+export function AccessRoleList({ roles }: { roles: ReadonlyArray<AccessRole> }) {
   if (roles.length === 0) return <p className="text-muted-foreground">No access roles yet.</p>;
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Permissions</TableHead>
-          <TableHead className="text-right">Holders</TableHead>
-          <TableHead>
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {roles.map((role) => (
-          <TableRow key={role.id}>
-            <TableCell className="align-top font-medium">
-              {role.name}
-              {role.isPreselected ? (
-                <span className="ml-2 rounded-sm border border-border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                  Pre-selected
-                </span>
-              ) : null}
-            </TableCell>
-            <TableCell className="align-top whitespace-normal">
-              <RolePermissions role={role} />
-            </TableCell>
-            <TableCell className="num text-right align-top">{role.holderCount}</TableCell>
-            <TableCell className="text-right align-top">
-              <RoleActions role={role} catalog={catalog} />
-            </TableCell>
+    <div className="overflow-hidden rounded-lg border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Name</TableHead>
+            <TableHead>Permissions</TableHead>
+            <TableHead className="text-right">Holders</TableHead>
+            <TableHead className="w-14">
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-function RolePermissions({ role }: { role: AccessRole }) {
-  return (
-    <div className="grid gap-1">
-      <span className={role.permissions.length === 0 ? 'text-muted-foreground' : undefined}>
-        {role.permissions.length === 0
-          ? 'No permissions'
-          : role.permissions.map((permission) => permission.name).join(', ')}
-      </span>
-      {isRetired(role) ? (
-        <p className="flex items-start gap-1.5 text-destructive">
-          <TriangleAlertIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <span>
-            Grants retired {role.retiredPermissionKeys.length === 1 ? 'permission' : 'permissions'}{' '}
-            {role.retiredPermissionKeys.map((key, index) => (
-              <span key={key}>
-                {index > 0 ? ', ' : null}
-                <code className="font-mono text-xs">{key}</code>
-              </span>
-            ))}
-          </span>
-        </p>
-      ) : null}
+        </TableHeader>
+        <TableBody>
+          {roles.map((role) => (
+            <TableRow key={role.id}>
+              <TableCell className="whitespace-normal">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <Link
+                    to={roleEditPath(role)}
+                    className="font-medium underline-offset-4 outline-none hover:underline focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/30"
+                  >
+                    {role.name}
+                  </Link>
+                  {role.isPreselected ? (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Pre-selected for new users
+                    </Badge>
+                  ) : null}
+                  {isRetired(role) ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap">
+                      <TriangleAlertIcon aria-hidden="true" className="size-3.5" />
+                      Grants a retired permission
+                    </span>
+                  ) : null}
+                </div>
+              </TableCell>
+              <TableCell className="whitespace-normal text-muted-foreground">
+                {role.permissions.length === 0
+                  ? 'No permissions'
+                  : role.permissions.map((permission) => permission.name).join(', ')}
+              </TableCell>
+              <TableCell className="num text-right">{role.holderCount}</TableCell>
+              <TableCell className="w-14 py-1.5 text-right">
+                <RoleActions role={role} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
 }
 
-type OpenDialog = 'edit' | 'delete' | null;
-
-function RoleActions({
-  role,
-  catalog,
-}: {
-  role: AccessRole;
-  catalog: ReadonlyArray<PermissionDeclaration>;
-}) {
-  const [dialog, setDialog] = useState<OpenDialog>(null);
-  const openChange = (which: OpenDialog) => (open: boolean) => setDialog(open ? which : null);
+function RoleActions({ role }: { role: AccessRole }) {
+  const navigate = useNavigate();
+  const [deleting, setDeleting] = useState(false);
   const preselect = useFetcher<AccessListActionResult>();
   const preselectError =
     preselect.state === 'idle' && preselect.data && !preselect.data.ok
@@ -122,29 +103,23 @@ function RoleActions({
         >
           <MoreHorizontalIcon aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-48">
-          <DropdownMenuItem onClick={() => setDialog('edit')}>Edit…</DropdownMenuItem>
+        <DropdownMenuContent align="end" className="min-w-56">
+          <DropdownMenuItem onClick={() => navigate(roleEditPath(role))}>Edit</DropdownMenuItem>
           <DropdownMenuItem onClick={togglePreselected}>
-            {role.isPreselected ? 'Clear pre-selected mark' : 'Pre-select for new people'}
+            {role.isPreselected ? 'Clear pre-selection' : 'Pre-select for new users'}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => setDialog('delete')}>
-            Delete…
+          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
+            Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <FormError error={preselectError} />
-      <EditAccessRoleDialog
-        role={role}
-        catalog={catalog}
-        open={dialog === 'edit'}
-        onOpenChange={openChange('edit')}
-      />
-      <DeleteRoleDialog
-        role={role}
-        open={dialog === 'delete'}
-        onOpenChange={openChange('delete')}
-      />
+      {preselectError ? (
+        <div className="mt-2 text-left whitespace-normal">
+          <FormError error={preselectError} />
+        </div>
+      ) : null}
+      <DeleteRoleDialog role={role} open={deleting} onOpenChange={setDeleting} />
     </>
   );
 }

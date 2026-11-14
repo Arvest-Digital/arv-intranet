@@ -54,12 +54,17 @@ describe('root error boundary', () => {
 
   it('tells a removed user they no longer have access (AC-07)', async () => {
     renderThrown(data({ reason: 'access-removed' }, { status: 401 }));
-    expect(await screen.findByRole('heading', { name: 'You no longer have access' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Access removed' })).toBeTruthy();
+    expect(screen.getByText('You no longer have access to the intranet.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeTruthy();
   });
 
   it('tells a user without the permission so, showing nothing else (AC-08)', async () => {
     renderThrown(data({ reason: 'missing-permission' }, { status: 403 }));
-    expect(await screen.findByText('You lack the permission to manage access.')).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: "You don't have permission to manage access." }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Go to home' }).getAttribute('href')).toBe('/');
   });
 
   it('shows a bare error page with no data when the gate fails', async () => {

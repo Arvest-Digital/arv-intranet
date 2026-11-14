@@ -8,7 +8,7 @@ export default function Home() {
   // Home sits behind the root gate, so `me` is always there.
   const me = useRouteLoaderData<typeof rootLoader>('root')?.me;
   return (
-    <main className="flex flex-col gap-2 text-sm">
+    <main className="flex flex-col gap-2">
       <h1 className="text-2xl font-semibold">ARV Intranet</h1>
       {me ? <p className="text-muted-foreground">Signed in as {me.name}.</p> : null}
     </main>

@@ -138,8 +138,23 @@ describe('access list action', () => {
       ['name', 'Anna'],
     ]);
     expect(result).toMatchObject({
-      data: { ok: false, error: 'This address is already on the access list' },
+      data: { ok: false, error: 'This address is already on the access list.', field: 'email' },
       init: { status: 409 },
+    });
+  });
+
+  it('shows a non-company address under the email (AC-05)', async () => {
+    const api = fakeApi(() =>
+      apiError('Conflict', 'identity.email_not_company_domain', 'Not a company address', 422),
+    );
+    const result = await submit(api, [
+      ['intent', 'add'],
+      ['email', 'bob@example.com'],
+      ['name', 'Bob'],
+    ]);
+    expect(result).toMatchObject({
+      data: { ok: false, error: 'Only company-domain addresses can be added.', field: 'email' },
+      init: { status: 422 },
     });
   });
 
@@ -234,6 +249,8 @@ describe('access list page', () => {
     render(<Stub initialEntries={['/access/users']} />);
 
     expect(await screen.findByText('Anna Kovalenko')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Roles' }).getAttribute('href')).toBe('/access/roles');
     expect(screen.getByRole('button', { name: 'Add user' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Next' }).getAttribute('href')).toContain(
       `after=${anna.id}`,

@@ -1,6 +1,7 @@
 import type { AccessRole, UserWithAccessRoles } from '@arv/contracts/identity';
 import { MoreHorizontalIcon } from 'lucide-react';
 import { useState } from 'react';
+import { Badge } from '~/shared/ui/badge';
 import { Button } from '~/shared/ui/button';
 import {
   DropdownMenu,
@@ -22,36 +23,47 @@ export function UserList({
 }) {
   if (users.length === 0) return <p className="text-muted-foreground">No users yet.</p>;
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Access roles</TableHead>
-          <TableHead>Added</TableHead>
-          <TableHead>
-            <span className="sr-only">Actions</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {users.map((user) => (
-          <TableRow key={user.id}>
-            <TableCell className="font-medium">{user.name}</TableCell>
-            <TableCell>{user.email}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {user.accessRoles.length === 0
-                ? 'None'
-                : user.accessRoles.map((role) => role.name).join(', ')}
-            </TableCell>
-            <TableCell className="num">{user.createdAt.toISOString().slice(0, 10)}</TableCell>
-            <TableCell className="text-right">
-              <UserActions user={user} roles={roles} />
-            </TableCell>
+    <div className="overflow-hidden rounded-lg border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Name</TableHead>
+            <TableHead className="max-sm:hidden">Email</TableHead>
+            <TableHead>Access roles</TableHead>
+            <TableHead className="w-14">
+              <span className="sr-only">Actions</span>
+            </TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {users.map((user) => (
+            <TableRow key={user.id}>
+              <TableCell>
+                <span className="font-medium">{user.name}</span>
+                <span className="block text-xs text-muted-foreground sm:hidden">{user.email}</span>
+              </TableCell>
+              <TableCell className="text-muted-foreground max-sm:hidden">{user.email}</TableCell>
+              <TableCell className="whitespace-normal">
+                {user.accessRoles.length === 0 ? (
+                  <span className="text-muted-foreground">None</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {user.accessRoles.map((role) => (
+                      <Badge key={role.id} variant="secondary">
+                        {role.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell className="w-14 py-1.5 text-right">
+                <UserActions user={user} roles={roles} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -75,12 +87,12 @@ function UserActions({
         >
           <MoreHorizontalIcon aria-hidden="true" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="min-w-40">
-          <DropdownMenuItem onClick={() => setDialog('roles')}>Access roles…</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setDialog('rename')}>Rename…</DropdownMenuItem>
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuItem onClick={() => setDialog('rename')}>Edit name</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setDialog('roles')}>Change roles</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" onClick={() => setDialog('remove')}>
-            Remove…
+            Remove
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

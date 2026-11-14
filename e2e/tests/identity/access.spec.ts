@@ -32,13 +32,14 @@ test('an admin adds a user with the pre-selected role, creates «Planner» and a
     .getByRole('navigation', { name: 'Main' })
     .getByRole('link', { name: 'Access' })
     .click();
-  await expect(page.getByRole('heading', { name: 'Access list' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Access', exact: true })).toBeVisible();
+  const tabs = page.getByRole('navigation', { name: 'Access', exact: true });
 
   const add = page.getByRole('dialog', { name: 'Add user' });
   await clickToOpen(page.getByRole('button', { name: 'Add user' }), add);
   await expect(add.getByRole('checkbox', { name: 'Staff' })).toBeChecked();
   await expect(add.getByRole('checkbox', { name: 'Admin' })).not.toBeChecked();
-  await add.getByLabel('Company email').fill(NEWCOMER.email);
+  await add.getByLabel('Email').fill(NEWCOMER.email);
   await add.getByLabel('Name').fill(NEWCOMER.name);
   await add.getByRole('button', { name: 'Add user' }).click();
   await expect(add).toBeHidden();
@@ -48,11 +49,12 @@ test('an admin adds a user with the pre-selected role, creates «Planner» and a
   await expect(newcomerRow.getByRole('cell', { name: 'Staff', exact: true })).toBeVisible();
 
   // Create «Planner»: every permission in plain words with its feature (AC-09).
-  await page.getByRole('link', { name: 'Access roles' }).click();
-  await expect(page.getByRole('heading', { name: 'Access roles' })).toBeVisible();
-  const create = page.getByRole('dialog', { name: 'New access role' });
-  await clickToOpen(page.getByRole('button', { name: 'New access role' }), create);
-  await expect(create.getByRole('group', { name: 'Access' })).toBeVisible();
+  await tabs.getByRole('link', { name: 'Roles' }).click();
+  await expect(page).toHaveURL('/access/roles');
+  await page.getByRole('link', { name: 'New role' }).click();
+  await expect(page.getByRole('heading', { name: 'New role' })).toBeVisible();
+  const create = page.getByRole('main');
+  await expect(create.getByRole('group', { name: 'Access', exact: true })).toBeVisible();
   await expect(
     create.getByText(
       'Add and remove people on the access list, and create, change and assign access roles.',
@@ -61,8 +63,9 @@ test('an admin adds a user with the pre-selected role, creates «Planner» and a
   await create.getByLabel('Name').fill('Planner');
   // Manage access is the only declared permission until scheduling declares its own.
   await create.getByRole('checkbox', { name: /Manage access/ }).check();
-  await create.getByRole('button', { name: 'Create' }).click();
-  await expect(create).toBeHidden();
+  await create.getByRole('button', { name: 'Save role' }).click();
+  await expect(page).toHaveURL('/access/roles');
+  await expect(page.getByRole('heading', { name: 'Access', exact: true })).toBeVisible();
 
   // Listed with its permissions in plain words, held by nobody yet.
   const plannerRow = page.getByRole('row', { name: /Planner/ });
@@ -70,22 +73,23 @@ test('an admin adds a user with the pre-selected role, creates «Planner» and a
   await expect(plannerRow.getByRole('cell').nth(2)).toHaveText('0');
 
   // Assign «Planner» on top of «Staff»; the admin sees the combined permissions (AC-12).
-  await page.getByRole('link', { name: 'Users' }).click();
-  const rolesItem = page.getByRole('menuitem', { name: 'Access roles…' });
+  await tabs.getByRole('link', { name: 'Users' }).click();
+  const rolesItem = page.getByRole('menuitem', { name: 'Change roles' });
   await clickToOpen(page.getByRole('button', { name: `Actions for ${NEWCOMER.name}` }), rolesItem);
   await rolesItem.click();
-  const assign = page.getByRole('dialog', { name: `Access roles of ${NEWCOMER.name}` });
+  const assign = page.getByRole('dialog', { name: 'Change roles' });
+  await expect(assign).toContainText(`${NEWCOMER.name} · ${NEWCOMER.email}`);
   await expect(assign.getByRole('checkbox', { name: 'Staff' })).toBeChecked();
   await assign.getByRole('checkbox', { name: 'Planner' }).check();
-  await expect(assign.getByRole('region', { name: 'Together these roles allow' })).toContainText(
+  await expect(assign.getByRole('region', { name: 'What they can do' })).toContainText(
     'Manage access',
   );
-  await assign.getByRole('button', { name: 'Save' }).click();
+  await assign.getByRole('button', { name: 'Save roles' }).click();
   await expect(assign).toBeHidden();
 
-  await expect(newcomerRow.getByRole('cell').nth(2)).toHaveText(
-    /^(Staff, Planner|Planner, Staff)$/,
-  );
+  const newcomerRoles = newcomerRow.getByRole('cell').nth(2);
+  await expect(newcomerRoles).toContainText('Staff');
+  await expect(newcomerRoles).toContainText('Planner');
 });
 
 test('a removed user is told on their next navigation that they no longer have access (AC-07)', async ({
@@ -108,7 +112,7 @@ test('a removed user is told on their next navigation that they no longer have a
     // The admin removes them.
     await useSession(page.context(), baseURL, admin.token);
     await open(page, '/access/users');
-    const removeItem = page.getByRole('menuitem', { name: 'Remove…' });
+    const removeItem = page.getByRole('menuitem', { name: 'Remove', exact: true });
     await clickToOpen(page.getByRole('button', { name: 'Actions for Test Member' }), removeItem);
     await removeItem.click();
     const remove = page.getByRole('dialog', { name: 'Remove Test Member?' });
@@ -118,9 +122,9 @@ test('a removed user is told on their next navigation that they no longer have a
 
     // Their next navigation is refused, and the cookie is cleared.
     await memberPage.goto('/');
-    await expect(
-      memberPage.getByRole('heading', { name: 'You no longer have access' }),
-    ).toBeVisible();
+    await expect(memberPage.getByRole('heading', { name: 'Access removed' })).toBeVisible();
+    await expect(memberPage.getByText('You no longer have access to the intranet.')).toBeVisible();
+    await expect(memberPage.getByRole('button', { name: 'Sign in again' })).toBeVisible();
     await expect(memberPage.getByText('Signed in as')).toHaveCount(0);
 
     await memberPage.goto('/');
@@ -147,8 +151,10 @@ test('a user without manage access sees no «Access» and is refused the access 
 
   for (const path of ['/access/users', '/access/roles']) {
     await page.goto(path);
-    await expect(page.getByRole('heading', { name: 'No access to this page' })).toBeVisible();
-    await expect(page.getByText('You lack the permission to manage access.')).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: "You don't have permission to manage access." }),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Go to home' })).toBeVisible();
     await expect(page.getByText('Test Admin')).toHaveCount(0);
   }
 });

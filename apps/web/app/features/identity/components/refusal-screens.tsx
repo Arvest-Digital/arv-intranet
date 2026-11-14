@@ -1,12 +1,13 @@
+import { Link } from 'react-router';
+import { Button, buttonVariants } from '~/shared/ui/button';
 import { CardHead, PublicScreen, SignInForm } from './public-screens';
 
 /** AC-07: removed from the access list; the session cookie is already cleared. */
 export function AccessRemovedScreen() {
   return (
     <PublicScreen titleId="access-removed-title">
-      <CardHead id="access-removed-title" title="You no longer have access">
-        An admin removed you from the intranet's access list. Ask an admin if you think this is a
-        mistake.
+      <CardHead id="access-removed-title" title="Access removed">
+        You no longer have access to the intranet.
       </CardHead>
       <SignInForm returnTo="/" label="Sign in again" />
     </PublicScreen>
@@ -16,9 +17,21 @@ export function AccessRemovedScreen() {
 /** AC-08: signed in, but without the permission the page needs. Shows nothing of the page. */
 export function MissingPermissionNotice() {
   return (
-    <main className="flex flex-col gap-2 text-sm">
-      <h1 className="text-xl font-semibold">No access to this page</h1>
-      <p className="text-muted-foreground">You lack the permission to manage access.</p>
+    <main className="flex flex-col items-start gap-4 py-12">
+      <h1 className="text-xl font-semibold">You don't have permission to manage access.</h1>
+      <Link to="/" className={buttonVariants()}>
+        Go to home
+      </Link>
+    </main>
+  );
+}
+
+/** Signed in, and a page failed for another reason: one sentence and a retry. */
+export function ErrorNotice() {
+  return (
+    <main role="alert" className="flex flex-col items-start gap-4 py-12">
+      <h1 className="text-xl font-semibold">Something went wrong. Try again.</h1>
+      <Button onClick={() => window.location.reload()}>Try again</Button>
     </main>
   );
 }

@@ -1,17 +1,19 @@
-import { data, Link } from 'react-router';
+import { data, Link, useRouteLoaderData } from 'react-router';
+import type { loader as rootLoader } from '~/root';
 import type { ApiFailure } from '~/shared/lib/api.server';
 import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-check.server';
 import { getSessionToken } from '~/shared/lib/session.server';
 import { buttonVariants } from '~/shared/ui/button';
 import { type AccessListActionResult, Intent } from '../components/access-list-form';
-import { AccessTabs } from '../components/access-tabs';
+import { AccessHeader } from '../components/access-tabs';
 import { AddUserDialog } from '../components/add-user-dialog';
 import { UserList } from '../components/user-list';
+import { formFailure } from '../form-failure';
 import { refusalResponse } from '../gate.server';
 import { identityGateway, type UserPageCursor } from '../identity.server';
 import type { Route } from './+types/access-users';
 
-export const meta: Route.MetaFunction = () => [{ title: 'Access list · ARV Intranet' }];
+export const meta: Route.MetaFunction = () => [{ title: 'Users · Access · ARV Intranet' }];
 
 /** `?after=<id>` or `?before=<id>`: the page of the access list to show. */
 function cursorOf(url: URL): UserPageCursor {
@@ -76,7 +78,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const refused = await refusalResponse(result, request);
   if (refused) throw refused;
   return data<AccessListActionResult>(
-    { ok: false, error: result.message },
+    { ok: false, ...formFailure(result) },
     { status: result.status },
   );
 }
@@ -86,18 +88,20 @@ const pageLink = buttonVariants({ variant: 'outline', size: 'sm' });
 export default function AccessUsers({ loaderData }: Route.ComponentProps) {
   const { page, roles } = loaderData;
   const first = page.items[0];
+  // The company domain, for the «Add user» hint: the signed-in admin's own address is on it.
+  const companyDomain = useRouteLoaderData<typeof rootLoader>('root')?.me?.email.split('@')[1];
+  const onlyOne = page.items.length === 1 && !page.hasPrev && !page.hasNext;
   return (
-    <main>
-      <AccessTabs />
-      <div className="mb-6 flex items-center gap-4">
-        <h1 className="text-2xl font-semibold">Access list</h1>
-        <div className="ml-auto">
-          <AddUserDialog roles={roles} />
-        </div>
-      </div>
+    <main className="flex flex-col gap-6">
+      <AccessHeader action={<AddUserDialog roles={roles} companyDomain={companyDomain} />} />
+      {onlyOne ? (
+        <p className="text-muted-foreground">
+          You're the only person on the access list. Add the rest of the team.
+        </p>
+      ) : null}
       <UserList users={page.items} roles={roles} />
       {page.hasPrev || page.hasNext ? (
-        <nav aria-label="Pages" className="mt-4 flex justify-end gap-2">
+        <nav aria-label="Pages" className="flex justify-end gap-2">
           {page.hasPrev && first ? (
             <Link to={`?before=${first.id}`} className={pageLink}>
               Previous

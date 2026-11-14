@@ -1,16 +1,19 @@
-import { data } from 'react-router';
+import { PlusIcon } from 'lucide-react';
+import { data, Link } from 'react-router';
 import type { ApiFailure } from '~/shared/lib/api.server';
 import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-check.server';
 import { getSessionToken } from '~/shared/lib/session.server';
+import { buttonVariants } from '~/shared/ui/button';
 import type { AccessListActionResult } from '../components/access-list-form';
-import { NewAccessRoleDialog, RoleIntent } from '../components/access-role-form';
+import { RoleIntent } from '../components/access-role-form';
 import { AccessRoleList } from '../components/access-role-list';
-import { AccessTabs } from '../components/access-tabs';
+import { AccessHeader } from '../components/access-tabs';
+import { formFailure } from '../form-failure';
 import { refusalResponse } from '../gate.server';
 import { identityGateway } from '../identity.server';
 import type { Route } from './+types/access-roles';
 
-export const meta: Route.MetaFunction = () => [{ title: 'Access roles · ARV Intranet' }];
+export const meta: Route.MetaFunction = () => [{ title: 'Roles · Access · ARV Intranet' }];
 
 /** 403 → «you lack the permission to manage access», showing none of the roles (AC-08). */
 async function loadFailure(failed: ApiFailure, request: Request) {
@@ -22,22 +25,17 @@ async function loadFailure(failed: ApiFailure, request: Request) {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const gateway = identityGateway(context.cloudflare.env.API, await getSessionToken(request));
-  const [roles, catalog] = await Promise.all([
-    gateway.listAccessRoles(),
-    gateway.listPermissions(),
-  ]);
+  const roles = await gateway.listAccessRoles();
   if (!roles.ok) throw await loadFailure(roles, request);
-  if (!catalog.ok) throw await loadFailure(catalog, request);
-  return { roles: roles.value, catalog: catalog.value };
+  return { roles: roles.value };
 }
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? '').trim();
-const roleInput = (form: FormData) => ({
-  name: text(form, 'name'),
-  permissionKeys: [...new Set(form.getAll('permissionKey').map(String))],
-});
 
-/** One action for every dialog, told apart by `intent`; refusals come back inline (AC-10, AC-14, AC-16). */
+/**
+ * Deleting and the pre-selected mark, told apart by `intent`; refusals come back inline (AC-11,
+ * AC-13, AC-14). Creating and editing post to the role page.
+ */
 export async function action({ request, context }: Route.ActionArgs) {
   if (!isAllowedOrigin(request)) throw foreignOriginResponse();
   const form = await request.formData();
@@ -46,10 +44,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const result = await (() => {
     switch (form.get('intent') as RoleIntent | null) {
-      case RoleIntent.create:
-        return gateway.createAccessRole(roleInput(form));
-      case RoleIntent.update:
-        return gateway.updateAccessRole(roleId, roleInput(form));
       case RoleIntent.remove:
         return gateway.deleteAccessRole(roleId);
       case RoleIntent.preselect:
@@ -67,23 +61,24 @@ export async function action({ request, context }: Route.ActionArgs) {
   const refused = await refusalResponse(result, request);
   if (refused) throw refused;
   return data<AccessListActionResult>(
-    { ok: false, error: result.message },
+    { ok: false, ...formFailure(result) },
     { status: result.status },
   );
 }
 
 export default function AccessRoles({ loaderData }: Route.ComponentProps) {
-  const { roles, catalog } = loaderData;
+  const { roles } = loaderData;
   return (
-    <main>
-      <AccessTabs />
-      <div className="mb-6 flex items-center gap-4">
-        <h1 className="text-2xl font-semibold">Access roles</h1>
-        <div className="ml-auto">
-          <NewAccessRoleDialog catalog={catalog} />
-        </div>
-      </div>
-      <AccessRoleList roles={roles} catalog={catalog} />
+    <main className="flex flex-col gap-6">
+      <AccessHeader
+        action={
+          <Link to="/access/roles/new" className={buttonVariants()}>
+            <PlusIcon aria-hidden="true" />
+            New role
+          </Link>
+        }
+      />
+      <AccessRoleList roles={roles} />
     </main>
   );
 }

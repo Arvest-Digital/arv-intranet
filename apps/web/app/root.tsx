@@ -10,6 +10,7 @@ import {
 import { AppNav } from '~/features/identity/components/app-nav';
 import {
   AccessRemovedScreen,
+  ErrorNotice,
   MissingPermissionNotice,
   SignedOutErrorScreen,
 } from '~/features/identity/components/refusal-screens';
@@ -54,9 +55,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
       </head>
-      <body className={me ? 'mx-auto max-w-3xl px-4 py-8' : undefined}>
-        {me ? <AppNav me={me} /> : null}
-        {children}
+      <body className="text-sm">
+        {me ? (
+          <>
+            <AppNav me={me} />
+            <div className="mx-auto max-w-[1280px] px-8 pt-8 pb-12 max-sm:px-4 max-sm:pt-6 max-sm:pb-10">
+              {children}
+            </div>
+          </>
+        ) : (
+          children
+        )}
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -77,13 +86,5 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   if (!isRouteErrorResponse(error)) console.error(error);
   // Without a session check that passed, show nothing but the error (fail closed).
   if (!signedIn) return <SignedOutErrorScreen />;
-  const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText || error.data}`
-    : 'Something went wrong';
-  return (
-    <main>
-      <h1 className="mb-4 text-2xl font-semibold">Error</h1>
-      <p>{message}</p>
-    </main>
-  );
+  return <ErrorNotice />;
 }

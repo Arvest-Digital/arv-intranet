@@ -1,8 +1,8 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fakeApi, json } from '../../../test/fake-api';
-import { catalog, planner, retiredPlanner, roles } from '../test-data';
+import { planner, retiredPlanner, roles } from '../test-data';
 import AccessRoles, { action, loader } from './access-roles';
 
 afterEach(cleanup);
@@ -19,23 +19,16 @@ const apiError = (_tag: string, code: string, message: string, status: number) =
   json({ error: { _tag, code, message } }, status);
 
 describe('access roles loader', () => {
-  it('loads every role and the permission catalog, decoded', async () => {
-    const api = fakeApi((request) =>
-      new URL(request.url).pathname === '/identity/permissions'
-        ? json({ items: catalog })
-        : json(page([...roles, retiredPlanner].map(encodedRole))),
-    );
+  it('loads every role, decoded, and nothing else', async () => {
+    const api = fakeApi(() => json(page([...roles, retiredPlanner].map(encodedRole))));
     const result = await loader(
       args({ context: api.context, request: new Request(`${WEB}/access/roles`) }),
     );
 
-    expect(api.requests.map((r) => new URL(r.url).pathname).sort()).toEqual([
-      '/identity/access-roles',
-      '/identity/permissions',
-    ]);
+    expect(api.requests.map((r) => new URL(r.url).pathname)).toEqual(['/identity/access-roles']);
     expect(result.roles.at(-1)!.retiredPermissionKeys).toEqual(['scheduling:view-board']);
     expect(result.roles[0]!.createdAt).toBeInstanceOf(Date);
-    expect(result.catalog.map((p) => p.key)).toEqual(catalog.map((p) => p.key));
+    expect(Object.keys(result)).toEqual(['roles']);
   });
 
   it('refuses with «missing permission» when the api answers 403 (AC-08)', async () => {
@@ -63,55 +56,17 @@ describe('access roles action', () => {
       }),
     );
 
-  it('creates a role with the trimmed name and the ticked keys (AC-09)', async () => {
-    const api = fakeApi(() => json(encodedRole(planner), 201));
-    const result = await submit(api, [
-      ['intent', 'create'],
-      ['name', ' Planner '],
-      ['permissionKey', 'scheduling:edit-allocations'],
-    ]);
-
-    expect(result).toEqual({ ok: true });
-    const request = api.requests[0]!;
-    expect([request.method, new URL(request.url).pathname]).toEqual([
-      'POST',
-      '/identity/access-roles',
-    ]);
-    expect(await request.json()).toEqual({
-      name: 'Planner',
-      permissionKeys: ['scheduling:edit-allocations'],
-    });
-  });
-
-  it('shows the duplicate-name 409 inline (AC-10)', async () => {
-    const message = 'An access role with that name already exists';
-    const api = fakeApi(() =>
-      apiError('Conflict', 'identity.duplicate_access_role_name', message, 409),
-    );
-    const result = await submit(api, [
-      ['intent', 'create'],
-      ['name', 'planner '],
-    ]);
-    expect(result).toMatchObject({ data: { ok: false, error: message }, init: { status: 409 } });
-  });
-
-  it('saves the name and the full key set, a removed retired key left out (AC-16)', async () => {
-    const api = fakeApi(() => json(encodedRole(planner)));
-    await submit(api, [
-      ['intent', 'update'],
-      ['accessRoleId', retiredPlanner.id],
-      ['name', 'Board planner'],
-      ['permissionKey', 'scheduling:edit-allocations'],
-    ]);
-    const request = api.requests[0]!;
-    expect([request.method, new URL(request.url).pathname]).toEqual([
-      'PUT',
-      `/identity/access-roles/${retiredPlanner.id}`,
-    ]);
-    expect(await request.json()).toEqual({
-      name: 'Board planner',
-      permissionKeys: ['scheduling:edit-allocations'],
-    });
+  it('refuses create and update: the role page saves roles', async () => {
+    for (const intent of ['create', 'update']) {
+      const api = fakeApi(() => json({}));
+      const result = await submit(api, [
+        ['intent', intent],
+        ['accessRoleId', planner.id],
+        ['name', 'Planner'],
+      ]);
+      expect(result).toMatchObject({ data: { ok: false }, init: { status: 400 } });
+      expect(api.requests).toHaveLength(0);
+    }
   });
 
   it('deletes a role (AC-11) and shows the last-admin 409 inline (AC-14)', async () => {
@@ -170,18 +125,27 @@ describe('access roles action', () => {
 });
 
 describe('access roles page', () => {
-  it('renders the roles and the new-role button', async () => {
+  it('renders the roles and the new-role link', async () => {
     const Stub = createRoutesStub([
       {
         path: '/access/roles',
         Component: AccessRoles as never,
-        loader: () => ({ roles: [planner, retiredPlanner], catalog }),
+        loader: () => ({ roles: [planner, retiredPlanner] }),
       },
     ]);
     render(<Stub initialEntries={['/access/roles']} />);
 
-    expect(await screen.findByText('Board planner')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'New access role' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Users' }).getAttribute('href')).toBe('/access/users');
+    expect(await screen.findByRole('link', { name: 'Board planner' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Access' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'New role' }).getAttribute('href')).toBe(
+      '/access/roles/new',
+    );
+    const tabs = screen.getByRole('navigation', { name: 'Access' });
+    expect(within(tabs).getByRole('link', { name: 'Users' }).getAttribute('href')).toBe(
+      '/access/users',
+    );
+    expect(within(tabs).getByRole('link', { name: 'Roles' }).getAttribute('href')).toBe(
+      '/access/roles',
+    );
   });
 });
