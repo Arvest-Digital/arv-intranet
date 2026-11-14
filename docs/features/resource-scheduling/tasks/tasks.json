@@ -541,8 +541,8 @@
       "title": "Build the schedule board with the week window and filters in the URL",
       "layer": "ui",
       "deps": ["T28"],
-      "acs": ["AC-01", "AC-02", "AC-03", "AC-06", "AC-21", "AC-22", "AC-29"],
-      "dod": "Route/component tests: every cell state renders its text label (QS-7), URL params drive the loader call, forbidden view offers own schedule (AC-03).",
+      "acs": ["AC-01", "AC-02", "AC-02b", "AC-03", "AC-06", "AC-21", "AC-22", "AC-29"],
+      "dod": "Route/component tests: every cell state renders its text label (QS-7), URL params drive the loader call, forbidden view offers own schedule (AC-03), by-project grouping totals and the single «Away» group for redacted leave (AC-02b).",
       "files_hint": [
         "apps/web/app/features/scheduling/scheduling.server.ts",
         "apps/web/app/features/scheduling/routes/board*",

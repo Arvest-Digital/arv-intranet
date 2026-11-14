@@ -2,7 +2,7 @@
 status: Approved
 owner: "dmitro.b"
 reviewers: ["Tech Lead", "Security Lead"]
-updated_at: "2026-10-28"
+updated_at: "2026-11-14"
 feature_size: "M"
 stage: "03"
 ticket: "TBD"
@@ -49,7 +49,7 @@ Traceability:
 
 ### US-01: View the schedule board
 **As a** user with the view-whole-board permission
-**I want** to see every resource's allocated hours against capacity for each week, marked free, partly booked or overbooked, and narrow it by team or project
+**I want** to see every resource's allocated hours against capacity for each week, marked free, partly booked or overbooked, narrow it by team or project, and switch between grouping by resource and by project
 **So that** I know who is busy without asking around
 
 ### US-02: Find who is free
@@ -113,6 +113,11 @@ Traceability:
 **Given** a user with the view-whole-board permission is on the schedule board
 **When** the user narrows the board to one team or one project
 **Then** only resources in that team, or with an allocation to that project in the shown weeks, remain on the board, with the same weekly figures
+
+### AC-02b (US-01) — happy path
+**Given** a user with the view-whole-board permission is on the schedule board
+**When** the user switches the board from grouping by resource to grouping by project
+**Then** the board shows the same weeks, filters and figures grouped by project — for each project its total allocated hours per week (leave excluded) and, for each resource on it, their hours on that project per week next to their whole-week state (AC-01) — with the same visibility rules: viewers without the see-leave-reasons permission see all leave under one «away» group with no leave type or leave project name (AC-29), and allocations past an employment end date stay hidden from viewers who may not see it (AC-22); grouping by project is a view of the board's data, not a separate query
 
 ### AC-03 (US-01) — authorization
 **Given** a user with neither the view-whole-board nor the edit-allocations permission
