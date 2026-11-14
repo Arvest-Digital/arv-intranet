@@ -87,7 +87,7 @@ Order matters: migrate, then api, then web. The web calls api endpoints that mus
 1. [ ] In a private window, open the web host. You land on the sign-in page, not on intranet content.
 2. [ ] Sign in with a company account that is on the access list. You land on the page you first opened.
 3. [ ] Try a personal Google account. It is refused with the generic message (AC-02).
-4. [ ] In Workers Logs, check for `identity.sign_in.succeeded` (it carries a `userId` only) and `api.access_check` with `accessCheckMs`.
+4. [ ] In Workers Logs, check for `identity.sign_in.succeeded` (it carries a `userId` only) and `api.access_check` with `accessCheckMs` and `dbConnectMs`.
 5. [ ] Sign out, then open an intranet page. You are sent back to the sign-in page.
 
 ## First admin

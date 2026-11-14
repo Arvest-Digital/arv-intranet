@@ -44,6 +44,20 @@ export const openDatabase = (connectionString: string): Db =>
 /** A `Database` Layer over an already opened `Db`, so several Layers can share one pool. */
 export const databaseLayer = (db: Db) => Layer.succeed(Database, db);
 
+/**
+ * Opens a connection on `db`'s pool now and returns it to the pool, where the next query picks it
+ * up. Lets a caller time connecting apart from querying (the api's `dbConnectMs`). A no-op for a
+ * `Db` over a single client.
+ */
+export const connectDatabase = (db: Db): Effect.Effect<void, DbError> => {
+  const client = (db as unknown as { readonly $client?: unknown }).$client;
+  if (!(client instanceof pg.Pool)) return Effect.void;
+  return Effect.tryPromise({
+    try: async () => (await client.connect()).release(),
+    catch: (cause) => new DbError({ cause }),
+  });
+};
+
 /** A `Database` Layer that opens its own pool each time it is built. */
 export const DatabaseLive = (connectionString: string) =>
   Layer.sync(Database, () => openDatabase(connectionString));

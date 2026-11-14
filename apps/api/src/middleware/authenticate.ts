@@ -1,4 +1,4 @@
-import type { Database } from '@arv/db';
+import { connectDatabase, Database } from '@arv/db';
 import { IdentityApi } from '@arv/identity';
 import { Actor, Unauthenticated } from '@arv/kernel';
 import { toContractError, toHttpError } from '@arv/platform/http';
@@ -36,8 +36,10 @@ const bearerToken = (header: string | undefined) =>
  * - Revoked session → 401 `identity.access_removed` (AC-07).
  * - A failure to resolve is a defect and reaches the host's 500, never `Anonymous` (QG-1).
  *
- * Logs `accessCheckMs` (no personal data) and answers `Server-Timing: accessCheck;dur=…`
- * (sad §7 Monitoring).
+ * Logs `accessCheckMs` and, within it, `dbConnectMs` (no personal data) and answers them as
+ * `Server-Timing: accessCheck;dur=…, dbConnect;dur=…` (sad §7 Monitoring). `dbConnectMs` is the
+ * request's Postgres connection, opened first when there is a token; the request's work reuses
+ * it. `accessCheckMs − dbConnectMs` is the check itself (T28).
  *
  * `identityLayer` defaults to the host's composition, over the request's one Database
  * (`requestDatabase`), which the app Layer reuses. Tests pass their own (a stand-in catalog,
@@ -56,15 +58,30 @@ export const authenticate = (
       return;
     }
 
+    const token = bearerToken(c.req.header('authorization'));
+    const database = requestDatabase(c);
     const startedAt = performance.now();
+    let connectedAt = startedAt;
     const exit = await Effect.runPromiseExit(
-      Effect.flatMap(IdentityApi, (identity) =>
-        identity.resolveActor(bearerToken(c.req.header('authorization'))),
-      ).pipe(Effect.provide(identityLayer(c.env, requestDatabase(c)))),
+      Effect.gen(function* () {
+        // Connect up front, so the connection is timed apart from the check. Without a token
+        // nothing is queried, so nothing connects. A failure is a defect, as in the check (QG-1).
+        if (Option.isSome(token)) {
+          yield* Effect.flatMap(Database, connectDatabase).pipe(
+            Effect.provide(database),
+            Effect.orDie,
+          );
+        }
+        connectedAt = performance.now();
+        return yield* Effect.flatMap(IdentityApi, (identity) => identity.resolveActor(token)).pipe(
+          Effect.provide(identityLayer(c.env, database)),
+        );
+      }),
     );
-    const accessCheckMs = Math.round((performance.now() - startedAt) * 100) / 100;
-    console.log(JSON.stringify({ event: 'api.access_check', accessCheckMs }));
-    const serverTiming = `accessCheck;dur=${accessCheckMs}`;
+    const accessCheckMs = roundMs(performance.now() - startedAt);
+    const dbConnectMs = roundMs(connectedAt - startedAt);
+    console.log(JSON.stringify({ event: 'api.access_check', accessCheckMs, dbConnectMs }));
+    const serverTiming = `accessCheck;dur=${accessCheckMs}, dbConnect;dur=${dbConnectMs}`;
 
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
@@ -79,6 +96,8 @@ export const authenticate = (
     await next();
     c.res.headers.append('Server-Timing', serverTiming);
   });
+
+const roundMs = (ms: number) => Math.round(ms * 100) / 100;
 
 const unauthenticated = (error: Unauthenticated, serverTiming: string) => {
   const { status, body } = toHttpError(toContractError(error));

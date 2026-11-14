@@ -70,7 +70,9 @@ describe('authenticate', () => {
       _tag: 'Unauthenticated',
       code: 'identity.access_removed',
     });
-    expect(res.headers.get('server-timing')).toMatch(/^accessCheck;dur=\d+(\.\d+)?$/);
+    expect(res.headers.get('server-timing')).toMatch(
+      /^accessCheck;dur=\d+(\.\d+)?, dbConnect;dur=\d+(\.\d+)?$/,
+    );
   });
 
   it('lets an active session through and reports the access check in Server-Timing', async () => {
@@ -81,6 +83,14 @@ describe('authenticate', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('server-timing')).toMatch(/accessCheck;dur=\d+(\.\d+)?/);
+    expect(res.headers.get('server-timing')).toMatch(/dbConnect;dur=\d+(\.\d+)?/);
+  });
+
+  it('opens no connection without a token: dbConnect is 0 (T28)', async () => {
+    const res = await api('/identity/me');
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get('server-timing')).toMatch(/, dbConnect;dur=0$/);
   });
 
   it('keeps sign-in public even with a revoked token attached', async () => {

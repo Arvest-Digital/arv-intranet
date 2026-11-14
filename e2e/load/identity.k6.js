@@ -17,6 +17,13 @@ const seed = JSON.parse(open('./.out/seed.json'));
 
 /** The access-check step alone, read from the api's `Server-Timing: accessCheck;dur=…`. */
 const accessCheck = new Trend('access_check', true);
+/** Within it, opening the request's Postgres connection (`dbConnect`), which the request reuses. */
+const dbConnect = new Trend('db_connect', true);
+/**
+ * The check without the connection (`accessCheck − dbConnect`). Reported only: whether the 25 ms
+ * target applies to this or to `access_check` is the Tech Lead's call (T28 notes).
+ */
+const accessCheckQuery = new Trend('access_check_query', true);
 
 export const options = {
   scenarios: {
@@ -58,20 +65,26 @@ const headers = (token) => ({
   'Content-Type': 'application/json',
 });
 
-/** Reads `dur` of the `accessCheck` entry from a Server-Timing header, or `undefined`. */
-const accessCheckMs = (res) => {
-  const match = /(?:^|,)\s*accessCheck;dur=([\d.]+)/.exec(res.headers['Server-Timing'] || '');
+/** Reads `dur` of the `name` entry from a Server-Timing header, or `undefined`. */
+const timing = (res, name) => {
+  const match = new RegExp(`(?:^|,)\\s*${name};dur=([\\d.]+)`).exec(
+    res.headers['Server-Timing'] || '',
+  );
   return match ? Number(match[1]) : undefined;
 };
 
 export function accessCheckScenario() {
   const res = http.get(`${API_URL}/identity/me`, { headers: headers(pick(seed.userTokens)) });
-  const ms = accessCheckMs(res);
+  const ms = timing(res, 'accessCheck');
+  const connectMs = timing(res, 'dbConnect');
   check(res, {
     'me is 200': (r) => r.status === 200,
     'me reports accessCheck in Server-Timing': () => ms !== undefined,
+    'me reports dbConnect in Server-Timing': () => connectMs !== undefined,
   });
   if (ms !== undefined) accessCheck.add(ms);
+  if (connectMs !== undefined) dbConnect.add(connectMs);
+  if (ms !== undefined && connectMs !== undefined) accessCheckQuery.add(ms - connectMs);
 }
 
 export function adminScenario() {
