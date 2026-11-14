@@ -20,7 +20,7 @@ SSR board, `from` / `weeks` / `team` / `project` / `view` as search params ([ADR
 
 ## What
 
-- Loader calls `getBoard` with URL params; prev/next window navigation within limits; team / project filters (no leave projects for viewers without see-leave-reasons).
+- Loader calls `getBoard` with URL params; prev/next window navigation within limits; zoom presets «1 week · 4 weeks · 12 weeks» only set `weeks` (1 / 4 / 12) — the 1-week window renders a wide detail cell per resource (state, «allocated/capacity», hours per project from `minutesPerWeek`, «away · N days»); build the switch as a segmented control that can take a later «Days» option (PRD §8); team / project filters (no leave projects for viewers without see-leave-reasons).
 - Each cell: «allocated/capacity», a text state label + `lucide-react` icon (never colour alone, sad §8 Accessibility), «away · N days».
 - Forbidden → link to own schedule (AC-03).
 - `view=people|project` switch (AC-02b): by-project regroups the same `getBoard` response in the loader — project groups with weekly totals (leave excluded), per-resource hours on the project beside their whole-week state; for redacted viewers (`project: null`, `away: true`) all leave goes into one «Away» group. Design: Claude Design canvas, page V2, «Board by project».

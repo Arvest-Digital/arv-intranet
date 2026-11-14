@@ -39,7 +39,7 @@ Traceability:
 
 - **Time tracking** (logged time, plan versus actual) — a different job from planning; out of scope per idea-brief §5.
 - **Skills and search by skill; finances** (rates, budgets, margin) — not needed to answer «who is free», and finance depth is what made bought tools a poor fit.
-- **Drag-and-drop day-level editing, scenarios, what-if planning** — the board is weekly; these would consume the whole schedule budget.
+- **Drag-and-drop day-level editing, scenarios, what-if planning** — the board is weekly; these would consume the whole schedule budget. A read-only **day-level view** (one or a few weeks with a column per day) is a candidate follow-up feature with its own PRD — see §8; the MVP board offers 1-, 4- and 12-week windows, all with weekly figures.
 - **Tracker sync** — bench, training and leave do not exist in the tracker; a project-list import may follow after launch.
 - **Managing access roles and permissions** — a separate prerequisite feature owns this; scheduling only names the six permissions it needs.
 - **Team-scoped permissions, several holiday calendars, leave approval** — kept out to fit the deadline: permissions apply to all resources (changes stay traceable through history), one company holiday list applies to everyone (other countries' holidays are booked as leave), and leave is approved elsewhere and then booked here.
@@ -333,6 +333,7 @@ Traceability:
 | Concurrency | 0 lost updates when two users save the same allocation | automated concurrent-save test in CI (see AC-07b) |
 | History retention | allocation history entries kept for 12 months, then deleted | monthly retention job report |
 | Accessibility | free, partly booked and overbooked are distinguishable without colour; text contrast ≥ 4.5:1 | automated accessibility audit of the board in CI |
+| Device support | desktop-first; on phones (390 px wide) the own schedule (US-06) is fully usable, while the board and «who's free» are view-only with horizontal scrolling; no native mobile app | manual check at a 390 px viewport in the pre-launch review |
 
 ## 6.1 Security / privacy
 
@@ -363,4 +364,5 @@ Traceability:
 - [ ] Should intranet logins also be matched to employee records automatically (for example by work email), on top of linking by hand (US-07)? Default now: by hand only. — owner: Tech Lead, due: before /sdlc:architecture-design
 - [ ] Is the employee record its own module (the planned people/departments capability) — a hard-to-reverse choice. Default now: yes, separate from scheduling. — owner: Tech Lead, due: during /sdlc:architecture-design
 - [ ] What is the planning spreadsheet's exact format: file type, columns, how rows map to employee records, projects, allocations, leave and teams, and the rule for spotting different spellings of the same name (AC-31)? Default now: the PM supplies a sample of the real spreadsheet and the mapping is derived from it. — owner: PM, due: before /sdlc:architecture-design
+- [ ] Should a day-level board view (a column per day for 1–4 weeks) follow as a separate feature, and if so: is overbooking then also judged per day (today it is judged per week, AC-10), is the view read-only (day-level editing stays a non-goal), and what window and latency targets apply? Default now: not in the MVP; the domain already spreads hours per day, so it can be added without a data-model change. — owner: PM, due: 6 weeks after launch
 - [ ] Should a tracker project-list import follow after launch? Default now: no, revisit if users who plan report double entry of projects. — owner: Tech Lead, due: 6 weeks after launch

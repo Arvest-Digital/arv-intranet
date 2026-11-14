@@ -552,13 +552,13 @@
     },
     {
       "id": "T40",
-      "title": "Build the free-list and my-schedule screens",
+      "title": "Build the free-list drawer and the my-schedule screen",
       "layer": "ui",
-      "deps": ["T28"],
+      "deps": ["T28", "T39"],
       "acs": ["AC-04", "AC-05", "AC-17", "AC-18"],
-      "dod": "Route/component tests: AC-05 message on bad input, ordering of results (AC-04), own leave type shown (AC-17), AC-18 state.",
+      "dod": "Route/component tests: drawer opens from the URL params and the loader calls the free list only then, AC-05 message on bad input, ordering of results (AC-04), own leave type shown (AC-17), AC-18 state.",
       "files_hint": [
-        "apps/web/app/features/scheduling/routes/free-list*",
+        "apps/web/app/features/scheduling/routes/board*",
         "apps/web/app/features/scheduling/routes/my-schedule*",
         "apps/web/app/features/scheduling/components/free-list-*"
       ]
@@ -604,7 +604,7 @@
       "layer": "ui",
       "deps": ["T35"],
       "acs": ["AC-30", "AC-31", "AC-32", "AC-33"],
-      "dod": "Route/component tests: problem rows listed (AC-31), confirm resubmits the file (AC-30), already-imported state (AC-32), missing permissions named (AC-33).",
+      "dod": "Route/component tests: problem rows listed (AC-31), confirm resubmits the file (AC-30), already-imported state (AC-32), missing permissions named (AC-33), «Import» nav item shown only with all three permissions, completed state shows the run summary.",
       "files_hint": [
         "apps/web/app/features/scheduling/routes/import*",
         "apps/web/app/features/scheduling/components/import-*"

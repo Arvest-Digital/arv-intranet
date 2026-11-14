@@ -33,4 +33,4 @@ Files: `modules/scheduling/src/domain/weekly-figures.ts`, `modules/scheduling/sr
 
 ## Notes
 
-- —
+- Build the weekly figures by summing T18's per-day results by ISO week rather than computing weeks directly, so a later day-level view (PRD §8) reuses the same rules without a second calculation.

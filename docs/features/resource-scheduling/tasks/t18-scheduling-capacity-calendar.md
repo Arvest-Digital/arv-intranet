@@ -34,4 +34,4 @@ Files: `modules/scheduling/src/domain/ticks.ts`, `modules/scheduling/src/domain/
 
 ## Notes
 
-- —
+- Keep the per-day capacity and the rate→per-day spread as exported domain functions, not private steps of the weekly bucketing: a later day-level view (PRD §8 open question) will read them directly.

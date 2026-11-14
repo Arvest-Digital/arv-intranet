@@ -71,7 +71,7 @@ flowchart LR
         T37["T37 web teams holidays"]
         T38["T38 web projects"]
         T39["T39 web board"]
-        T40["T40 web free list my schedule"]
+        T40["T40 web free-list drawer my schedule"]
         T41["T41 web allocation dialog"]
         T42["T42 web leave history"]
         T43["T43 web import"]
@@ -144,6 +144,7 @@ flowchart LR
     T17 --> T38
     T28 --> T39
     T28 --> T40
+    T39 --> T40
     T29 --> T41
     T39 --> T41
     T41 --> T42
@@ -164,8 +165,8 @@ flowchart LR
 | 5 | T11, T12, T17, T23, T25, T33 |
 | 6 | T13, T24, T26, T27, T34, T36, T38 |
 | 7 | T28, T37 |
-| 8 | T29, T39, T40 |
-| 9 | T30, T35, T41 |
+| 8 | T29, T39 |
+| 9 | T30, T35, T40, T41 |
 | 10 | T31, T32, T42, T43, T44 |
 
 ## Tasks
@@ -213,7 +214,7 @@ See [tracker.md](./tracker.md) for status. Machine contract: [tasks.json](./task
 | T37 | [Build the teams and public-holiday screens](./t37-web-teams-holidays.md) | ui | M | T13 | Route/component tests: duplicate name and remove-with-members messages (AC-19d), holiday confirm dialog… |
 | T38 | [Build the project list, create and close-with-preview screens](./t38-web-projects.md) | ui | M | T17 | Route/component tests: AC-24 message, close preview lists trims and removals and resubmits with `confirm:… |
 | T39 | [Build the schedule board with the week window and filters in the URL](./t39-web-board.md) | ui | L | T28 | Route/component tests: every cell state renders its text label (QS-7), URL params drive the loader call,… |
-| T40 | [Build the free-list and my-schedule screens](./t40-web-free-list-my-schedule.md) | ui | M | T28 | Route/component tests: AC-05 message on bad input, ordering of results (AC-04), own leave type shown… |
+| T40 | [Build the free-list drawer and the my-schedule screen](./t40-web-free-list-my-schedule.md) | ui | M | T28, T39 | Route/component tests: drawer opens from the URL params, AC-05 message on bad input, ordering of results (AC-04), own leave type shown… |
 | T41 | [Build the allocation create, change and remove dialog](./t41-web-allocation-dialog.md) | ui | L | T29, T39 | Route/component tests: overbooking confirm flow (AC-10), conflict message with current values (AC-07b),… |
 | T42 | [Build the leave dialog and the allocation history panel](./t42-web-leave-history.md) | ui | M | T41 | Route/component tests: leave-day conflict confirm names the work allocations (AC-15), history renders trim… |
 | T43 | [Build the import upload, preview and confirm screen](./t43-web-import.md) | ui | M | T35 | Route/component tests: problem rows listed (AC-31), confirm resubmits the file (AC-30), already-imported… |
