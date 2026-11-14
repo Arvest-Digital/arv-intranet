@@ -33,6 +33,8 @@ node_modules
 coverage/
 playwright-report/
 test-results/
+e2e/load/.out/
+wrangler.log
 
 # SDLC plugin (per-developer)
 .claude/*.local.md

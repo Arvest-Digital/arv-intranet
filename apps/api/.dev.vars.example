@@ -1,0 +1,8 @@
+# Copy to .dev.vars (git-ignored) for `pnpm dev`. Use the local Google OAuth client, never the
+# production one (sad §7): its redirect URI is the local web's sign-in return page.
+GOOGLE_CLIENT_ID=your-local-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-local-client-secret
+COMPANY_EMAIL_DOMAIN=arvest.digital
+# Your own company address, to become the first admin on an empty access list (AC-15).
+FIRST_ADMIN_EMAIL=
+SIGN_IN_RETURN_URL=http://localhost:5173/sign-in/return

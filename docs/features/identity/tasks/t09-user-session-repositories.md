@@ -7,7 +7,7 @@ acs: ["AC-06", "AC-07", "AC-12", "AC-20", "AC-21"]
 files_hint: ["modules/identity/src/infrastructure/drizzle-user-repository.ts", "modules/identity/src/infrastructure/drizzle-session-repository.ts", "apps/api/test/integration/identity/user-session-repository.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T09 — Implement the Drizzle user and session repositories with the one-query actor lookup

@@ -13,14 +13,14 @@ browser → `@arv/web` (React Router 7 SSR) → service binding `API` → `@arv/
 - `modules/<name>` — one business capability each (`@arv/<name>`), hexagonal: `domain/` → `application/` (ports, use cases, facade) → `infrastructure/` (Drizzle adapters, `schema.ts`) → `http/` (Hono routes, presenter). Own Postgres schema per module. `modules/_template` is the scaffold, not a workspace package.
 - `packages/kernel` — shared primitives (ids, `Actor`/`CurrentActor`, domain-event and unit-of-work ports). Depends on `effect` only.
 - `packages/platform` — HTTP glue (`runEffect`, validation, contract-error mapping).
-- `packages/db` — `Database` tag, connection Layer, `query` helper, `./migrate`, `./testing` (reset, seed). No tables.
+- `packages/db` — `Database` tag, connection Layer, `query` helper, `UnitOfWorkLive` (transaction in a `CurrentTx` FiberRef that `query` joins), `./migrate`, `./testing` (reset, seed). No tables.
 - `packages/migrations` — drizzle-kit config + SQL migrations (`drizzle/`); reads every module's `schema.ts`.
 - `packages/contracts` — Effect Schemas + tagged errors shared by api and web, per module subpath (`@arv/contracts/identity`, `@arv/contracts/shared`).
 - Internal packages are consumed as TS source (no build step).
 
 ## Dependency rules
 
-- Direction: `apps → modules → @arv/platform → @arv/db · @arv/kernel · @arv/contracts`. Never import upward; nothing imports from `apps/*`.
+- Direction: `apps → modules → @arv/platform → @arv/db · @arv/kernel · @arv/contracts`, plus `@arv/db → @arv/kernel` (`UnitOfWorkLive` implements the kernel port). Never import upward; nothing imports from `apps/*`.
 - Inside a module: `domain` uses only `@arv/kernel` (no Hono, Drizzle, other layers); `application` has no Hono, Drizzle, `@arv/db`, `@arv/platform` or `@arv/contracts`; only `infrastructure` touches `@arv/db`/Drizzle; `http` never imports `infrastructure`. Enforced by Biome `noRestrictedImports` overrides in `biome.json` — fix the import, don't silence the rule.
 - Modules call each other only through the other module's facade (root export of `@arv/<name>`), never its internals, tables or `./layer`. Every module edge must be declared in the `module-graph` block of `ARCHITECTURE.md` (`pnpm check:modules`); ask before adding one, never add a cycle. No foreign keys across module schemas.
 - Web imports only `@arv/contracts/*` and `import type` from `@arv/api` — never `@arv/db`, `@arv/kernel`, `@arv/platform` or module packages.

@@ -1,12 +1,12 @@
 import { sql } from 'drizzle-orm';
-import type { Db } from '../database';
+import type { Executor } from '../database';
 
 /**
  * Empties every application table, in every schema except Postgres' own and drizzle's migration
  * journal. Tables are discovered at run time, so new modules need no registration here.
  * Call in `beforeEach` of DB-backed tests.
  */
-export async function resetDatabase(db: Db) {
+export async function resetDatabase(db: Executor) {
   const { rows } = await db.execute<{ name: string }>(sql`
     SELECT format('%I.%I', table_schema, table_name) AS name
     FROM information_schema.tables

@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-03", "AC-04", "AC-09", "AC-12", "AC-13", "AC-16"]
 files_hint: ["packages/contracts/src/identity/"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T16 — Add the identity contract schemas for sign-in, me, the access list, access roles and permissions

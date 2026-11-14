@@ -13,6 +13,7 @@ This file explains why the code is shaped the way it is. Decisions are recorded 
 - [Module anatomy](#module-anatomy)
 - [Data](#data)
 - [Cross-module communication](#cross-module-communication)
+- [Authentication and permissions](#authentication-and-permissions)
 - [Errors](#errors)
 - [Web](#web)
 - [Testing](#testing)
@@ -46,7 +47,7 @@ The api has no public URL; only web can call it. Today it has one entry point, `
 - **Organise by business capability, not by technical layer.** Code that changes together lives in `modules/<name>`.
 - **Dependencies point inward.** Domain ← application ← adapters. The domain knows nothing about Hono, Drizzle or Postgres.
 - **Boundaries are enforced, not just agreed.** Each module is a pnpm package; undeclared imports don't resolve. Biome forbids imports that cross a layer, and `pnpm check:modules` checks the module graph below.
-- **The package graph is acyclic.** `apps → modules → platform → db · kernel · contracts`. Nothing imports upward, and nothing imports `apps/*`.
+- **The package graph is acyclic.** `apps → modules → platform → db · kernel · contracts` (`db → kernel` too: it implements the kernel's `UnitOfWork` port). Nothing imports upward, and nothing imports `apps/*`.
 - **One deployable, many seams.** Module facades are plain Effect services, so a module can later move into its own Worker behind a service binding without changing its callers.
 - **Effect is the dependency-injection mechanism.** Ports are `Context.Tag`s, adapters are `Layer`s, and use cases are plain Effect functions whose requirements show up in their types.
 
@@ -63,19 +64,23 @@ arv-intranet/
 │   └── web/                       @arv/web: React Router 7
 │       └── app/features/<m>/      routes, components, <m>.server.ts gateway
 ├── modules/
-│   ├── identity/                  @arv/identity: users; resolves the actor of a request
+│   ├── identity/                  @arv/identity: sign-in, sessions, access list, access roles;
+│   │                                resolves the actor of a request
 │   └── _template/                 copied by `pnpm new:module <name>` (not a workspace package)
 ├── packages/
 │   ├── kernel/                    @arv/kernel: shared branded IDs, Actor + CurrentActor,
 │   │                                DomainEvent, UnitOfWork + DomainEvents ports. effect only.
 │   ├── contracts/                 @arv/contracts: wire DTOs. /shared, /identity, … effect only.
-│   ├── db/                        @arv/db: Database, query, DbError, /testing, /migrate. No tables.
+│   ├── db/                        @arv/db: Database, query, DbError, UnitOfWorkLive, /testing, /migrate. No tables.
 │   ├── platform/                  @arv/platform: /http (runEffect, validate, toHttpError)
 │   ├── migrations/                @arv/migrations: leaf. drizzle.config, drizzle/ SQL, db:* scripts
 │   └── tsconfig/
 ├── e2e/
 ├── scripts/                       new-module.mts, check-module-graph.mts
-└── docs/adr/
+└── docs/
+    ├── adr/                       repo-wide decisions
+    ├── features/<f>/              PRD, SAD, feature ADRs, tasks
+    └── runbooks/                  deploy checklists and recovery steps
 ```
 
 ```mermaid
@@ -89,6 +94,8 @@ flowchart TB
   mods --> contracts["@arv/contracts"]
   mods --> db
   platform --> contracts
+  platform --> kernel
+  db --> kernel
   migrations["@arv/migrations · leaf"] -. "reads schema.ts files by path" .-> mods
   db["@arv/db"]
   kernel["@arv/kernel"]
@@ -100,7 +107,7 @@ Every arrow points toward packages that change less often. `@arv/migrations` is 
 
 | Module | Purpose | Postgres schema | May call | Events published |
 |---|---|---|---|---|
-| `identity` | Users. Resolves the actor of each request. | `identity` | none (foundation) | none yet |
+| `identity` | Google sign-in, sessions, the access list, access roles and the `identity:manage-access` permission. Resolves the actor (and its permissions) of each request. | `identity` | none (foundation) | none yet |
 
 **Tiers.** *Foundation* modules (identity) depend on `@arv/kernel` only, and every other module may call them. *Core* modules may call the foundation and core modules listed before them. *Supporting* modules (notifications, search, audit) react to events and are never called synchronously.
 
@@ -125,8 +132,9 @@ modules/identity/
     ├── infrastructure/   schema.ts (pgSchema tables), drizzle-*-repository.ts
     ├── http/             routes.ts (Hono sub-app), presenter.ts (domain → DTO, domain error → contract error)
     ├── events/           optional: handlers for other modules' events
+    ├── permissions.ts    the permissions this module checks (key, name, description, feature)
     ├── layer.ts          <Name>ModuleLive
-    └── index.ts          public API: facade tag, public IDs, public events
+    └── index.ts          public API: facade tag, public IDs, public events, permissions
 ```
 
 ```mermaid
@@ -208,7 +216,7 @@ create: (input) =>
 | Facade command | Rare: the caller must know the outcome right away | Joins the caller's `UnitOfWork` while both share a database. Becomes an event + compensation if either moves out. | `IdentityApi.provisionUser(…)` |
 | Domain event via outbox | Side effects the publisher shouldn't know about | Eventual, at-least-once | `RequestApproved` → notifications, audit |
 
-**Status.** The `UnitOfWork` and `DomainEvents` ports exist in `@arv/kernel`. Their implementations are added with the first real asynchronous use case: `UnitOfWorkLive` (runs `db.transaction` and puts the transaction in a `CurrentTx` FiberRef that `query()` reads), `DomainEventsLive` (inserts into `platform.outbox`), a Cron relay that forwards unsent rows to a Queue, and Queue consumers that dedupe through `platform.inbox`. Repositories need no changes then, because they already go through `query()`.
+**Status.** The `UnitOfWork` and `DomainEvents` ports exist in `@arv/kernel`. `UnitOfWorkLive` is in `@arv/db` and provided by the host's app Layer: `transactional(effect)` runs one `db.transaction` and puts the transaction in the `CurrentTx` FiberRef that `query()` reads, so every repository call inside it (in any module, forked fibers included) joins it with no change to the repository. Success commits; a failure, defect or interruption rolls back and is re-raised unchanged; a nested `transactional` joins the outer transaction (no savepoints). A failed COMMIT is a defect. The rest is added with the first real asynchronous use case: `DomainEventsLive` (inserts into `platform.outbox`), a Cron relay that forwards unsent rows to a Queue, and Queue consumers that dedupe through `platform.inbox`. Repositories need no changes then, because they already go through `query()`.
 
 ```mermaid
 sequenceDiagram
@@ -230,6 +238,18 @@ sequenceDiagram
 
 Event schemas extend `DomainEvent` from `@arv/kernel`, live in the publisher's `domain/events.ts`, and are exported from its public API. They are versioned contracts like HTTP DTOs: changes are additive only, and a breaking change is a new event.
 
+## Authentication and permissions
+
+Decided in identity [ADR-0003](docs/features/identity/adr/0003-sign-in-with-google-oidc-and-server-side-sessions.md), [ADR-0004](docs/features/identity/adr/0004-declare-permissions-in-module-code-and-collect-them-in-the-host.md) and [ADR-0005](docs/features/identity/adr/0005-check-permissions-with-one-kernel-require-permission-over-a-per-request-actor.md). This resolves the «Authentication source» open question in ADR 0001.
+
+- **Sign-in.** Google OpenID Connect (authorization code with PKCE), for verified accounts on the company domain only. Identity keeps server-side sessions (a SHA-256 hash of a random token, 7-day absolute expiry). The web Worker holds the token in the `__Host-arv_session` cookie and forwards it to the api as `Authorization: Bearer`.
+- **Every request.** The api's `authenticate` middleware calls `IdentityApi.resolveActor` with no cache and puts the result in `CurrentActor`. Routes outside `PUBLIC_ROUTES` (`/health`, sign-in begin and complete) are refused without a valid session. A failure to resolve is a 500, never an anonymous actor (fail closed).
+- **Declaring permissions.** Each module that checks a permission declares it in `src/permissions.ts` and exports it from its root. The key is `<module>:<kebab-action>` (e.g. `identity:manage-access`); the declaration adds a plain-language name, a one-sentence description and the feature. `apps/api/src/composition.ts` collects every module's declarations into the permission catalog. A key is never renamed once granted: a rename retires the old key and adds a new one.
+- **Checking permissions.** Use cases call `requirePermission(permission)` from `@arv/kernel`. The actor's permissions are the keys its access roles grant, limited to the catalog, so a retired or undeclared key grants nothing. No module builds its own access check.
+- **No cache for identity data.** Identity queries run only on the main Hyperdrive config, which has query caching disabled, so a revoked session or a removed permission is refused on the next request. Never point identity at a cached config, KV or an in-isolate cache.
+
+Deploy steps, secrets and the first-admin recovery steps are in the [identity runbook](docs/runbooks/identity.md).
+
 ## Errors
 
 There are three kinds of failure, and each is handled in one place. Adding a module never touches a central list of errors.
@@ -237,6 +257,7 @@ There are three kinds of failure, and each is handled in one place. Adding a mod
 ```mermaid
 flowchart LR
   de["expected: domain error<br/>EmailTaken"] --> pr["presenter<br/>toContractError"] --> ce["contract error<br/>Conflict"] --> th["toHttpError"] --> r1["404 / 409"]
+  ae["refused: kernel<br/>PermissionDenied / Unauthenticated"] --> rf["runEffect<br/>toContractError"] --> r4["403 Forbidden / 401 Unauthenticated"]
   ve["bad input: Schema<br/>decode failure"] --> va["validate"] --> r2["400 ValidationError"]
   db["defect: pg / Drizzle"] --> od["adapter orDie"] --> re["runEffect logs Cause"] --> r3["500 InternalError"]
 ```
@@ -244,7 +265,8 @@ flowchart LR
 - Domain errors are `Schema.TaggedError`s in the module's `domain/errors.ts`.
 - The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared` (`NotFound`, `Conflict`).
 - `ContractError` and `toHttpError` live in `@arv/platform/http`. Only a new *kind* of HTTP failure needs a new contract error there, which should be rare.
-- Every error response has the shape `{ error: { _tag, message } }` (`ApiErrorBody`).
+- Access refusals from the kernel's `requirePermission` are mapped once, in `runEffect`: `PermissionDenied` → 403 `Forbidden` (code `<module>.missing_permission`, from the permission key's prefix), `Unauthenticated` → 401 `Unauthenticated` (`platform.unauthenticated`, or `identity.access_removed` when `reason: 'access-removed'`). Presenters never see them (ADR-0005).
+- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, host-level failures use `platform.*`.
 
 ## Web
 
@@ -255,8 +277,9 @@ apps/web/app/
 ├── routes.ts                         registers feature routes
 ├── routes/home.tsx                   pages that belong to no feature
 ├── features/identity/
-│   ├── routes/users.tsx              loader · action · UI
+│   ├── routes/access-users.tsx       loader · action · UI
 │   ├── components/user-list.tsx
+│   ├── gate.server.ts                root gate: session cookie → me, or redirect to sign-in
 │   └── identity.server.ts            hc<IdentityRoutes> + decode with @arv/contracts/identity
 └── shared/lib/api.server.ts          API_BASE_URL, bindingFetch, ApiResult, failure()
 ```
@@ -281,8 +304,8 @@ Turbo caches each package separately, so a change in one module reruns only its 
 
 ## Cloudflare constraints
 
-- **Hyperdrive caching.** Create the main Hyperdrive config with query caching disabled, so a read right after a write sees it. Use a separate cached config only for data that may be stale.
-- **Connections.** `DatabaseLive` opens one lazy `pg.Pool` (max 5) per request; Hyperdrive holds the real pool. Never close connections explicitly ("socket has been closed").
+- **Hyperdrive caching.** Create the main Hyperdrive config with query caching disabled, so a read right after a write sees it. Use a separate cached config only for data that may be stale. Identity queries (sessions, access list, permissions) use only the uncached main config (ADR-0005).
+- **Connections.** One lazy `pg.Pool` (max 5) per request: `requestDatabase` (`apps/api/src/middleware/request-database.ts`) opens it on first use with `openDatabase` and hands the same `Database` to the access check and the app Layer, so a request connects at most once; Hyperdrive holds the real pool. Never close connections explicitly ("socket has been closed").
 - **Transactions on Hyperdrive** hold one connection for their whole duration. Keep them short and never await network calls (other Workers, Queues) inside one.
 - **Per-request Layers.** Bindings are request-scoped, so the app Layer is built per request in `provideAppLayer`.
 - **Cron** triggers fire at most once a minute. When the outbox exists, publish from `ctx.waitUntil` right after commit as the fast path, and let the Cron relay catch up on anything missed.
@@ -294,11 +317,13 @@ Turbo caches each package separately, so a change in one module reruns only its 
 
 1. `pnpm new:module <name>` (kebab-case), then `pnpm install`.
 2. Add `<Name>ModuleLive` to `apps/api/src/composition.ts`, dependents before the modules they call.
-3. Mount `<name>Routes` in `apps/api/src/index.ts` and re-export `<Name>Routes`.
+3. Mount `<name>Routes` in `apps/api/src/index.ts` and re-export `<Name>Routes`. If the module checks permissions, add its declarations from `permissions.ts` to the catalog in `composition.ts`.
 4. Add the schema name to `schemaFilter` in `packages/migrations/drizzle.config.ts`.
 5. Add the module and its edges to the module graph and catalog above, and to `CODEOWNERS`.
 
 **Add a use case:** a new file in `application/` exporting an Effect function. Ask for ports with `yield*`. Add a unit test with in-memory ports. If it's reachable over HTTP, add the route in `http/routes.ts`, map new domain errors in `presenter.ts`, and add an integration test in `apps/api/test/integration/<module>/`.
+
+**Add a permission:** declare it in the module's `src/permissions.ts` (key `<module>:<kebab-action>`, name, description, feature) and export it from the module root. Make sure `apps/api/src/composition.ts` adds the module's declarations to the catalog. Check it in the use case with `yield* requirePermission(KEY)`. Admins can then grant it through an access role; no migration is needed. Never rename a granted key.
 
 **Call another module:** add `"@arv/<other>": "workspace:*"` to the module's `package.json`, add the edge to the module graph above, then use `<Other>Api` from `application/`. Keep facades small: add a method only when another module needs it.
 
@@ -313,3 +338,4 @@ Turbo caches each package separately, so a change in one module reruns only its 
 ## Decisions
 
 - [ADR 0001: Modular monolith with hexagonal modules](docs/adr/0001-modular-monolith.md)
+- Identity feature decisions (sign-in, sessions, permissions): [`docs/features/identity/adr/`](docs/features/identity/adr/)

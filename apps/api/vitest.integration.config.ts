@@ -9,7 +9,17 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },
-      miniflare: { hyperdrives: { HYPERDRIVE: TEST_DATABASE_URL } },
+      miniflare: {
+        hyperdrives: { HYPERDRIVE: TEST_DATABASE_URL },
+        // Identity config as the host reads it (secrets would come from .dev.vars otherwise).
+        bindings: {
+          GOOGLE_CLIENT_ID: 'host-test-client.apps.example.test',
+          GOOGLE_CLIENT_SECRET: 'host-test-secret',
+          COMPANY_EMAIL_DOMAIN: 'example.test',
+          FIRST_ADMIN_EMAIL: 'first-admin@example.test',
+          SIGN_IN_RETURN_URL: 'https://intranet.example.test/sign-in/return',
+        },
+      },
     }),
   ],
   test: {

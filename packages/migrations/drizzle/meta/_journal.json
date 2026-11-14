@@ -15,6 +15,13 @@
       "when": 1792528035977,
       "tag": "0001_identity_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794248626391,
+      "tag": "0002_identity_access",
+      "breakpoints": true
     }
   ]
 }

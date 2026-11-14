@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-20"]
 files_hint: ["apps/web/app/shared/lib/session.server.ts", "apps/web/app/shared/lib/return-to.ts", "apps/web/app/shared/lib/origin-check.server.ts", "apps/web/app/shared/lib/api.server.ts", "apps/web/app/features/identity/identity.server.ts"]
 owner: "TBD (frontend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T22 — Add the web session and sign-in-state cookies, Bearer forwarding, the returnTo check and the Origin check
@@ -29,8 +29,8 @@ Files: `apps/web/app/shared/lib/session.server.ts`, `apps/web/app/shared/lib/ret
 
 ## Definition of Done
 
-- [ ] Unit tests: cookie attributes; `safeReturnTo` for `/board`, `//evil`, `https://evil`, `javascript:` and empty; Origin check rejects a foreign origin on POST.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Unit tests: cookie attributes; `safeReturnTo` for `/board`, `//evil`, `https://evil`, `javascript:` and empty; Origin check rejects a foreign origin on POST.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

@@ -12,7 +12,14 @@ export const validate = <Target extends keyof ValidationTargets, A, I>(
     const result = Schema.decodeUnknownEither(schema, { errors: 'all' })(value);
     if (result._tag === 'Left') {
       const message = ParseResult.TreeFormatter.formatErrorSync(result.left);
-      return c.json(errorBody('ValidationError', message), 400);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left).map((issue) => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      }));
+      return c.json(
+        errorBody('ValidationError', 'platform.validation_failed', message, { issues }),
+        400,
+      );
     }
     return result.right;
   });

@@ -7,7 +7,7 @@ acs: ["AC-02", "AC-15"]
 files_hint: ["ARCHITECTURE.md", "docs/adr/0001-modular-monolith.md", "CONTEXT.md", "apps/web/wrangler.jsonc", "docs/runbooks/identity.md"]
 owner: "dmitro.b"
 estimate: "M"
-status: "todo"
+status: "review"
 ---
 
 # T29 — Update ARCHITECTURE.md and repo ADR 0001, and add the deploy checklist and the first-admin recovery runbook

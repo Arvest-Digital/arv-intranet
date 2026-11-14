@@ -5,5 +5,10 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  // TODO(Tech Lead): serve arv-web on a custom domain in the company's Cloudflare zone, needed
+  // for a stable Google redirect URI and the sign-in Rate Limiting rule (sad §7). The zone is
+  // not decided yet. When it is, uncomment and set the hostname, then follow
+  // docs/runbooks/identity.md (Google redirect URI, SIGN_IN_RETURN_URL, Rate Limiting rule).
+  // "routes": [{ "pattern": "intranet.example.com", "custom_domain": true }],
   "services": [{ "binding": "API", "service": "arv-api" }]
 }

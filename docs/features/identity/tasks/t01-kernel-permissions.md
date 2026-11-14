@@ -7,7 +7,7 @@ acs: ["AC-17", "AC-18", "AC-19"]
 files_hint: ["packages/kernel/src/actor.ts", "packages/kernel/src/permission.ts", "packages/kernel/src/index.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T01 — Add Permission, requirePermission and the permission set on Actor.User in the kernel
@@ -29,10 +29,10 @@ Files: `packages/kernel/src/actor.ts`, `packages/kernel/src/permission.ts`, `pac
 
 ## Definition of Done
 
-- [ ] Unit tests: anonymous actor → `Unauthenticated`; user without the key → `PermissionDenied` naming it; user with it → success.
-- [ ] Unit test (AC-19): a user holding only `identity:manage-access` is denied `scheduling:edit-allocations`.
-- [ ] Unit test (AC-18): a key nobody holds is refused for every actor, an admin included.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Unit tests: anonymous actor → `Unauthenticated`; user without the key → `PermissionDenied` naming it; user with it → success.
+- [x] Unit test (AC-19): a user holding only `identity:manage-access` is denied `scheduling:edit-allocations`.
+- [x] Unit test (AC-18): a key nobody holds is refused for every actor, an admin included.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

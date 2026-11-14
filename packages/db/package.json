@@ -12,6 +12,7 @@
     "typecheck": "tsc"
   },
   "dependencies": {
+    "@arv/kernel": "workspace:*",
     "drizzle-orm": "0.45.4",
     "effect": "3.22.2",
     "pg": "8.23.1"

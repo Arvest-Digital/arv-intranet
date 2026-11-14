@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-02", "AC-03", "AC-15"]
 files_hint: ["modules/identity/src/application/begin-sign-in.ts", "modules/identity/src/application/complete-sign-in.ts", "modules/identity/src/application/sign-in.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T13 — Implement begin and complete sign-in, with the first-admin bootstrap and the not-set-up answer

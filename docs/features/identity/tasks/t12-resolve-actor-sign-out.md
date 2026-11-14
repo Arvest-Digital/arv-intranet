@@ -7,7 +7,7 @@ acs: ["AC-07", "AC-17", "AC-18", "AC-19", "AC-20"]
 files_hint: ["modules/identity/src/application/resolve-actor.ts", "modules/identity/src/application/sign-out.ts", "modules/identity/src/application/identity-api.ts", "modules/identity/src/layer.ts", "modules/identity/src/application/resolve-actor.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T12 — Implement resolveActor and sign-out, and wire identity's adapters in the module layer

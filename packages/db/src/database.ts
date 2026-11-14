@@ -1,32 +1,75 @@
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Context, Data, Effect, Layer } from 'effect';
+import type { ExtractTablesWithRelations } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase, type NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
+import { Context, Data, Effect, FiberRef, Layer, Option } from 'effect';
 import pg from 'pg';
 
 /** Tables live in each module's `infrastructure/schema.ts`; this instance knows none of them. */
 export type Db = NodePgDatabase;
 
+/**
+ * What a query runs on: the request's `Db`, or the open transaction of a `UnitOfWork`.
+ * Both expose the same query builder; only the pool-level `$client` is missing on a transaction.
+ */
+export type Executor = PgDatabase<
+  NodePgQueryResultHKT,
+  Record<string, never>,
+  ExtractTablesWithRelations<Record<string, never>>
+>;
+
 export class Database extends Context.Tag('@arv/db/Database')<Database, Db>() {}
 
 export class DbError extends Data.TaggedError('DbError')<{ readonly cause: unknown }> {}
+
+/**
+ * The transaction opened by `UnitOfWorkLive`, if any. Fiber-local, so it follows the effect
+ * (and the fibers it forks) without touching any port's signature; `query()` reads it.
+ */
+export const CurrentTx = FiberRef.unsafeMake<Option.Option<Executor>>(Option.none());
 
 export const createDb = (client: pg.Pool | pg.Client): Db =>
   drizzle({ client, casing: 'snake_case' });
 
 /**
- * One pool per request (Workers can't share sockets across requests); Hyperdrive keeps the real
- * connection pool. `pg.Pool` connects lazily, so requests that never query pay nothing.
- * The pool is intentionally not closed: the runtime drops sockets when the request ends
- * (matches Cloudflare's Hyperdrive + node-postgres guidance; closing explicitly causes
- * "socket has been closed" rejections).
+ * The request's `Db`: one pool per request (Workers can't share sockets across requests);
+ * Hyperdrive keeps the real connection pool. `pg.Pool` connects lazily, so requests that never
+ * query pay nothing. Open it once per request and share it, so a request connects at most once
+ * for its access check and its work. The pool is intentionally not closed: the runtime drops
+ * sockets when the request ends (matches Cloudflare's Hyperdrive + node-postgres guidance;
+ * closing explicitly causes "socket has been closed" rejections).
  */
-export const DatabaseLive = (connectionString: string) =>
-  Layer.sync(Database, () => createDb(new pg.Pool({ connectionString, max: 5 })));
+export const openDatabase = (connectionString: string): Db =>
+  createDb(new pg.Pool({ connectionString, max: 5 }));
+
+/** A `Database` Layer over an already opened `Db`, so several Layers can share one pool. */
+export const databaseLayer = (db: Db) => Layer.succeed(Database, db);
 
 /**
- * Runs a Drizzle query on the request's `Database`; failures become a typed `DbError`.
- * Every adapter goes through here, so a future `UnitOfWork` can swap in its transaction.
+ * Opens a connection on `db`'s pool now and returns it to the pool, where the next query picks it
+ * up. Lets a caller time connecting apart from querying (the api's `dbConnectMs`). A no-op for a
+ * `Db` over a single client.
  */
-export const query = <A>(run: (db: Db) => Promise<A>): Effect.Effect<A, DbError, Database> =>
-  Effect.flatMap(Database, (db) =>
-    Effect.tryPromise({ try: () => run(db), catch: (cause) => new DbError({ cause }) }),
+export const connectDatabase = (db: Db): Effect.Effect<void, DbError> => {
+  const client = (db as unknown as { readonly $client?: unknown }).$client;
+  if (!(client instanceof pg.Pool)) return Effect.void;
+  return Effect.tryPromise({
+    try: async () => (await client.connect()).release(),
+    catch: (cause) => new DbError({ cause }),
+  });
+};
+
+/** A `Database` Layer that opens its own pool each time it is built. */
+export const DatabaseLive = (connectionString: string) =>
+  Layer.sync(Database, () => openDatabase(connectionString));
+
+/**
+ * Runs a Drizzle query on the request's `Database`, or on the current `UnitOfWork` transaction
+ * when there is one; failures become a typed `DbError`. Every adapter goes through here.
+ */
+export const query = <A>(run: (db: Executor) => Promise<A>): Effect.Effect<A, DbError, Database> =>
+  Effect.flatMap(Effect.zip(Database, FiberRef.get(CurrentTx)), ([db, tx]) =>
+    Effect.tryPromise({
+      try: () => run(Option.getOrElse(tx, () => db)),
+      catch: (cause) => new DbError({ cause }),
+    }),
   );

@@ -7,7 +7,7 @@ acs: ["AC-05", "AC-06", "AC-10", "AC-16", "AC-21"]
 files_hint: ["modules/identity/src/domain/user.ts", "modules/identity/src/domain/access-role.ts", "modules/identity/src/domain/errors.ts", "modules/identity/src/domain/user.test.ts", "modules/identity/src/domain/access-role.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T06 — Model company email, user name, access-role name key and retired permissions in the identity domain

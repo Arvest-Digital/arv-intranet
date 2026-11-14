@@ -1,6 +1,6 @@
 ---
 status: Living
-updated_at: "2026-10-31"
+updated_at: "2026-11-13"
 ---
 
 # Domain Context — arv-intranet
@@ -25,7 +25,7 @@ that carry real content. ## Glossary is mandatory; the other two are optional.
 <!-- One line per term: name · one-sentence canonical definition · one-sentence boundary
      (what it is NOT / the concept it gets confused with). Alphabetical once there are a few. -->
 - access list — the admin-kept list of company-domain email addresses allowed to sign in to the intranet; removing someone from it denies their next request even though their Google account keeps working. NOT the company email domain (a necessary but not sufficient check) and NOT an access role (what a user may do once signed in).
-- access role — a named bundle of permissions assigned to intranet users by the roles/permissions feature. NOT a job role (a job title or skill such as «QA», the sense used in the resource entry).
+- access role — a named bundle of permissions that admins compose and assign to users on the access list; a user may do what any of their access roles allows. NOT a job role (a job title or skill such as «QA», the sense used in the resource entry).
 - admin — a user who holds the manage-access permission through an access role, which lets them add and remove users on the access list, compose access roles from permissions and assign them; there are 1–2, the first is seeded from configuration only while no admin exists, and the last one cannot lose admin rights. NOT a team lead or planner (who may hold scheduling permissions without managing access).
 - allocation — a planned assignment of a resource to a project for a date range at a fixed number of hours per day or week. NOT logged time (hours actually spent, recorded after the fact) and NOT project membership (being on a project team reserves none of a resource's hours).
 - availability — a resource's capacity minus their allocated hours over a period; the «who's free» filter sums it across the chosen period. NOT capacity (hours before allocations are subtracted).
