@@ -1,4 +1,4 @@
-import { DatabaseLive, UnitOfWorkLive } from '@arv/db';
+import { type Database, UnitOfWorkLive } from '@arv/db';
 import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
 import { type Actor, CurrentActor } from '@arv/kernel';
@@ -41,18 +41,21 @@ const ModulesLive = (env: Bindings) =>
     Layer.provideMerge(IdentityLive(env)), // foundation
   );
 
-/** Built per request: Workers bindings and connections are request-scoped. */
-export const makeAppLayer = (env: Bindings, actor: Actor) =>
+/**
+ * Built per request: Workers bindings and connections are request-scoped. `database` is the
+ * request's one Database (`requestDatabase`), shared with the access check, so a request connects
+ * once; modules and UnitOfWork share it too. Identity reads only the main Hyperdrive config,
+ * whose query cache is off (ADR-0005).
+ */
+export const makeAppLayer = (env: Bindings, actor: Actor, database: Layer.Layer<Database>) =>
   ModulesLive(env).pipe(
     Layer.provideMerge(Layer.merge(UnitOfWorkLive, Layer.succeed(CurrentActor, actor))),
-    // One Database for the request: modules and UnitOfWork share it.
-    // Identity reads only the main Hyperdrive config, whose query cache is off (ADR-0005).
-    Layer.provide(DatabaseLive(env.HYPERDRIVE.connectionString)),
+    Layer.provide(database),
   );
 
 /** Everything route handlers may depend on, derived from the composed Layer. */
 export type AppServices = Layer.Layer.Success<ReturnType<typeof makeAppLayer>>;
 
 /** Just enough to resolve the actor, before the full app Layer exists. */
-export const makeIdentityLayer = (env: Bindings) =>
-  IdentityLive(env).pipe(Layer.provide(DatabaseLive(env.HYPERDRIVE.connectionString)));
+export const makeIdentityLayer = (env: Bindings, database: Layer.Layer<Database>) =>
+  IdentityLive(env).pipe(Layer.provide(database));

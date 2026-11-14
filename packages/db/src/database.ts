@@ -31,14 +31,22 @@ export const createDb = (client: pg.Pool | pg.Client): Db =>
   drizzle({ client, casing: 'snake_case' });
 
 /**
- * One pool per request (Workers can't share sockets across requests); Hyperdrive keeps the real
- * connection pool. `pg.Pool` connects lazily, so requests that never query pay nothing.
- * The pool is intentionally not closed: the runtime drops sockets when the request ends
- * (matches Cloudflare's Hyperdrive + node-postgres guidance; closing explicitly causes
- * "socket has been closed" rejections).
+ * The request's `Db`: one pool per request (Workers can't share sockets across requests);
+ * Hyperdrive keeps the real connection pool. `pg.Pool` connects lazily, so requests that never
+ * query pay nothing. Open it once per request and share it, so a request connects at most once
+ * for its access check and its work. The pool is intentionally not closed: the runtime drops
+ * sockets when the request ends (matches Cloudflare's Hyperdrive + node-postgres guidance;
+ * closing explicitly causes "socket has been closed" rejections).
  */
+export const openDatabase = (connectionString: string): Db =>
+  createDb(new pg.Pool({ connectionString, max: 5 }));
+
+/** A `Database` Layer over an already opened `Db`, so several Layers can share one pool. */
+export const databaseLayer = (db: Db) => Layer.succeed(Database, db);
+
+/** A `Database` Layer that opens its own pool each time it is built. */
 export const DatabaseLive = (connectionString: string) =>
-  Layer.sync(Database, () => createDb(new pg.Pool({ connectionString, max: 5 })));
+  Layer.sync(Database, () => openDatabase(connectionString));
 
 /**
  * Runs a Drizzle query on the request's `Database`, or on the current `UnitOfWork` transaction

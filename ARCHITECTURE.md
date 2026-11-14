@@ -305,7 +305,7 @@ Turbo caches each package separately, so a change in one module reruns only its 
 ## Cloudflare constraints
 
 - **Hyperdrive caching.** Create the main Hyperdrive config with query caching disabled, so a read right after a write sees it. Use a separate cached config only for data that may be stale. Identity queries (sessions, access list, permissions) use only the uncached main config (ADR-0005).
-- **Connections.** `DatabaseLive` opens one lazy `pg.Pool` (max 5) per request; Hyperdrive holds the real pool. Never close connections explicitly ("socket has been closed").
+- **Connections.** One lazy `pg.Pool` (max 5) per request: `requestDatabase` (`apps/api/src/middleware/request-database.ts`) opens it on first use with `openDatabase` and hands the same `Database` to the access check and the app Layer, so a request connects at most once; Hyperdrive holds the real pool. Never close connections explicitly ("socket has been closed").
 - **Transactions on Hyperdrive** hold one connection for their whole duration. Keep them short and never await network calls (other Workers, Queues) inside one.
 - **Per-request Layers.** Bindings are request-scoped, so the app Layer is built per request in `provideAppLayer`.
 - **Cron** triggers fire at most once a minute. When the outbox exists, publish from `ctx.waitUntil` right after commit as the fast path, and let the Cron relay catch up on anything missed.

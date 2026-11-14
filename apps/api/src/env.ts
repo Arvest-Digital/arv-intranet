@@ -1,3 +1,4 @@
+import type { Db } from '@arv/db';
 import type { Actor } from '@arv/kernel';
 import type { HttpEnv } from '@arv/platform/http';
 
@@ -29,5 +30,7 @@ export type AppEnv = {
   Bindings: Bindings;
   Variables: HttpEnv['Variables'] & {
     actor: Actor;
+    /** The request's one Database, set by `requestDatabase` on first use. */
+    database: Db;
   };
 };

@@ -45,7 +45,9 @@ describe('UnitOfWorkLive', () => {
   it("is provided by the app Layer and wraps the modules' queries", async () => {
     const exit = await Effect.runPromiseExit(
       transactional(Effect.fail(new Boom())).pipe(
-        Effect.provide(makeAppLayer(env, Actor.Anonymous())),
+        Effect.provide(
+          makeAppLayer(env, Actor.Anonymous(), DatabaseLive(env.HYPERDRIVE.connectionString)),
+        ),
       ),
     );
     expect(exit).toEqual(Exit.fail(new Boom()));

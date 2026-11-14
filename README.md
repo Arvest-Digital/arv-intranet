@@ -148,7 +148,7 @@ A Hono app on a private Worker. It holds **no business logic**: it authenticates
 | File | Responsibility |
 |---|---|
 | `src/index.ts` | Middleware, mounts module routers, re-exports route types (`IdentityRoutes`) for web |
-| `src/composition.ts` | The only place that knows every module: stacks module Layers in dependency order; `makeAppLayer(env, actor)` |
+| `src/composition.ts` | The only place that knows every module: stacks module Layers in dependency order; `makeAppLayer(env, actor, database)` |
 | `src/middleware/authenticate.ts` | Resolves the actor through `IdentityApi.resolveActor` |
 | `src/middleware/provide-app-layer.ts` | Puts the app Layer on the Hono context, where `runEffect` reads it |
 | `src/env.ts` | Bindings (`HYPERDRIVE`), declared by hand because web type-imports this app and has its own global `Env`. Keep in sync with `wrangler.jsonc`. |
@@ -199,7 +199,7 @@ Keep this package free of DB, Hono and React imports, and of domain logic. It ma
 
 **`@arv/db`** is runtime only and defines no tables:
 
-- `Database`: an Effect Tag providing the Drizzle instance. `DatabaseLive(connectionString)`: a Layer that creates a lazy `pg.Pool`.
+- `Database`: an Effect Tag providing the Drizzle instance. `openDatabase(connectionString)`: a `Db` over a lazy `pg.Pool`; `databaseLayer(db)` shares it as a Layer (the api opens one per request, `requestDatabase`); `DatabaseLive(connectionString)`: a Layer that opens its own pool.
 - `query((db) => promise)`: runs a Drizzle query on the request's `Database` and turns failures into `DbError`. Repositories turn `DbError` into a defect with `Effect.orDie`.
 - `UnitOfWorkLive`: implements the kernel's `UnitOfWork`. `transactional(effect)` runs the effect in one `db.transaction`; `query()` picks the transaction up from the `CurrentTx` FiberRef, so repositories join it unchanged. Nested calls join the outer transaction.
 - `@arv/db/migrate`: applies migrations (test setup).

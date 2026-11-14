@@ -1,3 +1,4 @@
+import type { Database } from '@arv/db';
 import { IdentityApi } from '@arv/identity';
 import { Actor, Unauthenticated } from '@arv/kernel';
 import { toContractError, toHttpError } from '@arv/platform/http';
@@ -5,6 +6,7 @@ import { Cause, Effect, Exit, type Layer, Option } from 'effect';
 import { createMiddleware } from 'hono/factory';
 import { makeIdentityLayer } from '../composition';
 import type { AppEnv, Bindings } from '../env';
+import { requestDatabase } from './request-database';
 
 /**
  * Routes that need no session (sad §8 Authentication), as `METHOD path`. Every other route,
@@ -37,11 +39,15 @@ const bearerToken = (header: string | undefined) =>
  * Logs `accessCheckMs` (no personal data) and answers `Server-Timing: accessCheck;dur=…`
  * (sad §7 Monitoring).
  *
- * `identityLayer` defaults to the host's composition; tests pass their own (a stand-in catalog,
+ * `identityLayer` defaults to the host's composition, over the request's one Database
+ * (`requestDatabase`), which the app Layer reuses. Tests pass their own (a stand-in catalog,
  * a failing database) to run this same middleware against it.
  */
 export const authenticate = (
-  identityLayer: (env: Bindings) => Layer.Layer<IdentityApi> = makeIdentityLayer,
+  identityLayer: (
+    env: Bindings,
+    database: Layer.Layer<Database>,
+  ) => Layer.Layer<IdentityApi> = makeIdentityLayer,
 ) =>
   createMiddleware<AppEnv>(async (c, next) => {
     if (isPublicRoute(c.req.method, c.req.path)) {
@@ -54,7 +60,7 @@ export const authenticate = (
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(IdentityApi, (identity) =>
         identity.resolveActor(bearerToken(c.req.header('authorization'))),
-      ).pipe(Effect.provide(identityLayer(c.env))),
+      ).pipe(Effect.provide(identityLayer(c.env, requestDatabase(c)))),
     );
     const accessCheckMs = Math.round((performance.now() - startedAt) * 100) / 100;
     console.log(JSON.stringify({ event: 'api.access_check', accessCheckMs }));
