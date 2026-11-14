@@ -165,5 +165,11 @@ export class IdentityConfig extends Context.Tag('identity/IdentityConfig')<
     /** Google's `redirect_uri`: the web's sign-in return page. */
     readonly signInReturnUrl: string;
     readonly googleClientId: string;
+    /**
+     * `SKIP_HOSTED_DOMAIN_CHECK`, local development only: skip the `hd` claim check so a personal
+     * Google account can sign in. Ignored unless the return URL is `http://localhost` (see
+     * `requiresHostedDomain`). Absent means `false`.
+     */
+    readonly skipHostedDomainCheck?: boolean;
   }
 >() {}

@@ -20,6 +20,8 @@ const identityConfigFrom = (env: Bindings): IdentityConfig['Type'] => ({
   firstAdminEmail: env.FIRST_ADMIN_EMAIL ?? '',
   signInReturnUrl: env.SIGN_IN_RETURN_URL ?? '',
   googleClientId: env.GOOGLE_CLIENT_ID ?? '',
+  // Local development only; the identity module ignores it unless the return URL is localhost.
+  skipHostedDomainCheck: env.SKIP_HOSTED_DOMAIN_CHECK === 'true',
 });
 
 // provideMerge: route handlers read the catalog too (combined permissions on the access list).

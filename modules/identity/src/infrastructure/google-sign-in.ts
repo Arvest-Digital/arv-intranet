@@ -1,7 +1,7 @@
 import { Effect, Layer } from 'effect';
 import * as oauth from 'oauth4webapi';
 import { GoogleSignIn, IdentityConfig, SignInRefused } from '../application/ports';
-import type { SignInClaims } from '../domain/sign-in-eligibility';
+import { requiresHostedDomain, type SignInClaims } from '../domain/sign-in-eligibility';
 
 /**
  * Google OpenID Connect, server leg (ADR-0003, ADR-0007), on `oauth4webapi`.
@@ -160,7 +160,7 @@ export const makeGoogleSignIn = (
         url.searchParams.set('state', state);
         url.searchParams.set('code_challenge', codeChallenge);
         url.searchParams.set('code_challenge_method', 'S256');
-        url.searchParams.set('hd', config.companyDomain);
+        if (requiresHostedDomain(config)) url.searchParams.set('hd', config.companyDomain);
         return url.toString();
       }),
     exchangeCode: (code, codeVerifier) =>

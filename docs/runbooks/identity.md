@@ -26,6 +26,7 @@ All identity settings live in the api Worker (`arv-api`). The web Worker holds n
 | `COMPANY_EMAIL_DOMAIN` | var | the single company email domain | committed in `apps/api/wrangler.jsonc` |
 | `SIGN_IN_RETURN_URL` | var | `https://<web host>/sign-in/return`, exactly as registered with Google | `apps/api/wrangler.jsonc`, once the custom domain is known |
 | `FIRST_ADMIN_EMAIL` | var | company address of the first admin, or empty | `--var` at deploy time, never committed |
+| `SKIP_HOSTED_DOMAIN_CHECK` | var | `true` skips Google's `hd` check; local development only | `apps/api/.dev.vars` only, never in `wrangler.jsonc` or on a deployed Worker |
 
 A missing value fails closed: with no company domain every sign-in is refused, and with no first-admin address no admin is created.
 
@@ -33,6 +34,8 @@ A missing value fails closed: with no company domain every sign-in is refused, a
 > `wrangler deploy` replaces the Worker's vars with the ones in `wrangler.jsonc`. A plain `pnpm deploy` therefore resets `FIRST_ADMIN_EMAIL` to empty. That is safe once an admin exists. Before the first admin has signed in, deploy the api with `--var` as shown below.
 
 Local development uses `apps/api/.dev.vars` (copy `.dev.vars.example`) and a **separate** Google OAuth client whose redirect URI is the local web origin plus `/sign-in/return`. Production and local clients never share a secret.
+
+To try sign-in locally with a personal Google account (no company Workspace account), set `SKIP_HOSTED_DOMAIN_CHECK=true` and `COMPANY_EMAIL_DOMAIN=gmail.com` in `.dev.vars`, and use a client in a personal Google Cloud project with an **External** consent screen in Testing mode. Identity then skips only the `hd` check: the email must still be verified and on `COMPANY_EMAIL_DOMAIN`. The flag is ignored unless `SIGN_IN_RETURN_URL` is `http://` on `localhost` or `127.0.0.1`, so it can't weaken a deployed Worker.
 
 ## One-time setup
 

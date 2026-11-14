@@ -7,7 +7,11 @@ import {
   type SessionToken,
   sessionExpiresAt,
 } from '../domain/session';
-import { SignInEligibility, signInEligibility } from '../domain/sign-in-eligibility';
+import {
+  requiresHostedDomain,
+  SignInEligibility,
+  signInEligibility,
+} from '../domain/sign-in-eligibility';
 import { USER_NAME_MAX_LENGTH, type User, UserName } from '../domain/user';
 import {
   AccessRoleRepository,
@@ -99,7 +103,9 @@ export const completeSignIn = (code: string, codeVerifier: string) =>
     const unitOfWork = yield* UnitOfWork;
 
     const claims = yield* google.exchangeCode(code, codeVerifier);
-    const eligibility = signInEligibility(claims, config.companyDomain);
+    const eligibility = signInEligibility(claims, config.companyDomain, {
+      requireHostedDomain: requiresHostedDomain(config),
+    });
     if (!SignInEligibility.$is('Eligible')(eligibility)) return yield* new SignInRefused();
     const { email, name } = eligibility;
 
