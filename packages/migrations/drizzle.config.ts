@@ -12,7 +12,7 @@ export default defineConfig({
   dialect: 'postgresql',
   schema: moduleSchemas,
   // One Postgres schema per module. Add a new module's schema name here.
-  schemaFilter: ['identity'],
+  schemaFilter: ['identity', 'org', 'projects', 'scheduling'],
   out: './drizzle',
   dbCredentials: {
     url: process.env.DATABASE_URL ?? 'postgres://arv:arv@localhost:5432/arv',

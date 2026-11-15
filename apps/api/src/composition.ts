@@ -2,6 +2,9 @@ import { type Database, UnitOfWorkLive } from '@arv/db';
 import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
 import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
+import { OrgModuleLive } from '@arv/org/layer';
+import { ProjectsModuleLive } from '@arv/projects/layer';
+import { SchedulingModuleLive } from '@arv/scheduling/layer';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
 
@@ -38,6 +41,9 @@ const IdentityLive = (env: Bindings) =>
  */
 const ModulesLive = (env: Bindings) =>
   Layer.empty.pipe(
+    Layer.provideMerge(SchedulingModuleLive), // calls org, projects
+    Layer.provideMerge(ProjectsModuleLive), // calls no module
+    Layer.provideMerge(OrgModuleLive), // calls identity
     Layer.provideMerge(IdentityLive(env)), // foundation
   );
 

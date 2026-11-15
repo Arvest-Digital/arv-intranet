@@ -30,7 +30,7 @@ flowchart LR
     web["@arv/web Worker<br/>React Router 7 SSR<br/>features/*"]
     subgraph api["@arv/api Worker · host"]
       host["middleware<br/>authenticate → actor<br/>provideAppLayer"]
-      mods["modules<br/>identity · …"]
+      mods["modules<br/>identity · org · projects · scheduling"]
       host --> mods
     end
     hd[("Hyperdrive")]
@@ -66,6 +66,9 @@ arv-intranet/
 ├── modules/
 │   ├── identity/                  @arv/identity: sign-in, sessions, access list, access roles;
 │   │                                resolves the actor of a request
+│   ├── org/                       @arv/org: employee records, teams, public holidays
+│   ├── projects/                  @arv/projects: projects, open/closed state
+│   ├── scheduling/                @arv/scheduling: allocations, capacity, board, history, import
 │   └── _template/                 copied by `pnpm new:module <name>` (not a workspace package)
 ├── packages/
 │   ├── kernel/                    @arv/kernel: shared branded IDs (UserId, EmployeeId, ProjectId),
@@ -110,6 +113,9 @@ Every arrow points toward packages that change less often. `@arv/migrations` is 
 | Module | Purpose | Postgres schema | May call | Events published |
 |---|---|---|---|---|
 | `identity` | Google sign-in, sessions, the access list, access roles and the `identity:manage-access` permission. Resolves the actor (and its permissions) of each request. | `identity` | none (foundation) | none yet |
+| `org` | Employee records (contract hours, working days, employment period, team, login link), teams and the company-wide public-holiday list. Defines the `CapacityImpactCheck` port, implemented by scheduling and wired in the host ([resource-scheduling ADR-0003](docs/features/resource-scheduling/adr/0003-split-into-org-projects-scheduling-modules.md), [ADR-0007](docs/features/resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md)). | `org` | identity | none |
+| `projects` | Projects of every type (client, internal, bench, training, leave), open/closed state and close dates, name uniqueness. Defines the `ProjectClosingHook` port, implemented by scheduling and wired in the host. | `projects` | none | none |
+| `scheduling` | Allocations (leave included) as effective-dated segments, capacity, availability and overbooking, the board and free list, allocation history and its retention, the one-time planning import. Implements org's and projects' ports. | `scheduling` | org, projects | none |
 
 **Tiers.** *Foundation* modules (identity) depend on `@arv/kernel` only, and every other module may call them. *Core* modules may call the foundation and core modules listed before them. *Supporting* modules (notifications, search, audit) react to events and are never called synchronously.
 
@@ -117,9 +123,12 @@ The graph below is checked by `pnpm check:modules` (part of `pnpm lint`) against
 
 <!-- module-graph:start -->
 - identity → (none)
+- org → identity
+- projects → (none)
+- scheduling → org, projects
 <!-- module-graph:end -->
 
-Domains we expect to add, as examples of how the graph grows: `org` (people, departments) → identity; `documents`, `requests` → identity, org; `booking`, `news` → identity; `notifications`, `search`, `audit` → events only.
+Domains we expect to add, as examples of how the graph grows: `documents`, `requests` → identity, org; `booking`, `news` → identity; `notifications`, `search`, `audit` → events only.
 
 ## Module anatomy
 

@@ -19,7 +19,10 @@
     "@arv/db": "workspace:*",
     "@arv/identity": "workspace:*",
     "@arv/kernel": "workspace:*",
+    "@arv/org": "workspace:*",
     "@arv/platform": "workspace:*",
+    "@arv/projects": "workspace:*",
+    "@arv/scheduling": "workspace:*",
     "effect": "3.22.2",
     "hono": "4.13.13",
     "pg": "8.23.1"
