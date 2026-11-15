@@ -6,6 +6,7 @@ import { orgPermissions } from '@arv/org';
 import { OrgModuleLive } from '@arv/org/layer';
 import { projectsPermissions } from '@arv/projects';
 import { ProjectsModuleLive } from '@arv/projects/layer';
+import { schedulingPermissions } from '@arv/scheduling';
 import { SchedulingModuleLive } from '@arv/scheduling/layer';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
@@ -18,6 +19,7 @@ const PermissionCatalogLive = permissionCatalogLayer([
   ...identityPermissions,
   ...orgPermissions,
   ...projectsPermissions,
+  ...schedulingPermissions,
 ]);
 
 /**
