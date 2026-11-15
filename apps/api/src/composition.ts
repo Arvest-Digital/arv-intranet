@@ -4,6 +4,7 @@ import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv
 import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
 import { orgPermissions } from '@arv/org';
 import { OrgModuleLive } from '@arv/org/layer';
+import { projectsPermissions } from '@arv/projects';
 import { ProjectsModuleLive } from '@arv/projects/layer';
 import { SchedulingModuleLive } from '@arv/scheduling/layer';
 import { Layer } from 'effect';
@@ -13,7 +14,11 @@ import type { Bindings } from './env';
  * Every module's permission declarations (ADR-0004). Add a module's declarations here when it
  * lands; nothing else builds the catalog.
  */
-const PermissionCatalogLive = permissionCatalogLayer([...identityPermissions, ...orgPermissions]);
+const PermissionCatalogLive = permissionCatalogLayer([
+  ...identityPermissions,
+  ...orgPermissions,
+  ...projectsPermissions,
+]);
 
 /**
  * Identity's configuration from the api's env (sad §7). A missing value reads as empty, which
