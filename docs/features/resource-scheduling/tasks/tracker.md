@@ -12,20 +12,20 @@
 | T05 | [Promote the org schema: teams, employee_records, public_holidays](./t05-migration-org.md) | migration | TBD (backend lead) | S | T04 | done |
 | T06 | [Promote the projects schema: projects](./t06-migration-projects.md) | migration | TBD (backend lead) | S | T04 | done |
 | T07 | [Promote the scheduling schema: allocations, segments, history, import_runs](./t07-migration-scheduling.md) | migration | TBD (backend lead) | S | T04 | done |
-| T08 | [Model EmployeeRecord, Team and PublicHoliday with their validation rules](./t08-org-domain.md) | domain | TBD (backend lead) | M | T01 | todo |
+| T08 | [Model EmployeeRecord, Team and PublicHoliday with their validation rules](./t08-org-domain.md) | domain | TBD (backend lead) | M | T01 | done |
 | T09 | [Add org Drizzle repositories and test fixtures](./t09-org-infra.md) | infra | TBD (backend lead) | M | T02, T05, T08 | todo |
 | T10 | [Implement employee-record use cases, the CapacityImpactCheck port and the org facade](./t10-org-employee-records-app.md) | app | TBD (backend lead) | L | T09 | todo |
 | T11 | [Implement team and public-holiday use cases](./t11-org-teams-holidays-app.md) | app | TBD (backend lead) | M | T10 | todo |
 | T12 | [Expose employee-record endpoints with end-date redaction](./t12-org-http-employee-records.md) | ports | TBD (backend lead) | M | T03, T10 | todo |
 | T13 | [Expose team and public-holiday endpoints](./t13-org-http-teams-holidays.md) | ports | TBD (backend lead) | M | T11, T12 | todo |
-| T14 | [Model Project with type, name comparison and open/closed on a date](./t14-projects-domain.md) | domain | TBD (backend lead) | S | T01 | todo |
+| T14 | [Model Project with type, name comparison and open/closed on a date](./t14-projects-domain.md) | domain | TBD (backend lead) | S | T01 | done |
 | T15 | [Add the projects Drizzle repository and fixtures](./t15-projects-infra.md) | infra | TBD (backend lead) | S | T02, T06, T14 | todo |
 | T16 | [Implement create and close-with-preview use cases, the ProjectClosingHook port and the projects facade](./t16-projects-app.md) | app | TBD (backend lead) | M | T15 | todo |
 | T17 | [Expose project endpoints with leave-project redaction in the list](./t17-projects-http.md) | ports | TBD (backend lead) | M | T03, T16 | todo |
-| T18 | [Implement tick arithmetic and the capacity calendar](./t18-scheduling-capacity-calendar.md) | domain | TBD (backend lead) | L | T01 | todo |
-| T19 | [Model the Allocation aggregate of effective-dated segments with its rules](./t19-scheduling-allocation-aggregate.md) | domain | TBD (backend lead) | L | T01 | todo |
+| T18 | [Implement tick arithmetic and the capacity calendar](./t18-scheduling-capacity-calendar.md) | domain | TBD (backend lead) | L | T01 | done |
+| T19 | [Model the Allocation aggregate of effective-dated segments with its rules](./t19-scheduling-allocation-aggregate.md) | domain | TBD (backend lead) | L | T01 | done |
 | T20 | [Compute weekly figures, cell states, overbooking and the free-list ranking](./t20-scheduling-weekly-figures.md) | domain | TBD (backend lead) | L | T18, T19 | todo |
-| T21 | [Implement the scheduling permission and visibility policy](./t21-scheduling-visibility-policy.md) | domain | TBD (backend lead) | M | T01 | todo |
+| T21 | [Implement the scheduling permission and visibility policy](./t21-scheduling-visibility-policy.md) | domain | TBD (backend lead) | M | T01 | done |
 | T22 | [Add scheduling Drizzle repositories and fixtures](./t22-scheduling-infra.md) | infra | TBD (backend lead) | L | T02, T07, T19 | todo |
 | T23 | [Implement create, change and remove allocation use cases](./t23-scheduling-allocation-commands.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | todo |
 | T24 | [Implement the book-leave use case](./t24-scheduling-book-leave.md) | app | TBD (backend lead) | M | T23 | todo |
