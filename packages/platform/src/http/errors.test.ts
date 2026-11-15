@@ -1,5 +1,6 @@
 import {
   ApiErrorBody,
+  ConfirmationRequired,
   Conflict,
   Forbidden,
   Invalid,
@@ -89,6 +90,64 @@ describe('toHttpError', () => {
   });
 });
 
+describe('toHttpError for warn-then-confirm and concurrent edits (ADR-0010)', () => {
+  it('maps ConfirmationRequired to 409 with its code and impact details', () => {
+    const impact = {
+      overbookedWeeks: [
+        {
+          weekStart: '2026-11-09',
+          capacityMinutes: 1920,
+          allocatedMinutes: 2400,
+          overMinutes: 480,
+        },
+      ],
+      workOnLeaveDays: [],
+    };
+    const { status, body } = toHttpError(
+      new ConfirmationRequired({
+        message: 'The resource will be overbooked in 1 week',
+        code: 'scheduling.overbooking_confirmation_required',
+        details: impact,
+      }),
+    );
+    expect(status).toBe(409);
+    expect(decoded(body)).toEqual({
+      _tag: 'ConfirmationRequired',
+      code: 'scheduling.overbooking_confirmation_required',
+      message: 'The resource will be overbooked in 1 week',
+      details: impact,
+    });
+  });
+
+  it('carries the current values and who changed them on a version Conflict', () => {
+    const current = {
+      id: '01933b8e-0000-7000-8000-000000000601',
+      version: 2,
+      lastChangedBy: { id: '01933b8e-0000-7000-8000-000000000102', name: 'Test User 2' },
+      lastChangedAt: '2026-10-31T09:05:00Z',
+    };
+    const { status, body } = toHttpError(
+      new Conflict({
+        message: 'Test User 2 changed this allocation meanwhile',
+        code: 'scheduling.version_conflict',
+        details: { current },
+      }),
+    );
+    expect(status).toBe(409);
+    expect(decoded(body)).toEqual({
+      _tag: 'Conflict',
+      code: 'scheduling.version_conflict',
+      message: 'Test User 2 changed this allocation meanwhile',
+      details: { current },
+    });
+  });
+
+  it('omits details on a Conflict without them', () => {
+    const { body } = toHttpError(new Conflict({ message: 'taken', code: 'identity.email_taken' }));
+    expect(decoded(body)).not.toHaveProperty('details');
+  });
+});
+
 describe('toHttpError for module rules', () => {
   it('maps Invalid to 400 ValidationError with its message, code and details', () => {
     const { status, body } = toHttpError(
@@ -125,5 +184,11 @@ describe('access errors', () => {
     const conflict = new Conflict({ message: 'taken', code: 'identity.email_taken' });
     expect(toContractError(unauthenticated)).toBe(unauthenticated);
     expect(toContractError(conflict)).toBe(conflict);
+    const confirm = new ConfirmationRequired({
+      message: 'Review the impact',
+      code: 'projects.closing_confirmation_required',
+      details: { closeDate: '2026-11-30', endingAtCloseDate: [], removed: [] },
+    });
+    expect(toContractError(confirm)).toBe(confirm);
   });
 });

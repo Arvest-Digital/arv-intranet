@@ -265,10 +265,10 @@ flowchart LR
 ```
 
 - Domain errors are `Schema.TaggedError`s in the module's `domain/errors.ts`.
-- The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared` (`NotFound`, `Conflict`).
+- The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared`: `NotFound` (404), `Conflict` (409; `details` carries current values on a concurrent edit), `ConfirmationRequired` (409; warn-then-confirm, `details` is the impact list, the client re-sends with `confirm: true` — feature ADR resource-scheduling/0010), `Invalid` (400 `ValidationError` for a broken domain rule, `details.rules`) and `Refused` (403 `Forbidden` for a module rule).
 - `ContractError` and `toHttpError` live in `@arv/platform/http`. Only a new *kind* of HTTP failure needs a new contract error there, which should be rare.
 - Access refusals from the kernel's `requirePermission` are mapped once, in `runEffect`: `PermissionDenied` → 403 `Forbidden` (code `<module>.missing_permission`, from the permission key's prefix), `Unauthenticated` → 401 `Unauthenticated` (`platform.unauthenticated`, or `identity.access_removed` when `reason: 'access-removed'`). Presenters never see them (ADR-0005).
-- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, host-level failures use `platform.*`.
+- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, `ConfirmationRequired`, `Invalid` and `Refused`, host-level failures use `platform.*`.
 
 ## Web
 
