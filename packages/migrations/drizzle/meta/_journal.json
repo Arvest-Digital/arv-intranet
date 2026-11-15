@@ -36,6 +36,13 @@
       "when": 1794765910403,
       "tag": "0004_projects_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794766055107,
+      "tag": "0005_scheduling_schema",
+      "breakpoints": true
     }
   ]
 }
