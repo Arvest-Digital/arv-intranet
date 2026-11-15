@@ -14,7 +14,7 @@ describe('schedulingPermissions', () => {
       expect(key).toMatch(/^scheduling:[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/);
       expect(declaration.name.trim()).not.toBe('');
       expect(declaration.description.trim()).not.toBe('');
-      expect(declaration.feature).toBe('Scheduling');
+      expect(declaration.feature).toBe('Resource scheduling');
     },
   );
 

@@ -20,20 +20,20 @@ export const schedulingPermissions: ReadonlyArray<PermissionDeclaration> = [
     name: 'View the whole board',
     description:
       "See every resource's allocated hours against capacity on the schedule board, find who is free, and read allocation history.",
-    feature: 'Scheduling',
+    feature: 'Resource scheduling',
   },
   {
     key: EDIT_ALLOCATIONS,
     name: 'Edit allocations',
     description:
       'Create, change and remove allocations and book leave. Includes everything view the whole board allows.',
-    feature: 'Scheduling',
+    feature: 'Resource scheduling',
   },
   {
     key: SEE_LEAVE_REASONS,
     name: 'See leave reasons',
     description:
       "See the type of a resource's leave, such as sick leave; everyone else sees only «away».",
-    feature: 'Scheduling',
+    feature: 'Resource scheduling',
   },
 ];

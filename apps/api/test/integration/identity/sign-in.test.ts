@@ -578,7 +578,7 @@ describe('GET /identity/me', () => {
         // No module declares this key in the catalog: it grants nothing (AC-16, AC-18).
         makeAccessRole({
           name: 'Planner',
-          permissionKeys: ['identity:manage-access', 'scheduling:edit-allocations'],
+          permissionKeys: ['identity:manage-access', 'retired:old-permission'],
         }),
       ]);
       await seedUserAccessRoles(

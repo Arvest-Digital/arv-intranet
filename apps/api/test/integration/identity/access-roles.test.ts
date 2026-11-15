@@ -301,7 +301,7 @@ describe('access-role authorization', () => {
     expect(listed.status).toBe(200);
     expect(((await listed.json()) as RolePageBody).items).toHaveLength(3);
     const catalog = await callHost('/identity/permissions', { token: admin.token });
-    expect(await catalog.json()).toEqual({ items: [manageAccess] });
+    expect(((await catalog.json()) as { items: unknown[] }).items).toContainEqual(manageAccess);
   });
 });
 
