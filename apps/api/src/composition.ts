@@ -1,7 +1,7 @@
 import { type Database, UnitOfWorkLive } from '@arv/db';
 import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
-import { type Actor, CurrentActor } from '@arv/kernel';
+import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
 
@@ -49,7 +49,13 @@ const ModulesLive = (env: Bindings) =>
  */
 export const makeAppLayer = (env: Bindings, actor: Actor, database: Layer.Layer<Database>) =>
   ModulesLive(env).pipe(
-    Layer.provideMerge(Layer.merge(UnitOfWorkLive, Layer.succeed(CurrentActor, actor))),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        UnitOfWorkLive,
+        Layer.succeed(CurrentActor, actor),
+        TodayLive(env.COMPANY_TIME_ZONE),
+      ),
+    ),
     Layer.provide(database),
   );
 

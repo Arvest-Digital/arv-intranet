@@ -6,3 +6,11 @@ import { Schema } from 'effect';
  */
 export const UserId = Schema.UUID.pipe(Schema.brand('UserId'));
 export type UserId = typeof UserId.Type;
+
+/** An employee record: owned by `org`, referenced by `scheduling` (sad §8 ID strategy). */
+export const EmployeeId = Schema.UUID.pipe(Schema.brand('EmployeeId'));
+export type EmployeeId = typeof EmployeeId.Type;
+
+/** A project: owned by `projects`, referenced by `scheduling` (sad §8 ID strategy). */
+export const ProjectId = Schema.UUID.pipe(Schema.brand('ProjectId'));
+export type ProjectId = typeof ProjectId.Type;

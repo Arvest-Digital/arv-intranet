@@ -68,8 +68,10 @@ arv-intranet/
 │   │                                resolves the actor of a request
 │   └── _template/                 copied by `pnpm new:module <name>` (not a workspace package)
 ├── packages/
-│   ├── kernel/                    @arv/kernel: shared branded IDs, Actor + CurrentActor,
-│   │                                DomainEvent, UnitOfWork + DomainEvents ports. effect only.
+│   ├── kernel/                    @arv/kernel: shared branded IDs (UserId, EmployeeId, ProjectId),
+│   │                                Actor + CurrentActor, Permission + requirePermission,
+│   │                                Today (company date over Clock), DomainEvent,
+│   │                                UnitOfWork + DomainEvents ports. effect only.
 │   ├── contracts/                 @arv/contracts: wire DTOs. /shared, /identity, … effect only.
 │   ├── db/                        @arv/db: Database, query, DbError, UnitOfWorkLive, /testing, /migrate. No tables.
 │   ├── platform/                  @arv/platform: /http (runEffect, validate, toHttpError)

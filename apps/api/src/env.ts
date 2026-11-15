@@ -19,6 +19,8 @@ export type Bindings = {
   FIRST_ADMIN_EMAIL: string;
   /** The web's sign-in return page, registered with Google as the redirect URI. */
   SIGN_IN_RETURN_URL: string;
+  /** IANA zone of the company's business dates, `Europe/Kyiv` (resource-scheduling sad §8). */
+  COMPANY_TIME_ZONE: string;
   /**
    * Local development only (`.dev.vars`): `true` skips the Google `hd` check so a personal account
    * can sign in. Ignored unless SIGN_IN_RETURN_URL is `http://localhost`. Never set in wrangler.jsonc.

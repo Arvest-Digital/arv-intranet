@@ -15,7 +15,9 @@
     // Empty: no first admin is made (AC-15). Set at deploy time, never committed.
     "FIRST_ADMIN_EMAIL": "",
     // The web's sign-in return page registered with Google; set at deploy time.
-    "SIGN_IN_RETURN_URL": ""
+    "SIGN_IN_RETURN_URL": "",
+    // Business dates ("today", weeks) are taken in this IANA zone (resource-scheduling sad §8).
+    "COMPANY_TIME_ZONE": "Europe/Kyiv"
   },
   "hyperdrive": [
     {
