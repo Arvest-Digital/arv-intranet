@@ -5,10 +5,10 @@
 
 | # | Task | Layer | Owner | Estimate | Blocked by | Status |
 |---|---|---|---|---|---|---|
-| T01 | [Carry the permission set on Actor and resolve it per request](./t01-permissions-on-actor.md) | wiring | TBD (backend lead) | M | — | todo |
+| T01 | [Carry the permission set on Actor and resolve it per request](./t01-permissions-on-actor.md) | wiring | TBD (backend lead) | M | — | done |
 | T02 | [Implement UnitOfWorkLive with a CurrentTx FiberRef read by query()](./t02-unit-of-work-live.md) | infra | TBD (backend lead) | M | — | done |
-| T03 | [Add Forbidden, ConfirmationRequired, detailed Conflict and ValidationError contract errors](./t03-contract-errors.md) | ports | TBD (backend lead) | M | — | todo |
-| T04 | [Scaffold org, projects and scheduling modules and register them](./t04-scaffold-modules.md) | wiring | TBD (backend lead) | S | — | todo |
+| T03 | [Add Forbidden, ConfirmationRequired, detailed Conflict and ValidationError contract errors](./t03-contract-errors.md) | ports | TBD (backend lead) | M | — | done |
+| T04 | [Scaffold org, projects and scheduling modules and register them](./t04-scaffold-modules.md) | wiring | TBD (backend lead) | S | — | done |
 | T05 | [Promote the org schema: teams, employee_records, public_holidays](./t05-migration-org.md) | migration | TBD (backend lead) | S | T04 | todo |
 | T06 | [Promote the projects schema: projects](./t06-migration-projects.md) | migration | TBD (backend lead) | S | T04 | todo |
 | T07 | [Promote the scheduling schema: allocations, segments, history, import_runs](./t07-migration-scheduling.md) | migration | TBD (backend lead) | S | T04 | todo |
