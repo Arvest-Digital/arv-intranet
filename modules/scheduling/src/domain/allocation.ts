@@ -1,5 +1,6 @@
 import { EmployeeId, ProjectId } from '@arv/kernel';
 import { Array as Arr, Either, Option, Schema } from 'effect';
+import { addDays } from './capacity';
 import {
   type AllocationRule,
   AllocationRulesBroken,
@@ -13,14 +14,8 @@ import {
 export const IsoDate = Schema.String.pipe(Schema.pattern(/^\d{4}-\d{2}-\d{2}$/));
 export type IsoDate = typeof IsoDate.Type;
 
-// TODO(scheduling): T18 owns calendar arithmetic (ticks.ts / capacity.ts); move this there once
-// it lands, so the module keeps one date helper.
-/** `date` shifted by `days` calendar days. */
-export const addDays = (date: IsoDate, days: number): IsoDate => {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
+/** `date` shifted by `days` calendar days: the calendar arithmetic lives in `capacity.ts` (T18). */
+export { addDays };
 
 const minDate = (a: IsoDate | null, b: IsoDate | null): IsoDate | null =>
   a === null ? b : b === null ? a : a < b ? a : b;
