@@ -16,7 +16,7 @@
 | T09 | [Add org Drizzle repositories and test fixtures](./t09-org-infra.md) | infra | TBD (backend lead) | M | T02, T05, T08 | done |
 | T10 | [Implement employee-record use cases, the CapacityImpactCheck port and the org facade](./t10-org-employee-records-app.md) | app | TBD (backend lead) | L | T09 | done |
 | T11 | [Implement team and public-holiday use cases](./t11-org-teams-holidays-app.md) | app | TBD (backend lead) | M | T10 | done |
-| T12 | [Expose employee-record endpoints with end-date redaction](./t12-org-http-employee-records.md) | ports | TBD (backend lead) | M | T03, T10 | todo |
+| T12 | [Expose employee-record endpoints with end-date redaction](./t12-org-http-employee-records.md) | ports | TBD (backend lead) | M | T03, T10 | done |
 | T13 | [Expose team and public-holiday endpoints](./t13-org-http-teams-holidays.md) | ports | TBD (backend lead) | M | T11, T12 | todo |
 | T14 | [Model Project with type, name comparison and open/closed on a date](./t14-projects-domain.md) | domain | TBD (backend lead) | S | T01 | done |
 | T15 | [Add the projects Drizzle repository and fixtures](./t15-projects-infra.md) | infra | TBD (backend lead) | S | T02, T06, T14 | done |
