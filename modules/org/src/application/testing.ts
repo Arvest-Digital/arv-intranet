@@ -65,6 +65,8 @@ export const makeOrgFakes = () => {
   const impact = {
     weeks: [] as ReadonlyArray<OverbookedWeek>,
     calls: 0,
+    /** The dates `holidayAdded` was asked about. */
+    holidayDates: [] as Array<CalendarDate>,
   };
 
   const memberCount = (teamId: TeamId) =>
@@ -162,17 +164,17 @@ export const makeOrgFakes = () => {
         store.teams.set(team.id, team);
         return Effect.succeed(team);
       }),
-    rename: (id, name) =>
+    update: (id, input) =>
       Effect.suspend(() => {
         const team = store.teams.get(id);
         if (team === undefined) return Effect.succeed(Option.none());
         const taken = [...store.teams.values()].some(
-          (t) => t.id !== id && nameKey(t.name) === nameKey(name),
+          (t) => t.id !== id && nameKey(t.name) === nameKey(input.name),
         );
-        if (taken) return Effect.fail(new DuplicateTeamName({ name }));
-        const renamed = new Team({ ...team, name });
-        store.teams.set(id, renamed);
-        return Effect.succeed(Option.some(renamed));
+        if (taken) return Effect.fail(new DuplicateTeamName({ name: input.name }));
+        const updated = new Team({ ...team, ...input });
+        store.teams.set(id, updated);
+        return Effect.succeed(Option.some(updated));
       }),
     delete: (id) => Effect.sync(() => store.teams.delete(id)),
   };
@@ -210,6 +212,12 @@ export const makeOrgFakes = () => {
     termsChange: () =>
       Effect.sync(() => {
         impact.calls += 1;
+        return impact.weeks;
+      }),
+    holidayAdded: (holidayDate) =>
+      Effect.sync(() => {
+        impact.calls += 1;
+        impact.holidayDates.push(holidayDate);
         return impact.weeks;
       }),
   };
@@ -287,6 +295,13 @@ export const makeOrgFakes = () => {
     record: (id: EmployeeId) => store.records.get(id),
     /** Every record, as plain data, so «nothing changed» is one deep comparison. */
     snapshot: () => [...store.records.values()].map((r) => ({ ...r })),
+    /** The current team, read straight from the store. */
+    team: (id: TeamId) => store.teams.get(id),
+    /** Every team and holiday, as plain data, for «nothing changed» checks. */
+    listsSnapshot: () => ({
+      teams: [...store.teams.values()].map((t) => ({ ...t })),
+      holidays: [...store.holidays.values()].map((h) => ({ ...h })),
+    }),
   };
 };
 

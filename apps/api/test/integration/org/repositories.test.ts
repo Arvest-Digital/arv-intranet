@@ -302,7 +302,7 @@ describe('DrizzleTeamRepository', () => {
     expect(Option.getOrThrow(found).memberCount).toBe(2);
   });
 
-  it('refuses «platform » next to «Platform» on create and rename (AC-19d)', async () => {
+  it('refuses «platform » next to «Platform» on create and update (AC-19d)', async () => {
     const created = await run(
       Effect.flatMap(teamsRepo, (repo) =>
         repo.create({ name: teamName('Platform'), teamLeadId: null }),
@@ -323,13 +323,17 @@ describe('DrizzleTeamRepository', () => {
       ),
     );
     const clash = await runExit(
-      Effect.flatMap(teamsRepo, (repo) => repo.rename(other.id, teamName('PLATFORM'))),
+      Effect.flatMap(teamsRepo, (repo) =>
+        repo.update(other.id, { name: teamName('PLATFORM'), teamLeadId: null }),
+      ),
     );
     expect(clash).toEqual(Exit.fail(new DuplicateTeamName({ name: 'PLATFORM' })));
 
     // Renaming a team to another spelling of its own name is fine.
     const renamed = await run(
-      Effect.flatMap(teamsRepo, (repo) => repo.rename(created.id, teamName('PLATFORM'))),
+      Effect.flatMap(teamsRepo, (repo) =>
+        repo.update(created.id, { name: teamName('PLATFORM'), teamLeadId: null }),
+      ),
     );
     expect(Option.getOrThrow(renamed).name).toBe('PLATFORM');
     const byKey = await run(
@@ -338,13 +342,48 @@ describe('DrizzleTeamRepository', () => {
     expect(Option.getOrThrow(byKey).id).toBe(created.id);
   });
 
+  it('update replaces the team lead with the name', async () => {
+    const [lead] = await withDb((db) =>
+      seedEmployeeRecords(db, [makeEmployeeRecord({ lastChangedBy: CHANGER })]),
+    );
+    const created = await run(
+      Effect.flatMap(teamsRepo, (repo) =>
+        repo.create({ name: teamName('Platform'), teamLeadId: null }),
+      ),
+    );
+    const updated = await run(
+      Effect.flatMap(teamsRepo, (repo) =>
+        repo.update(created.id, {
+          name: teamName('Platform'),
+          teamLeadId: EmployeeId.make(lead!.id),
+        }),
+      ),
+    );
+    expect(Option.getOrThrow(updated).teamLeadId).toBe(lead!.id);
+    const gone = await run(
+      Effect.flatMap(teamsRepo, (repo) =>
+        repo.update(TeamId.make('01a135e4-c4d9-797e-ad76-ae23c85d58cd'), {
+          name: teamName('Elsewhere'),
+          teamLeadId: null,
+        }),
+      ),
+    );
+    expect(gone).toEqual(Option.none());
+  });
+
   it('deletes a team, and reports a missing one', async () => {
     const [team] = await withDb((db) => seedTeams(db, [makeTeam()]));
     const id = TeamId.make(team!.id);
     expect(await run(Effect.flatMap(teamsRepo, (repo) => repo.delete(id)))).toBe(true);
     expect(await run(Effect.flatMap(teamsRepo, (repo) => repo.delete(id)))).toBe(false);
     expect(
-      Option.isNone(await run(Effect.flatMap(teamsRepo, (repo) => repo.rename(id, teamName('X'))))),
+      Option.isNone(
+        await run(
+          Effect.flatMap(teamsRepo, (repo) =>
+            repo.update(id, { name: teamName('X'), teamLeadId: null }),
+          ),
+        ),
+      ),
     ).toBe(true);
   });
 });

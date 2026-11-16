@@ -68,7 +68,7 @@ export interface TeamWithMemberCount {
   readonly memberCount: number;
 }
 
-/** What a team is created from. */
+/** What a team is created or replaced from. */
 export interface TeamInput {
   readonly name: TeamName;
   readonly teamLeadId: EmployeeId | null;
@@ -84,10 +84,13 @@ export class TeamRepository extends Context.Tag('org/TeamRepository')<
     readonly findByNameKey: (key: NameKey) => Effect.Effect<Option.Option<Team>>;
     /** A taken name key fails `DuplicateTeamName` (AC-19d). */
     readonly create: (input: TeamInput) => Effect.Effect<Team, DuplicateTeamName>;
-    /** Changes only the name; `None` when the team is gone. A taken name key fails. */
-    readonly rename: (
+    /**
+     * Replaces the name and team lead; `None` when the team is gone. A name key taken by another
+     * team fails `DuplicateTeamName`; the team's own key is free (a respelling is a rename).
+     */
+    readonly update: (
       id: TeamId,
-      name: TeamName,
+      input: TeamInput,
     ) => Effect.Effect<Option.Option<Team>, DuplicateTeamName>;
     /** Deletes the team; `false` when it was gone. The use case checks it is empty first. */
     readonly delete: (id: TeamId) => Effect.Effect<boolean>;
@@ -136,6 +139,13 @@ export class CapacityImpactCheck extends Context.Tag('org/CapacityImpactCheck')<
       employeeId: EmployeeId,
       terms: EmployeeTerms,
     ) => Effect.Effect<ReadonlyArray<OverbookedWeek>>;
+    /**
+     * The resource-weeks, from this week on, that a public holiday on `holidayDate` would push
+     * over capacity (only resources who work that weekday lose hours, AC-27). Empty when none.
+     */
+    readonly holidayAdded: (
+      holidayDate: CalendarDate,
+    ) => Effect.Effect<ReadonlyArray<OverbookedWeek>>;
   }
 >() {}
 
@@ -145,4 +155,5 @@ export class CapacityImpactCheck extends Context.Tag('org/CapacityImpactCheck')<
  */
 export const CapacityImpactCheckNoop = Layer.succeed(CapacityImpactCheck, {
   termsChange: () => Effect.succeed([]),
+  holidayAdded: () => Effect.succeed([]),
 });

@@ -103,7 +103,7 @@ export const DrizzleTeamRepositoryLive = Layer.effect(
             return row === undefined ? NAME_TAKEN : toTeam(row);
           }),
         ),
-      rename: (id, name) =>
+      update: (id, { name, teamLeadId }) =>
         runNamed(
           name,
           query(async (db) => {
@@ -113,7 +113,11 @@ export const DrizzleTeamRepositoryLive = Layer.effect(
               .where(and(sql`${nameKey} = ${toNameKey(name)}`, not(eq(teams.id, id))))
               .limit(1);
             if (clash !== undefined) return NAME_TAKEN;
-            const [row] = await db.update(teams).set({ name }).where(eq(teams.id, id)).returning();
+            const [row] = await db
+              .update(teams)
+              .set({ name, teamLeadId })
+              .where(eq(teams.id, id))
+              .returning();
             return Option.fromNullable(row).pipe(Option.map(toTeam));
           }),
         ),
