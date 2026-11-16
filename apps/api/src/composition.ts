@@ -3,7 +3,7 @@ import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
 import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
 import { orgPermissions } from '@arv/org';
-import { OrgModuleLive } from '@arv/org/layer';
+import { CapacityImpactCheckNoop, OrgModuleLive } from '@arv/org/layer';
 import { projectsPermissions } from '@arv/projects';
 import { ProjectsModuleLive } from '@arv/projects/layer';
 import { schedulingPermissions } from '@arv/scheduling';
@@ -49,6 +49,8 @@ const IdentityLive = (env: Bindings) =>
  */
 const ModulesLive = (env: Bindings) =>
   Layer.empty.pipe(
+    // org's capacity-impact port (ADR-0007): a no-op until scheduling's implementation lands (T30).
+    Layer.provideMerge(CapacityImpactCheckNoop),
     Layer.provideMerge(SchedulingModuleLive), // calls org, projects
     Layer.provideMerge(ProjectsModuleLive), // calls no module
     Layer.provideMerge(OrgModuleLive), // calls identity

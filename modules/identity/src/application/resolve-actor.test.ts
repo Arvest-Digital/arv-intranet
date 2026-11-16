@@ -1,4 +1,4 @@
-import { Actor, Permission, Unauthenticated } from '@arv/kernel';
+import { Actor, Permission, Unauthenticated, UserId } from '@arv/kernel';
 import { Cause, Effect, Exit, Layer, Option, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { AccessRoleName } from '../domain/access-role';
@@ -211,5 +211,19 @@ describe('IdentityApiLive', () => {
     );
     const exit = await viaFacade(IdentityApiLive.pipe(Layer.provide(failing)), 'ann');
     expect(Exit.isFailure(exit) && Cause.isDie(exit.cause)).toBe(true);
+  });
+
+  it('says whether a login is on the access list (org links records to it)', async () => {
+    const fakes = makeIdentityFakes({ declarations });
+    const user = fakes.seedUser({ email: 'ann@arvest.digital', name: 'Ann' }, []);
+    const exists = (id: UserId) =>
+      Effect.runPromise(
+        Effect.flatMap(IdentityApi, (api) => api.userExists(id)).pipe(
+          Effect.provide(IdentityApiLive.pipe(Layer.provide(fakes.layer))),
+        ),
+      );
+
+    expect(await exists(user.id)).toBe(true);
+    expect(await exists(UserId.make('01a135e4-c4d9-797e-ad76-ae23c85d58cd'))).toBe(false);
   });
 });

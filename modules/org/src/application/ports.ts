@@ -1,8 +1,13 @@
 import type { EmployeeId, UserId } from '@arv/kernel';
-import { Context, type Effect, type Option } from 'effect';
+import { Context, Effect, Layer, type Option } from 'effect';
 import type { CalendarDate } from '../domain/calendar';
 import type { EmployeeName, EmployeeRecord, EmployeeTerms } from '../domain/employee-record';
-import type { DuplicateHolidayDate, DuplicateTeamName, LoginAlreadyLinked } from '../domain/errors';
+import type {
+  DuplicateHolidayDate,
+  DuplicateTeamName,
+  LoginAlreadyLinked,
+  OverbookedWeek,
+} from '../domain/errors';
 import type { NameKey } from '../domain/name';
 import type { HolidayName, PublicHoliday, PublicHolidayId } from '../domain/public-holiday';
 import type { Team, TeamId, TeamName } from '../domain/team';
@@ -113,3 +118,31 @@ export class PublicHolidayRepository extends Context.Tag('org/PublicHolidayRepos
     readonly delete: (id: PublicHolidayId) => Effect.Effect<boolean>;
   }
 >() {}
+
+/**
+ * Which coming weeks a capacity change would overbook (AC-19c, AC-27). Owned by org, implemented
+ * by `scheduling` and wired by the host (ADR-0007): org can't call scheduling directly without a
+ * cycle. Read-only — the check writes nothing and records no allocation history. Exported from the
+ * facade so scheduling can provide it.
+ */
+export class CapacityImpactCheck extends Context.Tag('org/CapacityImpactCheck')<
+  CapacityImpactCheck,
+  {
+    /**
+     * The resource-weeks, from this week on, that `terms` would push over capacity and that are
+     * not overbooked today. Empty when nothing new overbooks.
+     */
+    readonly termsChange: (
+      employeeId: EmployeeId,
+      terms: EmployeeTerms,
+    ) => Effect.Effect<ReadonlyArray<OverbookedWeek>>;
+  }
+>() {}
+
+/**
+ * The default `CapacityImpactCheck`: reports nothing, so org composes and tests without
+ * scheduling. The host must replace it with scheduling's (T30), or the warning is skipped.
+ */
+export const CapacityImpactCheckNoop = Layer.succeed(CapacityImpactCheck, {
+  termsChange: () => Effect.succeed([]),
+});
