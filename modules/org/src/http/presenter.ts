@@ -6,21 +6,33 @@ import {
   type EmployeeRecordRuleViolations,
   type LoginAlreadyLinkedDetails,
   OrgErrorCodes,
+  PublicHoliday as PublicHolidayDto,
+  PublicHolidayPage,
+  Team as TeamDto,
+  type TeamMembersDetails,
+  TeamPage,
 } from '@arv/contracts/org';
 import { ConfirmationRequired, Conflict, Invalid, NotFound } from '@arv/contracts/shared';
 import { Schema } from 'effect';
 import type { EmployeeRecordView, EmployeeRef, Page } from '../application/employee-records';
+import type { TeamView } from '../application/teams';
 import type { EmployeeRecordVersionConflict } from '../domain/employee-record';
 import type {
   CapacityConfirmationRequired,
+  DuplicateHolidayDate,
+  DuplicateTeamName,
   EmployeeRecordNotFound,
   EmployeeRecordRuleViolation,
   InvalidEmployeeRecord,
   LoginAlreadyLinked,
   OverbookedWeek,
+  PublicHolidayNotFound,
+  TeamHasMembers,
+  TeamLeadNotFound,
   TeamNotFound,
   UserNotFound,
 } from '../domain/errors';
+import type { PublicHoliday } from '../domain/public-holiday';
 
 // Domain → contract DTO (`Schema.encodeSync`) and domain error → shared contract error. Messages
 // are the contract's (openapi.yaml `components.examples`).
@@ -54,39 +66,76 @@ export const presentEmployeeRecord = (view: EmployeeRecordView) =>
 export const presentEmployeeRecordPage = (page: Page<EmployeeRecordView>) =>
   Schema.encodeSync(EmployeeRecordPage)({ ...page, items: page.items.map(toEmployeeRecordDto) });
 
-/** The employee-record failures that map without looking anything up. */
-export type EmployeeRecordError =
+const toTeamDto = ({ team, teamLead }: TeamView) => ({
+  id: team.id,
+  name: team.name,
+  teamLead,
+  createdAt: team.createdAt,
+});
+
+/** OpenAPI `Team`. */
+export const presentTeam = (view: TeamView) => Schema.encodeSync(TeamDto)(toTeamDto(view));
+
+/** OpenAPI `TeamPage`. */
+export const presentTeamPage = (page: Page<TeamView>) =>
+  Schema.encodeSync(TeamPage)({ ...page, items: page.items.map(toTeamDto) });
+
+const toPublicHolidayDto = (holiday: PublicHoliday) => ({
+  id: holiday.id,
+  holidayDate: holiday.holidayDate,
+  name: holiday.name,
+  createdAt: holiday.createdAt,
+});
+
+/** OpenAPI `PublicHoliday`. */
+export const presentPublicHoliday = (holiday: PublicHoliday) =>
+  Schema.encodeSync(PublicHolidayDto)(toPublicHolidayDto(holiday));
+
+/** OpenAPI `PublicHolidayPage`. */
+export const presentPublicHolidayPage = (page: Page<PublicHoliday>) =>
+  Schema.encodeSync(PublicHolidayPage)({ ...page, items: page.items.map(toPublicHolidayDto) });
+
+/** The org failures that map without looking anything up. */
+export type OrgError =
   | InvalidEmployeeRecord
   | EmployeeRecordNotFound
   | UserNotFound
-  | TeamNotFound;
+  | TeamNotFound
+  | TeamLeadNotFound
+  | DuplicateTeamName
+  | TeamHasMembers
+  | DuplicateHolidayDate
+  | PublicHolidayNotFound;
 
-/** The employee-record failures whose contract body names more than the error carries. */
-export type DescribedEmployeeRecordError =
+/** The org failures whose contract body names more than the error carries. */
+export type DescribedOrgError =
   | LoginAlreadyLinked
   | EmployeeRecordVersionConflict
   | CapacityConfirmationRequired;
 
-const EMPLOYEE_RECORD_ERROR_TAGS: ReadonlySet<string> = new Set<EmployeeRecordError['_tag']>([
+const ORG_ERROR_TAGS: ReadonlySet<string> = new Set<OrgError['_tag']>([
   'InvalidEmployeeRecord',
   'EmployeeRecordNotFound',
   'UserNotFound',
   'TeamNotFound',
+  'TeamLeadNotFound',
+  'DuplicateTeamName',
+  'TeamHasMembers',
+  'DuplicateHolidayDate',
+  'PublicHolidayNotFound',
 ]);
 
-const DESCRIBED_ERROR_TAGS: ReadonlySet<string> = new Set<DescribedEmployeeRecordError['_tag']>([
+const DESCRIBED_ERROR_TAGS: ReadonlySet<string> = new Set<DescribedOrgError['_tag']>([
   'LoginAlreadyLinked',
   'EmployeeRecordVersionConflict',
   'CapacityConfirmationRequired',
 ]);
 
-export const isEmployeeRecordError = (error: {
-  readonly _tag: string;
-}): error is EmployeeRecordError => EMPLOYEE_RECORD_ERROR_TAGS.has(error._tag);
+export const isOrgError = (error: { readonly _tag: string }): error is OrgError =>
+  ORG_ERROR_TAGS.has(error._tag);
 
-export const isDescribedEmployeeRecordError = (error: {
-  readonly _tag: string;
-}): error is DescribedEmployeeRecordError => DESCRIBED_ERROR_TAGS.has(error._tag);
+export const isDescribedOrgError = (error: { readonly _tag: string }): error is DescribedOrgError =>
+  DESCRIBED_ERROR_TAGS.has(error._tag);
 
 const VIOLATION_FIELD: Record<EmployeeRecordRuleViolation['_tag'], string> = {
   ContractHoursOutOfRange: 'contractMinutes',
@@ -126,7 +175,17 @@ const invalidEmployeeRecord = ({ violations }: InvalidEmployeeRecord) => {
   });
 };
 
-export const toEmployeeRecordContractError = (error: EmployeeRecordError) => {
+/** AC-19d: how many resources keep the team from being removed. */
+const teamHasMembers = ({ memberCount }: TeamHasMembers) => {
+  const details: TeamMembersDetails = { memberCount };
+  return new Conflict({
+    message: `The team still has ${memberCount} resource${memberCount === 1 ? '' : 's'}`,
+    code: OrgErrorCodes.teamHasMembers,
+    details,
+  });
+};
+
+export const toOrgContractError = (error: OrgError) => {
   switch (error._tag) {
     case 'InvalidEmployeeRecord':
       return invalidEmployeeRecord(error);
@@ -140,6 +199,30 @@ export const toEmployeeRecordContractError = (error: EmployeeRecordError) => {
       return new NotFound({ resource: 'Login', id: error.id, code: OrgErrorCodes.userNotFound });
     case 'TeamNotFound':
       return new NotFound({ resource: 'Team', id: error.id, code: OrgErrorCodes.teamNotFound });
+    case 'TeamLeadNotFound':
+      return new NotFound({
+        resource: 'Employee record',
+        id: error.id,
+        code: OrgErrorCodes.teamLeadNotFound,
+      });
+    case 'DuplicateTeamName':
+      return new Conflict({
+        message: `A team named «${error.name}» already exists`,
+        code: OrgErrorCodes.duplicateTeamName,
+      });
+    case 'TeamHasMembers':
+      return teamHasMembers(error);
+    case 'DuplicateHolidayDate':
+      return new Conflict({
+        message: `${error.holidayDate} is already a public holiday`,
+        code: OrgErrorCodes.duplicateHolidayDate,
+      });
+    case 'PublicHolidayNotFound':
+      return new NotFound({
+        resource: 'Public holiday',
+        id: error.id,
+        code: OrgErrorCodes.holidayNotFound,
+      });
   }
 };
 

@@ -1,4 +1,11 @@
-import { Actor, CurrentActor, EmployeeId, Permission, PermissionDenied } from '@arv/kernel';
+import {
+  Actor,
+  CurrentActor,
+  EmployeeId,
+  Permission,
+  PermissionDenied,
+  Unauthenticated,
+} from '@arv/kernel';
 import { Effect, Either, type Layer, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,7 +16,7 @@ import {
 } from '../domain/errors';
 import { TeamId, TeamName } from '../domain/team';
 import { MANAGE_EMPLOYEE_RECORDS, MANAGE_HOLIDAY_LIST } from '../permissions';
-import { changeTeam, createTeam, removeTeam } from './teams';
+import { changeTeam, createTeam, describeTeams, listTeams, removeTeam } from './teams';
 import { makeOrgFakes, type OrgFakes } from './testing';
 
 const teamName = Schema.decodeSync(TeamName);
@@ -169,5 +176,59 @@ describe('teams (AC-19d)', () => {
       Either.left(new PermissionDenied({ permission: MANAGE_EMPLOYEE_RECORDS })),
     );
     expect(fakes.listsSnapshot()).toEqual(before);
+  });
+
+  describe('listing (AC-02, AC-19d, api-sync-report D-5)', () => {
+    it('pages teams in creation order and names each lead with the lead’s own team', async () => {
+      const { fakes, lead, actor } = setup();
+      const platform = fakes.seedTeam('Platform', lead.id);
+      const data = fakes.seedTeam('Data');
+      const imported = fakes.seedTeam('Imported');
+
+      const first = right(await run(fakes, actor, listTeams({ limit: 2 })));
+      expect(first.items.map((t) => t.name)).toEqual(['Platform', 'Data']);
+      expect(first).toMatchObject({ hasNext: true, hasPrev: false, nextCursor: data.id });
+      const second = right(await run(fakes, actor, listTeams({ after: data.id, limit: 2 })));
+      expect(second.items.map((t) => t.id)).toEqual([imported.id]);
+      expect(second).toMatchObject({ hasNext: false, hasPrev: true, nextCursor: null });
+
+      const views = right(await run(fakes, actor, describeTeams(first.items)));
+      expect(views.map((v) => v.teamLead)).toEqual([
+        { id: lead.id, fullName: 'Test User 1', team: null },
+        null,
+      ]);
+      expect(views[0]?.team).toBe(platform);
+    });
+
+    it.each([
+      ['org:manage-employee-records'],
+      ['scheduling:view-whole-board'],
+      ['scheduling:edit-allocations'],
+    ])('lets a holder of %s list teams', async (key) => {
+      const { fakes } = setup();
+      fakes.seedTeam('Platform');
+      const actor = Actor.User({
+        id: fakes.seedLogin(),
+        permissions: new Set([Permission.make(key)]),
+      });
+      expect(right(await run(fakes, actor, listTeams())).items).toHaveLength(1);
+    });
+
+    it('refuses a caller holding none of them, naming org’s permission', async () => {
+      const { fakes } = setup();
+      const actor = Actor.User({
+        id: fakes.seedLogin(),
+        permissions: new Set([
+          MANAGE_HOLIDAY_LIST,
+          Permission.make('scheduling:see-leave-reasons'),
+        ]),
+      });
+      expect(await run(fakes, actor, listTeams())).toEqual(
+        Either.left(new PermissionDenied({ permission: MANAGE_EMPLOYEE_RECORDS })),
+      );
+      expect(await run(fakes, Actor.Anonymous(), listTeams())).toEqual(
+        Either.left(new Unauthenticated({})),
+      );
+    });
   });
 });

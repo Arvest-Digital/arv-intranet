@@ -18,3 +18,17 @@ To decide:
 - Drop `.down.sql`, or keep it as documentation of a manual rollback?
 - Teach the SDLC plugin (`generate-data-model`, `implement-tasks`) to detect drizzle-kit and follow it, instead of
   the course defaults (timestamp names, `IF NOT EXISTS`, `CONCURRENTLY`, bootstrapping `rules/migrations.md`).
+
+## `listTeams` names scheduling's permission keys as strings
+
+`GET /org/teams` accepts `org:manage-employee-records`, `scheduling:view-whole-board` or `scheduling:edit-allocations`
+(openapi `listTeams`, api-sync-report D-5). Org can't import scheduling (scheduling calls org, so that would be a cycle),
+so `modules/org/src/application/teams/list-teams.ts` (`TEAM_LIST_READERS`) spells the two scheduling keys out as strings
+(decided 2026-11-16, T13). A renamed or retired scheduling key fails closed: its holders silently lose the team list.
+
+To check later:
+- Once scheduling declares its permissions (`schedulingPermissions`), confirm both keys are in it, e.g. an api test that
+  every key in `TEAM_LIST_READERS` is in the host's permission catalog (T30 is a natural place).
+- Revisit if more cross-module "any of" reads appear: a host-supplied list of reader permissions (a port wired in
+  `composition.ts`) would keep org from naming another module's keys.
+- The Security Lead still has to confirm the D-5 read matrix before launch.

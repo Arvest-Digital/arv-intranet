@@ -1,5 +1,5 @@
-import { Actor, CurrentActor, PermissionDenied, Unauthenticated } from '@arv/kernel';
-import { Effect, Either, type Layer, Schema } from 'effect';
+import { Actor, CurrentActor, PermissionDenied, Today, Unauthenticated } from '@arv/kernel';
+import { Effect, Either, Layer, Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import {
   CapacityConfirmationRequired,
@@ -9,7 +9,7 @@ import {
 } from '../domain/errors';
 import { HolidayName, PublicHolidayId } from '../domain/public-holiday';
 import { MANAGE_EMPLOYEE_RECORDS, MANAGE_HOLIDAY_LIST } from '../permissions';
-import { addPublicHoliday, removePublicHoliday } from './holidays';
+import { addPublicHoliday, listPublicHolidays, removePublicHoliday } from './holidays';
 import { makeOrgFakes, type OrgFakes } from './testing';
 
 const holidayName = Schema.decodeSync(HolidayName);
@@ -123,6 +123,54 @@ describe('public holidays (AC-27, AC-28)', () => {
       const { fakes } = setup();
       const result = await run(fakes, Actor.Anonymous(), make(PublicHolidayId.make(unknownId)));
       expect(result).toEqual(Either.left(new Unauthenticated({})));
+    });
+  });
+
+  describe('listing (US-09, api-sync-report D-5)', () => {
+    /** Today is 16 November 2026 in the company zone. */
+    const today = Layer.succeed(Today, { date: Effect.succeed('2026-11-16') });
+    const list = (fakes: OrgFakes, actor: Actor, query = {}) =>
+      run(fakes, actor, listPublicHolidays(query).pipe(Effect.provide(today)));
+
+    const seedYear = (fakes: OrgFakes) => {
+      // Added out of date order, so id order is not date order.
+      fakes.seedHoliday('2026-12-25', 'Christmas Day');
+      fakes.seedHoliday('2026-01-01', 'New Year');
+      fakes.seedHoliday('2027-01-01', 'Next New Year');
+      fakes.seedHoliday('2026-05-01', 'Labour Day');
+    };
+
+    it('lists the current year by date for any signed-in user', async () => {
+      const { fakes } = setup();
+      seedYear(fakes);
+      const reader = Actor.User({ id: fakes.seedLogin(), permissions: new Set() });
+
+      const page = Either.getOrThrow(await list(fakes, reader));
+      expect(page.items.map((h) => h.holidayDate)).toEqual([
+        '2026-01-01',
+        '2026-05-01',
+        '2026-12-25',
+      ]);
+      expect(page).toMatchObject({ hasNext: false, hasPrev: false, nextCursor: null });
+    });
+
+    it('takes a range and pages it by date', async () => {
+      const { fakes, actor } = setup();
+      seedYear(fakes);
+      const range = { from: '2026-05-01', to: '2027-12-31' };
+
+      const first = Either.getOrThrow(await list(fakes, actor, { ...range, limit: 2 }));
+      expect(first.items.map((h) => h.holidayDate)).toEqual(['2026-05-01', '2026-12-25']);
+      expect(first.hasNext).toBe(true);
+      const after = first.nextCursor as string;
+      const second = Either.getOrThrow(await list(fakes, actor, { ...range, after, limit: 2 }));
+      expect(second.items.map((h) => h.holidayDate)).toEqual(['2027-01-01']);
+      expect(second).toMatchObject({ hasNext: false, hasPrev: true });
+    });
+
+    it('answers Unauthenticated for an anonymous caller', async () => {
+      const { fakes } = setup();
+      expect(await list(fakes, Actor.Anonymous())).toEqual(Either.left(new Unauthenticated({})));
     });
   });
 });

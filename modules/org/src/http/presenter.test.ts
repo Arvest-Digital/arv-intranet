@@ -7,18 +7,27 @@ import type { EmployeeRecordView } from '../application/employee-records';
 import { EmployeeRecord } from '../domain/employee-record';
 import {
   ContractHoursOutOfRange,
+  DuplicateHolidayDate,
+  DuplicateTeamName,
   EmploymentEndsBeforeStart,
   InvalidEmployeeRecord,
   NoWorkingDay,
+  PublicHolidayNotFound,
+  TeamHasMembers,
+  TeamLeadNotFound,
+  TeamNotFound,
   UserNotFound,
 } from '../domain/errors';
-import { TeamId } from '../domain/team';
+import { PublicHoliday, PublicHolidayId } from '../domain/public-holiday';
+import { Team, TeamId } from '../domain/team';
 import {
   capacityConfirmationRequired,
   employeeRecordVersionConflict,
   loginAlreadyLinked,
   presentEmployeeRecord,
-  toEmployeeRecordContractError,
+  presentPublicHoliday,
+  presentTeam,
+  toOrgContractError,
 } from './presenter';
 
 const ids = {
@@ -97,7 +106,7 @@ describe('employee-record errors', () => {
         }),
       ],
     });
-    expect(body(toEmployeeRecordContractError(error))).toEqual({
+    expect(body(toOrgContractError(error))).toEqual({
       status: 400,
       error: {
         _tag: 'ValidationError',
@@ -112,7 +121,7 @@ describe('employee-record errors', () => {
     const error = new InvalidEmployeeRecord({
       violations: [new ContractHoursOutOfRange({ contractMinutes: 0 }), new NoWorkingDay()],
     });
-    const { status, error: wire } = body(toEmployeeRecordContractError(error));
+    const { status, error: wire } = body(toOrgContractError(error));
     expect(status).toBe(400);
     expect(wire).toMatchObject({
       _tag: 'ValidationError',
@@ -127,7 +136,7 @@ describe('employee-record errors', () => {
   });
 
   it('an unknown login → 404 org.user_not_found', () => {
-    expect(body(toEmployeeRecordContractError(new UserNotFound({ id: ids.login })))).toEqual({
+    expect(body(toOrgContractError(new UserNotFound({ id: ids.login })))).toEqual({
       status: 404,
       error: {
         _tag: 'NotFound',
@@ -175,5 +184,100 @@ describe('employee-record errors', () => {
         },
       },
     });
+  });
+});
+
+describe('teams and holidays', () => {
+  it('presents a team with its lead (openapi Team example)', () => {
+    const team = new Team({
+      id: ids.team,
+      name: 'Platform',
+      teamLeadId: ids.record,
+      createdAt: new Date('2026-10-31T09:00:00Z'),
+    });
+    const teamLead = { id: ids.record, fullName: 'Test User 1', team: null };
+    expect(presentTeam({ team, teamLead })).toEqual({
+      id: ids.team,
+      name: 'Platform',
+      teamLead,
+      createdAt: '2026-10-31T09:00:00.000Z',
+    });
+  });
+
+  it('presents a holiday (openapi PublicHoliday example)', () => {
+    const holiday = new PublicHoliday({
+      id: PublicHolidayId.make('01933b8e-0000-7000-8000-000000000401'),
+      holidayDate: '2026-12-28',
+      name: 'Test holiday',
+      createdAt: new Date('2026-10-31T09:00:00Z'),
+    });
+    expect(presentPublicHoliday(holiday)).toEqual({
+      id: '01933b8e-0000-7000-8000-000000000401',
+      holidayDate: '2026-12-28',
+      name: 'Test holiday',
+      createdAt: '2026-10-31T09:00:00.000Z',
+    });
+  });
+
+  it.each([
+    [
+      new DuplicateTeamName({ name: 'Platform' }),
+      409,
+      {
+        _tag: 'Conflict',
+        code: 'org.duplicate_team_name',
+        message: 'A team named «Platform» already exists',
+      },
+    ],
+    [
+      new TeamHasMembers({ id: ids.team, memberCount: 4 }),
+      409,
+      {
+        _tag: 'Conflict',
+        code: 'org.team_has_members',
+        message: 'The team still has 4 resources',
+        details: { memberCount: 4 },
+      },
+    ],
+    [
+      new TeamNotFound({ id: ids.team }),
+      404,
+      { _tag: 'NotFound', code: 'org.team_not_found', message: `Team ${ids.team} not found` },
+    ],
+    [
+      new TeamLeadNotFound({ id: ids.record }),
+      404,
+      {
+        _tag: 'NotFound',
+        code: 'org.team_lead_not_found',
+        message: `Employee record ${ids.record} not found`,
+      },
+    ],
+    [
+      new DuplicateHolidayDate({ holidayDate: '2026-12-28' }),
+      409,
+      {
+        _tag: 'Conflict',
+        code: 'org.duplicate_holiday_date',
+        message: '2026-12-28 is already a public holiday',
+      },
+    ],
+    [
+      new PublicHolidayNotFound({ id: '01933b8e-0000-7000-8000-000000000401' }),
+      404,
+      {
+        _tag: 'NotFound',
+        code: 'org.holiday_not_found',
+        message: 'Public holiday 01933b8e-0000-7000-8000-000000000401 not found',
+      },
+    ],
+  ] as const)('%s → the contract example', (error, status, expected) => {
+    expect(body(toOrgContractError(error))).toEqual({ status, error: expected });
+  });
+
+  it('one remaining resource reads in the singular', () => {
+    expect(
+      body(toOrgContractError(new TeamHasMembers({ id: ids.team, memberCount: 1 }))).error.message,
+    ).toBe('The team still has 1 resource');
   });
 });

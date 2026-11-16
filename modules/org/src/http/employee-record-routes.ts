@@ -13,24 +13,13 @@ import {
   createEmployeeRecord,
   describeEmployeeRecord,
   describeEmployeeRecords,
-  employeeRefs,
   getEmployeeRecord,
   listEmployeeRecords,
 } from '../application/employee-records';
 import { EmployeeName } from '../domain/employee-record';
 import { TeamId } from '../domain/team';
-import {
-  capacityConfirmationRequired,
-  type DescribedEmployeeRecordError,
-  type EmployeeRecordError,
-  employeeRecordVersionConflict,
-  isDescribedEmployeeRecordError,
-  isEmployeeRecordError,
-  loginAlreadyLinked,
-  presentEmployeeRecord,
-  presentEmployeeRecordPage,
-  toEmployeeRecordContractError,
-} from './presenter';
+import { mapOrgErrors } from './map-errors';
+import { presentEmployeeRecord, presentEmployeeRecordPage } from './presenter';
 
 /** The contract's name is already trimmed and within the domain's limit, so this never fails. */
 const toEmployeeName = (name: string) => Schema.decode(EmployeeName)(name).pipe(Effect.orDie);
@@ -40,47 +29,6 @@ const toUserId = (id: string | null | undefined) =>
 
 const toTeamId = (id: string | null | undefined) =>
   id === undefined ? undefined : id === null ? null : TeamId.make(id);
-
-/** Looks up the names a richer failure's body shows, then fails with its contract error. */
-const describeFailure = (error: DescribedEmployeeRecordError) =>
-  Effect.gen(function* () {
-    switch (error._tag) {
-      case 'LoginAlreadyLinked': {
-        const id = EmployeeId.make(error.employeeId);
-        const refs = yield* employeeRefs([id]);
-        return yield* Effect.fail(
-          loginAlreadyLinked(refs.get(id) ?? { id, fullName: error.fullName, team: null }),
-        );
-      }
-      case 'EmployeeRecordVersionConflict':
-        return yield* Effect.fail(
-          employeeRecordVersionConflict(yield* describeEmployeeRecord(error.current)),
-        );
-      case 'CapacityConfirmationRequired': {
-        const weeks = error.overbookedWeeks;
-        const refs = yield* employeeRefs(weeks.map((w) => EmployeeId.make(w.employeeId)));
-        return yield* Effect.fail(capacityConfirmationRequired(weeks, refs));
-      }
-    }
-  });
-
-/**
- * Maps the employee-record domain failures to contract errors and lets every other failure
- * through (the kernel's access errors, which `runEffect` maps once).
- */
-const mapEmployeeRecordErrors = <A, E extends { readonly _tag: string }, R>(
-  effect: Effect.Effect<A, E, R>,
-) =>
-  Effect.catchAll(effect, (error) =>
-    Effect.gen(function* () {
-      if (isDescribedEmployeeRecordError(error)) return yield* describeFailure(error);
-      return yield* Effect.fail(
-        isEmployeeRecordError(error)
-          ? toEmployeeRecordContractError(error)
-          : (error as Exclude<E, EmployeeRecordError | DescribedEmployeeRecordError>),
-      );
-    }),
-  );
 
 /**
  * Employee records (openapi.yaml `/org/employee-records*`, flow 9). Every route requires
@@ -95,7 +43,7 @@ export const employeeRecordRoutes = new Hono<HttpEnv>()
           describeEmployeeRecords(page.items).pipe(Effect.map((items) => ({ ...page, items }))),
         ),
         Effect.map(presentEmployeeRecordPage),
-        mapEmployeeRecordErrors,
+        mapOrgErrors,
       ),
     ),
   )
@@ -117,7 +65,7 @@ export const employeeRecordRoutes = new Hono<HttpEnv>()
         ),
         Effect.flatMap(describeEmployeeRecord),
         Effect.map(presentEmployeeRecord),
-        mapEmployeeRecordErrors,
+        mapOrgErrors,
       ),
       201,
     );
@@ -128,7 +76,7 @@ export const employeeRecordRoutes = new Hono<HttpEnv>()
       getEmployeeRecord(EmployeeId.make(c.req.valid('param').employeeRecordId)).pipe(
         Effect.flatMap(describeEmployeeRecord),
         Effect.map(presentEmployeeRecord),
-        mapEmployeeRecordErrors,
+        mapOrgErrors,
       ),
     ),
   )
@@ -152,7 +100,7 @@ export const employeeRecordRoutes = new Hono<HttpEnv>()
         }).pipe(
           Effect.flatMap(describeEmployeeRecord),
           Effect.map(presentEmployeeRecord),
-          mapEmployeeRecordErrors,
+          mapOrgErrors,
         ),
       );
     },

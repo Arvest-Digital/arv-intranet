@@ -18,29 +18,23 @@ export interface Page<A> {
 }
 
 /**
- * Cuts one page out of `items`, ordered by id (UUIDv7, so creation order). Cursors compare by
- * value, so a cursor whose item was deleted meanwhile still finds its place. `after` wins when
- * both are given; the contract rejects that combination before it gets here.
+ * Cuts the page from `sorted`. `afterStart(cursor)` is where the page after `cursor` starts;
+ * `beforeEnd(cursor)` is where the page before it ends. `after` wins when both are given; the
+ * contract rejects that combination before it gets here.
  */
-export const pageById = <A extends { readonly id: string }>(
-  items: ReadonlyArray<A>,
+const cutPage = <A extends { readonly id: string }>(
+  sorted: ReadonlyArray<A>,
   { after, before, limit = DEFAULT_PAGE_LIMIT }: PageRequest,
+  afterStart: (cursor: string) => number,
+  beforeEnd: (cursor: string) => number,
 ): Page<A> => {
-  const sorted = [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const boundary = (test: (item: A) => boolean) => {
-    const index = sorted.findIndex(test);
-    return index === -1 ? sorted.length : index;
-  };
-
   let start: number;
   let end: number;
   if (after === undefined && before !== undefined) {
-    const cursor = before.toLowerCase();
-    end = boundary((item) => item.id >= cursor);
+    end = beforeEnd(before.toLowerCase());
     start = Math.max(0, end - limit);
   } else {
-    const cursor = after?.toLowerCase();
-    start = cursor === undefined ? 0 : boundary((item) => item.id > cursor);
+    start = after === undefined ? 0 : afterStart(after.toLowerCase());
     end = Math.min(sorted.length, start + limit);
   }
 
@@ -52,4 +46,49 @@ export const pageById = <A extends { readonly id: string }>(
     hasPrev: start > 0,
     nextCursor: hasNext ? (page.at(-1)?.id ?? null) : null,
   };
+};
+
+/**
+ * Cuts one page out of `items`, ordered by id (UUIDv7, so creation order). Cursors compare by
+ * value, so a cursor whose item was deleted meanwhile still finds its place.
+ */
+export const pageById = <A extends { readonly id: string }>(
+  items: ReadonlyArray<A>,
+  page: PageRequest,
+): Page<A> => {
+  const sorted = [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const boundary = (test: (item: A) => boolean) => {
+    const index = sorted.findIndex(test);
+    return index === -1 ? sorted.length : index;
+  };
+  return cutPage(
+    sorted,
+    page,
+    (cursor) => boundary((item) => item.id > cursor),
+    (cursor) => boundary((item) => item.id >= cursor),
+  );
+};
+
+/**
+ * Cuts one page out of `ordered`, kept in the order given (e.g. holidays by date), with an
+ * item's id as the cursor. A cursor that is no longer in the list has lost its place, so the
+ * answer is the first page.
+ */
+export const pageInOrder = <A extends { readonly id: string }>(
+  ordered: ReadonlyArray<A>,
+  page: PageRequest,
+): Page<A> => {
+  const indexOf = (cursor: string) => ordered.findIndex((item) => item.id === cursor);
+  return cutPage(
+    ordered,
+    page,
+    (cursor) => {
+      const index = indexOf(cursor);
+      return index === -1 ? 0 : index + 1;
+    },
+    (cursor) => {
+      const index = indexOf(cursor);
+      return index === -1 ? Math.min(ordered.length, page.limit ?? DEFAULT_PAGE_LIMIT) : index;
+    },
+  );
 };
