@@ -488,12 +488,15 @@ describe('changeEmployeeRecord', () => {
 });
 
 describe('reads', () => {
-  it('lists by full name and gets one with its version', async () => {
+  it('lists a page in id (creation) order and gets one with its version', async () => {
     const { fakes, manager } = setup();
     const b = fakes.seedRecord({ fullName: 'Test User B' }, manager);
     const a = fakes.seedRecord({ fullName: 'Test User A' }, manager);
 
     const list = right(await run(listEmployeeRecords(), fakes.layer, managerActor(manager)));
+    const second = right(
+      await run(listEmployeeRecords({ after: b.id, limit: 1 }), fakes.layer, managerActor(manager)),
+    );
     const one = right(await run(getEmployeeRecord(b.id), fakes.layer, managerActor(manager)));
     const missing = await run(
       getEmployeeRecord(EmployeeId.make(unknownId)),
@@ -501,7 +504,9 @@ describe('reads', () => {
       managerActor(manager),
     );
 
-    expect(list.map((r) => r.id)).toEqual([a.id, b.id]);
+    expect(list.items.map((r) => r.id)).toEqual([b.id, a.id]);
+    expect(second).toMatchObject({ hasPrev: true, hasNext: false, nextCursor: null });
+    expect(second.items.map((r) => r.id)).toEqual([a.id]);
     expect(one).toMatchObject({ id: b.id, version: 1 });
     expect(left(missing)._tag).toBe('EmployeeRecordNotFound');
   });

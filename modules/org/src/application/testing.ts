@@ -36,14 +36,15 @@ interface Store {
   records: Map<EmployeeId, EmployeeRecord>;
   teams: Map<TeamId, Team>;
   holidays: Map<PublicHolidayId, PublicHoliday>;
-  logins: Set<UserId>;
+  /** Intranet logins in identity, with their display names. */
+  logins: Map<UserId, string>;
 }
 
 const cloneStore = (store: Store): Store => ({
   records: new Map(store.records),
   teams: new Map(store.teams),
   holidays: new Map(store.holidays),
-  logins: new Set(store.logins),
+  logins: new Map(store.logins),
 });
 
 const NOW = new Date('2026-11-16T09:00:00Z');
@@ -56,7 +57,7 @@ export const makeOrgFakes = () => {
     records: new Map(),
     teams: new Map(),
     holidays: new Map(),
-    logins: new Set(),
+    logins: new Map(),
   };
   let sequence = 0;
   const nextUuid = () => `00000000-0000-7000-8000-${String(++sequence).padStart(12, '0')}`;
@@ -206,6 +207,13 @@ export const makeOrgFakes = () => {
   const identity: IdentityApi['Type'] = {
     resolveActor: () => Effect.dieMessage('resolveActor is not used by org'),
     userExists: (id) => Effect.sync(() => store.logins.has(id)),
+    userNames: (ids) =>
+      Effect.sync(() =>
+        [...new Set(ids)].flatMap((id) => {
+          const name = store.logins.get(id);
+          return name === undefined ? [] : [{ id, name }];
+        }),
+      ),
   };
 
   const capacityImpactCheck: CapacityImpactCheck['Type'] = {
@@ -252,9 +260,9 @@ export const makeOrgFakes = () => {
     publicHolidays,
     impact,
     /** An intranet login that exists in identity. */
-    seedLogin: (): UserId => {
+    seedLogin: (name = 'Test User'): UserId => {
       const id = UserId.make(nextUuid());
-      store.logins.add(id);
+      store.logins.set(id, name);
       return id;
     },
     seedTeam: (name: string, teamLeadId: EmployeeId | null = null): Team => {

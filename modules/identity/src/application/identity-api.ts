@@ -15,6 +15,13 @@ export class IdentityApi extends Context.Tag('identity/IdentityApi')<
     readonly resolveActor: (token: Option.Option<string>) => Effect.Effect<Actor, Unauthenticated>;
     /** True when the login is on the access list (org links employee records to it, flow 9). */
     readonly userExists: (id: UserId) => Effect.Effect<boolean>;
+    /**
+     * The display names of the users among `ids` that still exist, once each; unknown ids are
+     * left out (org shows who last changed an employee record, sad §8 Concurrency).
+     */
+    readonly userNames: (
+      ids: ReadonlyArray<UserId>,
+    ) => Effect.Effect<ReadonlyArray<{ readonly id: UserId; readonly name: string }>>;
   }
 >() {}
 
@@ -31,6 +38,15 @@ export const IdentityApiLive = Layer.effect(
           Effect.provideService(PermissionCatalog, catalog),
         ),
       userExists: (id) => users.findById(id).pipe(Effect.map(Option.isSome)),
+      // One lookup per distinct id: callers name a handful of changers per page.
+      userNames: (ids) =>
+        Effect.forEach(new Set(ids), (id) => users.findById(id)).pipe(
+          Effect.map((found) =>
+            found.flatMap((user) =>
+              Option.isSome(user) ? [{ id: user.value.id, name: user.value.name }] : [],
+            ),
+          ),
+        ),
     };
   }),
 );

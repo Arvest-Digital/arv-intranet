@@ -15,7 +15,7 @@ browser → `@arv/web` (React Router 7 SSR) → service binding `API` → `@arv/
 - `packages/platform` — HTTP glue (`runEffect`, validation, contract-error mapping).
 - `packages/db` — `Database` tag, connection Layer, `query` helper, `UnitOfWorkLive` (transaction in a `CurrentTx` FiberRef that `query` joins), `./migrate`, `./testing` (reset, seed). No tables.
 - `packages/migrations` — drizzle-kit config + SQL migrations (`drizzle/`); reads every module's `schema.ts`.
-- `packages/contracts` — Effect Schemas + tagged errors shared by api and web, per module subpath (`@arv/contracts/identity`, `@arv/contracts/shared`).
+- `packages/contracts` — Effect Schemas + tagged errors shared by api and web, per module subpath (`@arv/contracts/identity`, `@arv/contracts/org`, `@arv/contracts/shared`).
 - Internal packages are consumed as TS source (no build step).
 
 ## Dependency rules

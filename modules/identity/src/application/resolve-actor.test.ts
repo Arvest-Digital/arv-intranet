@@ -226,4 +226,22 @@ describe('IdentityApiLive', () => {
     expect(await exists(user.id)).toBe(true);
     expect(await exists(UserId.make('01a135e4-c4d9-797e-ad76-ae23c85d58cd'))).toBe(false);
   });
+
+  it('names the users that still exist, once each (org shows who changed a record)', async () => {
+    const fakes = makeIdentityFakes({ declarations });
+    const ann = fakes.seedUser({ email: 'ann@arvest.digital', name: 'Ann' }, []);
+    const bob = fakes.seedUser({ email: 'bob@arvest.digital', name: 'Bob' }, []);
+    const gone = UserId.make('01a135e4-c4d9-797e-ad76-ae23c85d58cd');
+
+    const names = await Effect.runPromise(
+      Effect.flatMap(IdentityApi, (api) => api.userNames([bob.id, gone, ann.id, bob.id])).pipe(
+        Effect.provide(IdentityApiLive.pipe(Layer.provide(fakes.layer))),
+      ),
+    );
+
+    expect(names).toEqual([
+      { id: bob.id, name: 'Bob' },
+      { id: ann.id, name: 'Ann' },
+    ]);
+  });
 });
