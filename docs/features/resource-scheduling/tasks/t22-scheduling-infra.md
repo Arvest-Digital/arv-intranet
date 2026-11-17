@@ -7,7 +7,7 @@ acs: ["AC-07", "AC-07a", "AC-07b", "AC-16"]
 files_hint: ["modules/scheduling/src/infrastructure/", "modules/scheduling/src/application/ports.ts", "packages/db/src/testing/seed.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T22 — Add scheduling Drizzle repositories and fixtures
@@ -28,9 +28,9 @@ Files: `modules/scheduling/src/infrastructure/`, `modules/scheduling/src/applica
 
 ## Definition of Done
 
-- [ ] Integration tests: stale version → 0 rows → `Conflict` (AC-07b); deleting an allocation keeps its history rows (AC-07a); window query returns only overlapping segments.
-- [ ] `pnpm test:integration` green.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Integration tests: stale version → 0 rows → `Conflict` (AC-07b); deleting an allocation keeps its history rows (AC-07a); window query returns only overlapping segments.
+- [x] `pnpm test:integration` green.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 

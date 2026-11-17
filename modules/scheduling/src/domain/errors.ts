@@ -51,3 +51,9 @@ export class AllocationVersionConflict extends Schema.TaggedError<AllocationVers
     currentVersion: Schema.Number,
   },
 ) {}
+
+/** No allocation with this id: it never existed or was removed meanwhile (AC-07a). */
+export class AllocationNotFound extends Schema.TaggedError<AllocationNotFound>()(
+  'AllocationNotFound',
+  { allocationId: Schema.String },
+) {}
