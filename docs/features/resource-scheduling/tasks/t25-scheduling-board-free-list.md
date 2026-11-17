@@ -7,7 +7,7 @@ acs: ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06", "AC-12b", "AC-21", "
 files_hint: ["modules/scheduling/src/application/board.ts", "modules/scheduling/src/application/free-list.ts", "modules/scheduling/src/application/ports.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T25 — Implement the board and free-list queries
@@ -27,8 +27,8 @@ Files: `modules/scheduling/src/application/board.ts`, `modules/scheduling/src/ap
 
 ## Definition of Done
 
-- [ ] Use-case tests with fakes: AC-01 rows/columns and default window, AC-02 filters, AC-03 refusal, AC-04 ordering, AC-05 validation message, AC-06 incomplete excluded with note, AC-22 hidden end-date effects, AC-29 «away».
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Use-case tests with fakes: AC-01 rows/columns and default window, AC-02 filters, AC-03 refusal, AC-04 ordering, AC-05 validation message, AC-06 incomplete excluded with note, AC-22 hidden end-date effects, AC-29 «away».
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
