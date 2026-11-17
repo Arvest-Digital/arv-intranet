@@ -182,7 +182,8 @@ const checkVersion = (
 const sameRate = (a: Segment, b: Rate): boolean =>
   a.ratePeriod === b.ratePeriod && a.rateMinutes === b.rateMinutes;
 
-const rateOf = (segment: Segment): Rate =>
+/** The rate a segment books at. */
+export const rateOf = (segment: Segment): Rate =>
   segment.ratePeriod === 'full-day'
     ? { ratePeriod: 'full-day', rateMinutes: null }
     : { ratePeriod: segment.ratePeriod, rateMinutes: segment.rateMinutes ?? 0 };
@@ -195,6 +196,14 @@ const cutAfter = (segments: ReadonlyArray<Segment>, lastDay: IsoDate): Segment[]
   segments
     .filter((s) => s.startsOn <= lastDay)
     .map((s) => (s.endsOn <= lastDay ? s : new Segment({ ...s, endsOn: lastDay })));
+
+/**
+ * The segment whose rate a change keeps when it names no new one: the one running today, or the
+ * first one while the allocation has not started yet.
+ */
+export const currentSegment = (allocation: Allocation, today: IsoDate): Segment =>
+  allocation.segments.find((s) => s.startsOn <= today && today <= s.endsOn) ??
+  allocation.segments[0];
 
 const firstDay = (allocation: Allocation): IsoDate => allocation.segments[0].startsOn;
 const lastDay = (allocation: Allocation): IsoDate => Arr.lastNonEmpty(allocation.segments).endsOn;
@@ -266,8 +275,7 @@ export const changeFromToday = (
     // A finished allocation has nothing from today on to change.
     if (lastDay(allocation) < today) return yield* broken(['ends_before_today']);
 
-    const current = before.find((s) => s.startsOn <= today && today <= s.endsOn) ?? before[0];
-    const rate = change.rate ?? rateOf(current);
+    const rate = change.rate ?? rateOf(currentSegment(allocation, today));
     const endsOn = change.endsOn ?? lastDay(allocation);
     const started = firstDay(allocation) < today;
     const startsOn = started ? today : (change.startsOn ?? firstDay(allocation));

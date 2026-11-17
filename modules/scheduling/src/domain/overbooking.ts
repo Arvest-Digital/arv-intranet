@@ -8,7 +8,7 @@ import {
   type IsoDate,
   isoWeekStart,
 } from './capacity';
-import { subtractTicks, type Ticks } from './ticks';
+import { subtractTicks, type Ticks, ZERO_TICKS } from './ticks';
 import {
   isLeaveDayOf,
   type ResourceSchedule,
@@ -147,4 +147,45 @@ export const allocationImpact = <A extends ScheduledAllocation>(
         to,
       );
   return { overbookedWeeks: overbookedWeeks(weeks), workOnLeaveDays: conflicts };
+};
+
+/**
+ * The impact of replacing `current` with `proposed` (flow 5): only what the change makes worse, so
+ * shrinking or moving hours never asks for a confirmation (AC-10 «growing hours»). An overbooked
+ * week counts when the resource's allocated hours in it grow; a work-on-leave day counts when it
+ * was not one before. `schedule` holds the resource's other allocations, without `current`.
+ */
+export const changeImpact = <A extends ScheduledAllocation>(
+  schedule: ResourceSchedule<A>,
+  current: A,
+  proposed: A,
+  holidays: Holidays,
+  today: IsoDate,
+): AllocationImpact<A> => {
+  const after = allocationImpact(schedule, proposed, holidays, today);
+  const before = allocationImpact(schedule, current, holidays, today);
+
+  const allocatedBefore = (weekStart: IsoDate): Ticks =>
+    weeklyFigures(
+      { terms: schedule.terms, allocations: [...schedule.allocations, current] },
+      holidays,
+      weekStart,
+      addDays(weekStart, 6),
+    )[0]?.allocated ?? ZERO_TICKS;
+
+  // `current` and `proposed` are the same allocation: match their conflicts with one key.
+  const self = Symbol('self');
+  const keyOf = (a: A): unknown => (a === current || a === proposed ? self : a);
+  const daysBefore = new Map(before.workOnLeaveDays.map((c) => [keyOf(c.allocation), c.days]));
+
+  return {
+    overbookedWeeks: after.overbookedWeeks.filter(
+      (week) => week.allocated > allocatedBefore(week.weekStart),
+    ),
+    workOnLeaveDays: after.workOnLeaveDays.flatMap((conflict) => {
+      const known = new Set(daysBefore.get(keyOf(conflict.allocation)) ?? []);
+      const days = conflict.days.filter((day) => !known.has(day));
+      return days.length > 0 ? [{ allocation: conflict.allocation, days }] : [];
+    }),
+  };
 };

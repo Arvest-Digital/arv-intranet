@@ -57,3 +57,48 @@ export class AllocationNotFound extends Schema.TaggedError<AllocationNotFound>()
   'AllocationNotFound',
   { allocationId: Schema.String },
 ) {}
+
+/** A week the save would overbook, in exact ticks (AC-10: «8 hours over in that week»). */
+export const OverbookedWeek = Schema.Struct({
+  /** The Monday of the week, `YYYY-MM-DD`. */
+  weekStart: Schema.String,
+  capacity: Schema.Number,
+  allocated: Schema.Number,
+  over: Schema.Number,
+});
+export type OverbookedWeek = typeof OverbookedWeek.Type;
+
+/**
+ * A work allocation with hours on leave days (AC-15). `allocationId` is null for the allocation
+ * being created, which has no id yet.
+ */
+export const WorkOnLeaveDays = Schema.Struct({
+  allocationId: Schema.NullOr(Schema.String),
+  projectId: Schema.String,
+  days: Schema.NonEmptyArray(Schema.String),
+});
+export type WorkOnLeaveDays = typeof WorkOnLeaveDays.Type;
+
+/**
+ * `scheduling.overbooking_confirmation_required`: the save would overbook these weeks or put work
+ * on leave days; nothing was saved until the request is re-sent with `confirm` (AC-10, AC-15,
+ * ADR-0010). At least one of the two lists is non-empty.
+ */
+export class OverbookingConfirmationRequired extends Schema.TaggedError<OverbookingConfirmationRequired>()(
+  'OverbookingConfirmationRequired',
+  {
+    overbookedWeeks: Schema.Array(OverbookedWeek),
+    workOnLeaveDays: Schema.Array(WorkOnLeaveDays),
+  },
+) {}
+
+/** No employee record with this id: the resource to allocate is unknown. */
+export class EmployeeRecordNotFound extends Schema.TaggedError<EmployeeRecordNotFound>()(
+  'EmployeeRecordNotFound',
+  { employeeId: Schema.String },
+) {}
+
+/** No project with this id. */
+export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()('ProjectNotFound', {
+  projectId: Schema.String,
+}) {}
