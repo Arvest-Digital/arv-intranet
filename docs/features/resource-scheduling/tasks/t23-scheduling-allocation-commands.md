@@ -7,7 +7,7 @@ acs: ["AC-07", "AC-07a", "AC-07b", "AC-09", "AC-09b", "AC-10", "AC-11", "AC-12",
 files_hint: ["modules/scheduling/src/application/allocations.ts", "modules/scheduling/src/application/ports.ts", "modules/scheduling/src/application/scheduling-api.ts", "modules/scheduling/src/layer.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T23 — Implement create, change and remove allocation use cases
