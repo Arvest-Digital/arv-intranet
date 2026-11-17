@@ -32,3 +32,14 @@ To check later:
 - Revisit if more cross-module "any of" reads appear: a host-supplied list of reader permissions (a port wired in
   `composition.ts`) would keep org from naming another module's keys.
 - The Security Lead still has to confirm the D-5 read matrix before launch.
+
+## `listProjects` names scheduling's permission keys as strings
+
+`GET /projects` accepts `projects:manage-projects`, `scheduling:view-whole-board` or `scheduling:edit-allocations`, and
+offers leave-type projects only to holders of `scheduling:see-leave-reasons`, `scheduling:edit-allocations` or
+`projects:manage-projects` (openapi `listProjects`, AC-29). Projects can't import scheduling (scheduling calls projects),
+so `modules/projects/src/application/projects/list-projects.ts` spells the three scheduling keys out as strings (T17,
+same choice as `listTeams` above). A renamed key fails closed: its holders lose the list, or the leave projects in it.
+
+To check later: the same catalog test as for `TEAM_LIST_READERS` should cover `PROJECT_LIST_READERS` and
+`LEAVE_PROJECT_READERS` (T30).
