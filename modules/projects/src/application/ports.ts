@@ -1,5 +1,6 @@
-import type { ProjectId } from '@arv/kernel';
-import { Context, type Effect, type Option } from 'effect';
+import type { ProjectId, UserId } from '@arv/kernel';
+import { Context, Effect, Layer, type Option } from 'effect';
+import type { ClosingAllocation } from '../domain/errors';
 import type { NewProject, Project, ProjectNameKey, ProjectType } from '../domain/project';
 
 // Ports have no database error channel: adapters turn DB failures into defects (`Effect.orDie`).
@@ -39,3 +40,43 @@ export class ProjectRepository extends Context.Tag('projects/ProjectRepository')
     ) => Effect.Effect<Option.Option<Project>>;
   }
 >() {}
+
+/** What closing a project on a date does to its allocations (AC-25). */
+export interface ClosingImpact {
+  /** Allocations running past the close date: they will end on it. */
+  readonly endingAtCloseDate: ReadonlyArray<ClosingAllocation>;
+  /** Allocations starting after the close date: they will be removed. */
+  readonly removed: ReadonlyArray<ClosingAllocation>;
+}
+
+/**
+ * Trims a closing project's allocations (AC-25). Owned by projects, implemented by `scheduling`
+ * and wired by the host (ADR-0007): projects can't call scheduling directly without a cycle.
+ * Exported from the facade so scheduling can provide it.
+ */
+export class ProjectClosingHook extends Context.Tag('projects/ProjectClosingHook')<
+  ProjectClosingHook,
+  {
+    /** Read-only: what closing `projectId` on `closeDate` would trim and remove. */
+    readonly preview: (projectId: ProjectId, closeDate: string) => Effect.Effect<ClosingImpact>;
+    /**
+     * Ends the project's allocations on `closeDate`, removes those starting after it and records
+     * the trims and removals in their history attributed to `closedBy` (AC-16). Called inside the
+     * close's `UnitOfWork`, so it commits or rolls back with the close date.
+     */
+    readonly apply: (
+      projectId: ProjectId,
+      closeDate: string,
+      closedBy: UserId,
+    ) => Effect.Effect<void>;
+  }
+>() {}
+
+/**
+ * The default `ProjectClosingHook`: nothing to trim, so projects composes and tests without
+ * scheduling. The host must replace it with scheduling's (T30), or closes skip the trim.
+ */
+export const ProjectClosingHookNoop = Layer.succeed(ProjectClosingHook, {
+  preview: () => Effect.succeed({ endingAtCloseDate: [], removed: [] }),
+  apply: () => Effect.void,
+});

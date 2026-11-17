@@ -226,7 +226,7 @@ create: (input) =>
 | Facade query | You need another module's data to decide something | Read in the same request | `OrgApi.approverChain(userId)` |
 | Facade command | Rare: the caller must know the outcome right away | Joins the caller's `UnitOfWork` while both share a database. Becomes an event + compensation if either moves out. | `IdentityApi.provisionUser(…)` |
 | Domain event via outbox | Side effects the publisher shouldn't know about | Eventual, at-least-once | `RequestApproved` → notifications, audit |
-| Host-wired port | A module's own command needs a *dependent* module's data, which a direct call would turn into a cycle | Same request, joins the caller's `UnitOfWork` | org's `CapacityImpactCheck`, implemented by scheduling |
+| Host-wired port | A module's own command needs a *dependent* module's data, which a direct call would turn into a cycle | Same request, joins the caller's `UnitOfWork` | org's `CapacityImpactCheck` and projects' `ProjectClosingHook`, implemented by scheduling |
 
 **Host-wired ports** (resource-scheduling ADR-0007). The called-into module owns the port (`Context.Tag` in its `application/ports.ts`), exports it from its facade, and ships a no-op default Layer from `./layer` so it composes and tests on its own. The dependent module implements the port; only `apps/api/src/composition.ts` provides that implementation in place of the no-op. The package graph keeps its direction (scheduling → org); forgetting to swap the no-op silently skips the check, so each such operation gets an api integration test.
 
