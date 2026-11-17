@@ -7,7 +7,7 @@ acs: ["AC-15", "AC-09b", "AC-12"]
 files_hint: ["modules/scheduling/src/application/leave.ts", "modules/scheduling/src/application/ports.ts", "modules/scheduling/src/application/scheduling-api.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T24 — Implement the book-leave use case
@@ -26,8 +26,8 @@ Files: `modules/scheduling/src/application/leave.ts`, `modules/scheduling/src/ap
 
 ## Definition of Done
 
-- [ ] Use-case tests: AC-15 (5 days at full daily capacity; conflicting work allocation named even when the week fits), leave on a non-leave project refused, leave starting before today refused (AC-09b), missing permission refused (AC-12).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Use-case tests: AC-15 (5 days at full daily capacity; conflicting work allocation named even when the week fits), leave on a non-leave project refused, leave starting before today refused (AC-09b), missing permission refused (AC-12).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

@@ -28,7 +28,7 @@
 | T21 | [Implement the scheduling permission and visibility policy](./t21-scheduling-visibility-policy.md) | domain | TBD (backend lead) | M | T01 | done |
 | T22 | [Add scheduling Drizzle repositories and fixtures](./t22-scheduling-infra.md) | infra | TBD (backend lead) | L | T02, T07, T19 | done |
 | T23 | [Implement create, change and remove allocation use cases](./t23-scheduling-allocation-commands.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | done |
-| T24 | [Implement the book-leave use case](./t24-scheduling-book-leave.md) | app | TBD (backend lead) | M | T23 | todo |
+| T24 | [Implement the book-leave use case](./t24-scheduling-book-leave.md) | app | TBD (backend lead) | M | T23 | done |
 | T25 | [Implement the board and free-list queries](./t25-scheduling-board-free-list.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | todo |
 | T26 | [Implement the my-schedule and allocation-history queries](./t26-scheduling-my-schedule-history.md) | app | TBD (backend lead) | M | T25 | todo |
 | T27 | [Implement CapacityImpactCheck and ProjectClosingHook in scheduling](./t27-scheduling-port-implementations.md) | app | TBD (backend lead) | M | T11, T16, T23 | todo |
