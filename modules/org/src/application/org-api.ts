@@ -53,12 +53,29 @@ export class OrgApi extends Context.Tag('org/OrgApi')<
       readonly resources: ReadonlyArray<ResourceTerms>;
       readonly holidays: ReadonlyArray<Holiday>;
     }>;
+    /**
+     * The resources whose employment period overlaps `window` — or whose start is still unknown
+     * (incomplete record, AC-06) — optionally only those in `teamId`, by full name, with the
+     * public holidays in `window` (board rows, AC-01, AC-02; free list, AC-04).
+     */
+    readonly employedIn: (
+      window: DateWindow,
+      teamId?: TeamId,
+    ) => Effect.Effect<{
+      readonly resources: ReadonlyArray<ResourceTerms>;
+      readonly holidays: ReadonlyArray<Holiday>;
+    }>;
     /** The resource linked to the login, if any (flow 8; `None` → AC-18). */
     readonly employeeByLogin: (userId: UserId) => Effect.Effect<Option.Option<ResourceTerms>>;
     /** The resources in the team, by full name (board team filter, AC-02). */
     readonly resourcesInTeam: (teamId: TeamId) => Effect.Effect<ReadonlyArray<ResourceTerms>>;
   }
 >() {}
+
+/** Employed on some day of `window`; an unknown start counts as overlapping (AC-06). */
+const overlaps = (record: EmployeeRecord, window: DateWindow): boolean =>
+  (record.employmentStart === null || record.employmentStart <= window.to) &&
+  (record.employmentEnd === null || record.employmentEnd >= window.from);
 
 const toResourceTerms = (record: EmployeeRecord): ResourceTerms => ({
   employeeId: record.id,
@@ -85,6 +102,18 @@ export const OrgApiLive = Layer.effect(
         }).pipe(
           Effect.map((found) => ({
             resources: found.resources.map(toResourceTerms),
+            holidays: found.holidays.map(({ holidayDate, name }) => ({ holidayDate, name })),
+          })),
+        ),
+      employedIn: (window, teamId) =>
+        Effect.all({
+          resources: teamId === undefined ? records.list() : records.listByTeam(teamId),
+          holidays: holidays.listInRange(window.from, window.to),
+        }).pipe(
+          Effect.map((found) => ({
+            resources: found.resources
+              .filter((record) => overlaps(record, window))
+              .map(toResourceTerms),
             holidays: found.holidays.map(({ holidayDate, name }) => ({ holidayDate, name })),
           })),
         ),

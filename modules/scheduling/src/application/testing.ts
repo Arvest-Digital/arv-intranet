@@ -173,6 +173,20 @@ export const makeSchedulingFakes = () => {
           (h) => h.holidayDate >= window.from && h.holidayDate <= window.to,
         ),
       })),
+    employedIn: (window, teamId) =>
+      Effect.sync(() => ({
+        resources: [...store.resources.values()]
+          .filter(
+            (r) =>
+              (teamId === undefined || r.teamId === teamId) &&
+              (r.employmentStart === null || r.employmentStart <= window.to) &&
+              (r.employmentEnd === null || r.employmentEnd >= window.from),
+          )
+          .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+        holidays: store.holidays.filter(
+          (h) => h.holidayDate >= window.from && h.holidayDate <= window.to,
+        ),
+      })),
     employeeByLogin: (userId) =>
       Effect.sync(() =>
         Option.fromNullable([...store.resources.values()].find((r) => r.userId === userId)),
@@ -235,10 +249,12 @@ export const makeSchedulingFakes = () => {
       store.resources.set(resource.employeeId, resource);
       return resource;
     },
-    seedProject: (input: { type?: ProjectType; closeDate?: string | null } = {}): ProjectInfo => {
+    seedProject: (
+      input: { type?: ProjectType; closeDate?: string | null; name?: string } = {},
+    ): ProjectInfo => {
       const project: ProjectInfo = {
         id: ProjectId.make(nextUuid()),
-        name: `Project ${sequence}`,
+        name: input.name ?? `Project ${sequence}`,
         type: input.type ?? 'client',
         closeDate: input.closeDate ?? null,
       };

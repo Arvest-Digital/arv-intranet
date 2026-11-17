@@ -95,4 +95,34 @@ describe('OrgApi', () => {
     const team = await viaFacade(fakes, (org) => org.resourcesInTeam(leaver.teamId!));
     expect(team.map((r) => r.employeeId)).toEqual([stayer.id, leaver.id]);
   });
+
+  it('employedIn: resources employed in the window or with an unknown start, by full name', async () => {
+    const { fakes, leaver, stayer, elsewhere } = setup();
+    const manager = fakes.seedLogin();
+    const incomplete = fakes.seedRecord(
+      { fullName: 'Test User 4', employmentStart: null, contractMinutes: null },
+      manager,
+    );
+    fakes.seedRecord({ fullName: 'Test User 5', employmentStart: '2027-02-01' }, manager);
+
+    const all = await viaFacade(fakes, (org) =>
+      org.employedIn({ from: '2026-12-16', to: '2027-01-03' }),
+    );
+    const team = await viaFacade(fakes, (org) =>
+      org.employedIn({ from: '2026-12-14', to: '2027-01-03' }, leaver.teamId!),
+    );
+
+    // The leaver ended on 2026-12-15, the last record starts after the window.
+    expect(all.resources.map((r) => r.employeeId)).toEqual([
+      stayer.id,
+      elsewhere.id,
+      incomplete.id,
+    ]);
+    expect(all.holidays.map((h) => h.holidayDate)).toEqual([
+      '2026-12-25',
+      '2027-01-01',
+      '2027-01-02',
+    ]);
+    expect(team.resources.map((r) => r.employeeId)).toEqual([stayer.id, leaver.id]);
+  });
 });

@@ -104,3 +104,36 @@ export class EmployeeRecordNotFound extends Schema.TaggedError<EmployeeRecordNot
 export class ProjectNotFound extends Schema.TaggedError<ProjectNotFound>()('ProjectNotFound', {
   projectId: Schema.String,
 }) {}
+
+/**
+ * `scheduling.window_out_of_range` (AC-01, ADR-0002): the board shows 1 to 12 week columns,
+ * starting no earlier than `earliestFrom` (12 months back) and ending no later than `latestTo`
+ * (52 weeks ahead of the current week).
+ */
+export class BoardWindowOutOfRange extends Schema.TaggedError<BoardWindowOutOfRange>()(
+  'BoardWindowOutOfRange',
+  {
+    earliestFrom: Schema.String,
+    latestTo: Schema.String,
+    maxWeeks: Schema.Number,
+  },
+) {}
+
+/** Which free-list input is out of range (AC-05). */
+export const FreeListQueryIssue = Schema.Struct({
+  path: Schema.Literal('weeks', 'minFreeHours'),
+  message: Schema.String,
+});
+export type FreeListQueryIssue = typeof FreeListQueryIssue.Type;
+
+/**
+ * The free-list query asks for a number of weeks outside 1 to 12, or a minimum of free hours
+ * that is negative or not a number; no results (AC-05).
+ */
+export class FreeListQueryInvalid extends Schema.TaggedError<FreeListQueryInvalid>()(
+  'FreeListQueryInvalid',
+  {
+    message: Schema.String,
+    issues: Schema.NonEmptyArray(FreeListQueryIssue),
+  },
+) {}

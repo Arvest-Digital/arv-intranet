@@ -43,6 +43,14 @@ export const weeksAround = (dates: ReadonlyArray<IsoDate>) => {
   return { from: isoWeekStart(first), to: addDays(isoWeekStart(last), 6) };
 };
 
+/** The terms capacity is computed from, out of a resource the org facade handed over. */
+export const termsOf = (resource: ResourceTerms): EmploymentTerms => ({
+  contractMinutes: resource.contractMinutes,
+  workingDays: resource.workingDays,
+  employmentStart: resource.employmentStart,
+  employmentEnd: resource.employmentEnd,
+});
+
 /** A resource as an allocation command checks it: its terms and the holidays of the window. */
 export interface ResourceFacts {
   readonly resource: ResourceTerms;
@@ -62,12 +70,7 @@ export const loadResource = (employeeId: EmployeeId, window: { from: IsoDate; to
     if (resource === undefined) return yield* new EmployeeRecordNotFound({ employeeId });
     const facts: ResourceFacts = {
       resource,
-      terms: {
-        contractMinutes: resource.contractMinutes,
-        workingDays: resource.workingDays,
-        employmentStart: resource.employmentStart,
-        employmentEnd: resource.employmentEnd,
-      },
+      terms: termsOf(resource),
       holidays: new Set(holidays.map((h) => h.holidayDate)),
     };
     return facts;
