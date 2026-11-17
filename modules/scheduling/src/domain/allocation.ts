@@ -244,6 +244,40 @@ export const createAllocation = (
     };
   });
 
+/** The whole working days a leave booking covers, both dates inclusive (AC-15). */
+export interface LeavePeriod {
+  readonly startsOn: IsoDate;
+  readonly endsOn: IsoDate;
+}
+
+/**
+ * Books leave (AC-15): an allocation of one `full-day` segment, so each working day of the period
+ * takes the resource's full daily capacity; non-working days and public holidays take nothing,
+ * which keeps leave in whole working days. The same rules as `createAllocation` apply (AC-09b,
+ * AC-11, AC-13, AC-25), plus `not_a_leave_project` when the project is not of the `leave` type.
+ * Every broken rule is listed.
+ */
+export const bookLeave = (
+  projectId: ProjectId,
+  isLeaveProject: boolean,
+  period: LeavePeriod,
+  ctx: BookingContext,
+): Either.Either<AllocationUpdate, AllocationRulesBroken | ProjectClosed> => {
+  const booked = createAllocation(
+    projectId,
+    { ...period, ratePeriod: 'full-day', rateMinutes: null },
+    ctx,
+  );
+  if (isLeaveProject) return booked;
+  return Either.match(booked, {
+    onRight: () => broken(['not_a_leave_project']),
+    onLeft: (error) =>
+      error._tag === 'AllocationRulesBroken'
+        ? broken(['not_a_leave_project', ...error.rules], error.lastBookableDate)
+        : broken(['not_a_leave_project']),
+  });
+};
+
 /** A change from today; fields left out keep their current value (contract `AllocationChange`). */
 export interface AllocationChangeTerms {
   readonly startsOn?: IsoDate;

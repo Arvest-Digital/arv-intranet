@@ -6,6 +6,7 @@ import {
   AllocationId,
   addDays,
   type BookingContext,
+  bookLeave,
   changeFromToday,
   createAllocation,
   type NewAllocationTerms,
@@ -220,6 +221,38 @@ describe('createAllocation', () => {
         ),
       );
     });
+  });
+});
+
+describe('bookLeave (AC-15)', () => {
+  const period = { startsOn: '2026-11-09', endsOn: '2026-11-13' };
+
+  it('books one full-day segment with a created entry', () => {
+    const update = Either.getOrThrow(bookLeave(projectId, true, period, ctx));
+    const leave = new Segment({ ...period, rateMinutes: null, ratePeriod: 'full-day' });
+    expect(update.segments).toEqual([leave]);
+    expect(update.history).toMatchObject({ changeKind: 'created', before: null, after: [leave] });
+  });
+
+  it('refuses a project that is not of the leave type', () => {
+    const result = bookLeave(projectId, false, period, ctx);
+    expect(Either.getLeft(result)).toEqual(
+      Option.some(
+        new AllocationRulesBroken({ rules: ['not_a_leave_project'], lastBookableDate: null }),
+      ),
+    );
+  });
+
+  it('lists the leave-type rule with the other broken rules', () => {
+    const result = bookLeave(
+      projectId,
+      false,
+      { startsOn: '2026-10-27', endsOn: '2026-10-26' },
+      ctx,
+    );
+    expect(
+      Either.getLeft(result).pipe(Option.map((e) => (e as AllocationRulesBroken).rules)),
+    ).toEqual(Option.some(['not_a_leave_project', 'starts_before_today', 'end_before_start']));
   });
 });
 

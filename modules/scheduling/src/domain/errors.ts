@@ -20,6 +20,8 @@ export const AllocationRule = Schema.Literal(
   // AC-25: open until the close date, not past it
   'past_project_close_date',
   'close_date_before_today',
+  // AC-15: leave is booked only on a leave-type project
+  'not_a_leave_project',
 );
 export type AllocationRule = typeof AllocationRule.Type;
 
