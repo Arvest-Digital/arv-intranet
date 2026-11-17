@@ -20,7 +20,7 @@
 | T13 | [Expose team and public-holiday endpoints](./t13-org-http-teams-holidays.md) | ports | TBD (backend lead) | M | T11, T12 | done |
 | T14 | [Model Project with type, name comparison and open/closed on a date](./t14-projects-domain.md) | domain | TBD (backend lead) | S | T01 | done |
 | T15 | [Add the projects Drizzle repository and fixtures](./t15-projects-infra.md) | infra | TBD (backend lead) | S | T02, T06, T14 | done |
-| T16 | [Implement create and close-with-preview use cases, the ProjectClosingHook port and the projects facade](./t16-projects-app.md) | app | TBD (backend lead) | M | T15 | todo |
+| T16 | [Implement create and close-with-preview use cases, the ProjectClosingHook port and the projects facade](./t16-projects-app.md) | app | TBD (backend lead) | M | T15 | done |
 | T17 | [Expose project endpoints with leave-project redaction in the list](./t17-projects-http.md) | ports | TBD (backend lead) | M | T03, T16 | todo |
 | T18 | [Implement tick arithmetic and the capacity calendar](./t18-scheduling-capacity-calendar.md) | domain | TBD (backend lead) | L | T01 | done |
 | T19 | [Model the Allocation aggregate of effective-dated segments with its rules](./t19-scheduling-allocation-aggregate.md) | domain | TBD (backend lead) | L | T01 | done |

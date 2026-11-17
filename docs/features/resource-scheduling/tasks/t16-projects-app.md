@@ -7,7 +7,7 @@ acs: ["AC-23", "AC-24", "AC-25", "AC-26"]
 files_hint: ["modules/projects/src/application/", "modules/projects/src/index.ts", "modules/projects/src/layer.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T16 — Implement create and close-with-preview use cases, the ProjectClosingHook port and the projects facade
@@ -29,9 +29,9 @@ Files: `modules/projects/src/application/`, `modules/projects/src/index.ts`, `mo
 
 ## Definition of Done
 
-- [ ] Use-case tests: AC-23, AC-24 refusal, AC-26 `Forbidden`, close-date-before-today refused, closing an already closed project refused.
-- [ ] Use-case test: unconfirmed close returns the fake hook's preview; confirmed close calls `apply` within the same transaction (fake UoW asserts it).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Use-case tests: AC-23, AC-24 refusal, AC-26 `Forbidden`, close-date-before-today refused, closing an already closed project refused.
+- [x] Use-case test: unconfirmed close returns the fake hook's preview; confirmed close calls `apply` within the same transaction (fake UoW asserts it).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
