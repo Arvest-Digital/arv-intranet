@@ -26,7 +26,7 @@
 | T19 | [Model the Allocation aggregate of effective-dated segments with its rules](./t19-scheduling-allocation-aggregate.md) | domain | TBD (backend lead) | L | T01 | done |
 | T20 | [Compute weekly figures, cell states, overbooking and the free-list ranking](./t20-scheduling-weekly-figures.md) | domain | TBD (backend lead) | L | T18, T19 | done |
 | T21 | [Implement the scheduling permission and visibility policy](./t21-scheduling-visibility-policy.md) | domain | TBD (backend lead) | M | T01 | done |
-| T22 | [Add scheduling Drizzle repositories and fixtures](./t22-scheduling-infra.md) | infra | TBD (backend lead) | L | T02, T07, T19 | todo |
+| T22 | [Add scheduling Drizzle repositories and fixtures](./t22-scheduling-infra.md) | infra | TBD (backend lead) | L | T02, T07, T19 | done |
 | T23 | [Implement create, change and remove allocation use cases](./t23-scheduling-allocation-commands.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | todo |
 | T24 | [Implement the book-leave use case](./t24-scheduling-book-leave.md) | app | TBD (backend lead) | M | T23 | todo |
 | T25 | [Implement the board and free-list queries](./t25-scheduling-board-free-list.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | todo |
