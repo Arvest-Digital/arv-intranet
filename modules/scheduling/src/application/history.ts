@@ -1,7 +1,7 @@
 import { type EmployeeId, Today, type UserId } from '@arv/kernel';
 import { OrgApi } from '@arv/org';
 import { type ProjectInfo, ProjectsApi } from '@arv/projects';
-import { Effect } from 'effect';
+import { Effect, Equal } from 'effect';
 import { type AllocationId, type ChangeKind, type IsoDate, Segment } from '../domain/allocation';
 import { employmentEndView, ProjectLabel, projectLabel } from '../domain/visibility';
 import { monthsBefore } from './board';
@@ -46,6 +46,12 @@ const cutAt = (
 const isEmpty = (segments: ReadonlyArray<Segment> | null) =>
   segments === null || segments.length === 0;
 
+const sameSegments = (a: ReadonlyArray<Segment> | null, b: ReadonlyArray<Segment> | null) =>
+  a !== null &&
+  b !== null &&
+  a.length === b.length &&
+  a.every((segment, i) => Equal.equals(segment, b[i]));
+
 /**
  * Flow 7: an allocation's change history over the last 12 months, oldest first (AC-07a, AC-12b,
  * AC-16, AC-22, AC-29).
@@ -88,8 +94,12 @@ export const getAllocationHistory = (allocationId: AllocationId) =>
       const { entry } = stored;
       const before = cutAt(entry.before, until);
       const after = cutAt(entry.after, until);
+      // A change made today can still touch only days past the end: once cut, before and after
+      // are the same, and showing it would reveal that something after the end was edited.
       const afterHiddenEnd =
-        until !== null && entry.effectiveFrom !== null && entry.effectiveFrom > until;
+        until !== null &&
+        ((entry.effectiveFrom !== null && entry.effectiveFrom > until) ||
+          sameSegments(before, after));
       if (afterHiddenEnd || (isEmpty(before) && isEmpty(after))) return [];
       const label = projectLabel(viewer, stored.employeeId, {
         id: project.id,

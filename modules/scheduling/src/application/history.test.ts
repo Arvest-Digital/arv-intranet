@@ -279,7 +279,8 @@ describe('getAllocationHistory — employment end (AC-22)', () => {
     const leaver = fakes.seedResource({ employmentEnd: '2026-11-04' });
     const client = fakes.seedProject();
     const created = [week('2026-10-05', '2026-11-30', 40)];
-    const changed = [week('2026-10-05', '2026-11-08', 40), week('2026-11-09', '2026-11-30', 20)];
+    // The AC-21 fix flow: an editor shortens it to the end today; it only touches days after it.
+    const changed = [week('2026-10-05', '2026-11-04', 40)];
     record(
       allocationId,
       leaver.employeeId,
@@ -296,9 +297,9 @@ describe('getAllocationHistory — employment end (AC-22)', () => {
       leaver.employeeId,
       client.id,
       author,
-      '2026-10-20T09:00:00Z',
+      '2026-10-28T09:00:00Z',
       'changed',
-      '2026-11-09',
+      '2026-10-28',
       created,
       changed,
     );
@@ -310,5 +311,6 @@ describe('getAllocationHistory — employment end (AC-22)', () => {
     const shown = right(await run(getAllocationHistory(allocationId), author));
     expect(shown.map((i) => i.changeKind)).toEqual(['created', 'changed']);
     expect(shown[0]?.after).toEqual(created);
+    expect(shown[1]?.after).toEqual(changed);
   });
 });
