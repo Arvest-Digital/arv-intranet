@@ -32,7 +32,7 @@
 | T25 | [Implement the board and free-list queries](./t25-scheduling-board-free-list.md) | app | TBD (backend lead) | L | T10, T16, T20, T21, T22 | done |
 | T26 | [Implement the my-schedule and allocation-history queries](./t26-scheduling-my-schedule-history.md) | app | TBD (backend lead) | M | T25 | done |
 | T27 | [Implement CapacityImpactCheck and ProjectClosingHook in scheduling](./t27-scheduling-port-implementations.md) | app | TBD (backend lead) | M | T11, T16, T23 | done |
-| T28 | [Expose board, free-list, my-schedule, allocation and history read endpoints](./t28-scheduling-http-reads.md) | ports | TBD (backend lead) | M | T03, T25, T26 | todo |
+| T28 | [Expose board, free-list, my-schedule, allocation and history read endpoints](./t28-scheduling-http-reads.md) | ports | TBD (backend lead) | M | T03, T25, T26 | done |
 | T29 | [Expose allocation and leave write endpoints](./t29-scheduling-http-writes.md) | ports | TBD (backend lead) | M | T23, T24, T28 | todo |
 | T30 | [Wire scheduling's port implementations in the composition root](./t30-wire-composition-ports.md) | wiring | TBD (backend lead) | M | T13, T17, T27, T29 | todo |
 | T31 | [Add the monthly allocation-history purge and its Cron Trigger](./t31-history-purge-cron.md) | wiring | TBD (backend lead) | M | T22, T30 | todo |
