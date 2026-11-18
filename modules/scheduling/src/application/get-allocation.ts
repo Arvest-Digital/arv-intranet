@@ -7,8 +7,8 @@ import { AllocationNotFound } from '../domain/errors';
 import { employmentEndView, ProjectLabel, projectLabel } from '../domain/visibility';
 import { runsPastEmploymentEnd } from '../domain/weekly-figures';
 import { termsOf } from './allocations/context';
-import { AllocationRepository } from './ports';
-import { requireBoardViewer, withOwnEmployee } from './viewer';
+import { AllocationRepository, type StoredAllocation } from './ports';
+import { type BoardViewer, requireBoardViewer, withOwnEmployee } from './viewer';
 
 /** One allocation as the edit form opens it, already redacted for the viewer (AC-07, AC-22, AC-29). */
 export interface AllocationView {
@@ -44,7 +44,21 @@ export const getAllocation = (id: AllocationId) =>
     const found = yield* allocations.findById(id);
     if (Option.isNone(found))
       return yield* Effect.fail(new AllocationNotFound({ allocationId: id }));
-    const { allocation, lastChangedBy, lastChangedAt, createdAt } = found.value;
+    return yield* allocationView(boardViewer, found.value);
+  });
+
+/**
+ * A stored allocation as the signed-in user may see it, e.g. the answer to their own save or the
+ * current values of a version conflict (AC-07b). Same access check and redaction as `getAllocation`;
+ * edit-allocations, which every write needs, passes the check.
+ */
+export const viewAllocation = (stored: StoredAllocation) =>
+  Effect.flatMap(requireBoardViewer, (boardViewer) => allocationView(boardViewer, stored));
+
+const allocationView = (boardViewer: BoardViewer, stored: StoredAllocation) =>
+  Effect.gen(function* () {
+    const { allocation, lastChangedBy, lastChangedAt, createdAt } = stored;
+    const id = allocation.id;
 
     const viewer = yield* withOwnEmployee(boardViewer);
     const today = yield* (yield* Today).date;

@@ -1,15 +1,22 @@
 import {
+  type AllocationConflictDetailsEncoded,
   Allocation as AllocationDto,
   AllocationHistoryPage,
+  type AllocationImpact,
+  AllocationRemoval,
+  type AllocationRuleViolations,
   Board as BoardDto,
+  type AllocationRule as ContractAllocationRule,
   FreeList as FreeListDto,
   MySchedule as MyScheduleDto,
   SchedulingErrorCodes,
   type ValidationIssues,
   type WindowRuleViolations,
 } from '@arv/contracts/scheduling';
-import { Invalid, NotFound } from '@arv/contracts/shared';
+import { ConfirmationRequired, Conflict, Invalid, NotFound } from '@arv/contracts/shared';
+import type { ProjectId } from '@arv/kernel';
 import { Effect, Option, Schema } from 'effect';
+import type { AllocationRemoved } from '../application/allocations';
 import type { Board, BoardAllocation, BoardRow } from '../application/board';
 import type { FreeListResource } from '../application/free-list';
 import type { AllocationView } from '../application/get-allocation';
@@ -20,9 +27,15 @@ import type { ChangerRef, Refs, WithRefs } from '../application/refs';
 import type { Segment } from '../domain/allocation';
 import type {
   AllocationNotFound,
+  AllocationRule,
+  AllocationRulesBroken,
   BoardWindowOutOfRange,
+  EmployeeRecordNotFound,
   FreeListQueryInvalid,
   NotSetUpAsResource,
+  OverbookingConfirmationRequired,
+  ProjectClosed,
+  ProjectNotFound,
 } from '../domain/errors';
 import type { FreeList } from '../domain/free-list';
 import { TICKS_PER_MINUTE, type Ticks } from '../domain/ticks';
@@ -40,8 +53,14 @@ const minutes = (ticks: Ticks) => ticks / TICKS_PER_MINUTE;
 
 const userRef = ({ id, name }: ChangerRef) => ({ id, name: name ?? FORMER_USER });
 
+const workProjectRef = (project: NonNullable<BoardAllocation['project']>) => ({
+  id: project.id,
+  name: project.name,
+  type: project.type,
+});
+
 const projectRef = (project: BoardAllocation['project']) =>
-  project === null ? null : { id: project.id, name: project.name, type: project.type };
+  project === null ? null : workProjectRef(project);
 
 const segmentDto = (s: Segment) => ({
   startsOn: s.startsOn,
@@ -165,19 +184,163 @@ export const presentAllocationHistoryPage = ({
     })),
   });
 
-/** Every scheduling failure a read route can produce; each maps without looking anything up. */
+/** OpenAPI `AllocationRemoval`. */
+export const presentAllocationRemoval = (removed: AllocationRemoved) =>
+  Schema.encodeSync(AllocationRemoval)({
+    allocationId: removed.allocationId,
+    outcome: removed.outcome,
+    endsOn: removed.endsOn,
+  });
+
+/** AC-07b: the current values and who changed them; nothing was saved. */
+export const allocationVersionConflict = (current: WithRefs<AllocationView>) => {
+  const dto = presentAllocation(current);
+  const details: AllocationConflictDetailsEncoded = { current: dto };
+  return new Conflict({
+    message: `${dto.lastChangedBy.name} changed this allocation meanwhile`,
+    code: SchedulingErrorCodes.versionConflict,
+    details,
+  });
+};
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/**
+ * AC-10, AC-15: the overbooked weeks and the work on leave days, with the projects named; nothing
+ * was saved until the request is re-sent with `confirm: true` (ADR-0010).
+ */
+export const overbookingConfirmationRequired = ({
+  value: impact,
+  refs,
+}: WithRefs<OverbookingConfirmationRequired>) => {
+  const details: AllocationImpact = {
+    overbookedWeeks: impact.overbookedWeeks.map((week) => ({
+      weekStart: week.weekStart,
+      capacityMinutes: minutes(week.capacity as Ticks),
+      allocatedMinutes: minutes(week.allocated as Ticks),
+      overMinutes: minutes(week.over as Ticks),
+    })),
+    workOnLeaveDays: impact.workOnLeaveDays.map((conflict) => ({
+      allocationId: conflict.allocationId,
+      project: workProjectRef(refs.project(conflict.projectId as ProjectId)),
+      days: conflict.days,
+    })),
+  };
+  const weeks = impact.overbookedWeeks.length;
+  const onLeave = impact.workOnLeaveDays.length;
+  const parts = [
+    ...(weeks > 0 ? [`The resource will be overbooked in ${plural(weeks, 'week', 'weeks')}`] : []),
+    ...(onLeave > 0
+      ? [`${plural(onLeave, 'work allocation falls', 'work allocations fall')} on the leave days`]
+      : []),
+  ];
+  return new ConfirmationRequired({
+    message: parts.join('; '),
+    code: SchedulingErrorCodes.overbookingConfirmationRequired,
+    details,
+  });
+};
+
+/** Every scheduling failure that maps without looking anything up. */
 export type SchedulingError =
   | BoardWindowOutOfRange
   | FreeListQueryInvalid
   | NotSetUpAsResource
-  | AllocationNotFound;
+  | AllocationNotFound
+  | AllocationRulesBroken
+  | ProjectClosed
+  | EmployeeRecordNotFound
+  | ProjectNotFound;
 
 const SCHEDULING_ERROR_TAGS: ReadonlySet<string> = new Set<SchedulingError['_tag']>([
   'BoardWindowOutOfRange',
   'FreeListQueryInvalid',
   'NotSetUpAsResource',
   'AllocationNotFound',
+  'AllocationRulesBroken',
+  'ProjectClosed',
+  'EmployeeRecordNotFound',
+  'ProjectNotFound',
 ]);
+
+/**
+ * Rules the request schema already refuses (hours above 0, in quarter hours): should one ever reach
+ * the domain it answers the same `platform.validation_failed` the schema would.
+ */
+const SCHEMA_RULES: ReadonlySet<AllocationRule> = new Set<AllocationRule>([
+  'hours_not_positive',
+  'hours_not_quarter_hour',
+]);
+
+/** Which code a broken rule answers with, most fundamental first when several break at once. */
+const RULE_CODES = [
+  {
+    code: SchedulingErrorCodes.notALeaveProject,
+    rules: ['not_a_leave_project'],
+    message: () => 'Leave can only be booked on a leave-type project',
+  },
+  {
+    code: SchedulingErrorCodes.invalidAllocation,
+    rules: ['end_before_start', 'hours_over_24_per_day', 'hours_over_24_per_working_day'],
+    message: (rules: ReadonlyArray<AllocationRule>) =>
+      rules.includes('end_before_start')
+        ? 'The end date is before the start date'
+        : 'An allocation can take at most 24 hours a working day',
+  },
+  {
+    code: SchedulingErrorCodes.pastNotRewritable,
+    rules: ['starts_before_today', 'ends_before_today'],
+    message: () => 'Past plans are not rewritten; only today onwards can change',
+  },
+  {
+    code: SchedulingErrorCodes.outsideEmploymentPeriod,
+    rules: ['outside_employment_period'],
+    message: (_: ReadonlyArray<AllocationRule>, last: string | null) =>
+      last === null
+        ? "The allocation falls outside the resource's employment period"
+        : `The allocation falls outside the resource's employment period; the last date they can be allocated is ${last}`,
+  },
+  {
+    code: SchedulingErrorCodes.pastProjectCloseDate,
+    rules: ['past_project_close_date', 'close_date_before_today'],
+    message: (_: ReadonlyArray<AllocationRule>, last: string | null) =>
+      last === null
+        ? "The allocation runs past the project's close date"
+        : `The allocation runs past the project's close date; the last date it can be allocated is ${last}`,
+  },
+] as const satisfies ReadonlyArray<{
+  code: string;
+  rules: ReadonlyArray<AllocationRule>;
+  message: (rules: ReadonlyArray<AllocationRule>, last: string | null) => string;
+}>;
+
+/** AC-09, AC-09b, AC-13, AC-15, AC-25: every rule the input breaks, under the most fundamental code. */
+const allocationRulesBroken = ({ rules, lastBookableDate }: AllocationRulesBroken) => {
+  const contractRules = rules.filter((r): r is ContractAllocationRule => !SCHEMA_RULES.has(r));
+  const [first, ...rest] = contractRules;
+  const match = RULE_CODES.find((entry) =>
+    (entry.rules as ReadonlyArray<ContractAllocationRule>).some((r) => contractRules.includes(r)),
+  );
+  if (first === undefined || match === undefined) {
+    const details: ValidationIssues = {
+      issues: [{ path: 'rateMinutes', message: 'Hours must be above 0, in quarter hours' }],
+    };
+    return new Invalid({
+      message: 'rateMinutes: Hours must be above 0, in quarter hours',
+      code: 'platform.validation_failed',
+      details,
+    });
+  }
+  const details: AllocationRuleViolations = {
+    rules: [first, ...rest],
+    ...(lastBookableDate === null ? {} : { lastBookableDate }),
+  };
+  return new Invalid({
+    message: match.message(contractRules, lastBookableDate),
+    code: match.code,
+    details,
+  });
+};
 
 export const isSchedulingError = (error: { readonly _tag: string }): error is SchedulingError =>
   SCHEDULING_ERROR_TAGS.has(error._tag);
@@ -214,6 +377,25 @@ export const toSchedulingContractError = (error: SchedulingError) => {
         resource: 'Allocation',
         id: error.allocationId,
         code: SchedulingErrorCodes.allocationNotFound,
+      });
+    case 'AllocationRulesBroken':
+      return allocationRulesBroken(error);
+    case 'ProjectClosed':
+      return new Conflict({
+        message: 'The project is closed and accepts no new, changed or removed allocations',
+        code: SchedulingErrorCodes.projectClosed,
+      });
+    case 'EmployeeRecordNotFound':
+      return new NotFound({
+        resource: 'Employee record',
+        id: error.employeeId,
+        code: SchedulingErrorCodes.employeeRecordNotFound,
+      });
+    case 'ProjectNotFound':
+      return new NotFound({
+        resource: 'Project',
+        id: error.projectId,
+        code: SchedulingErrorCodes.projectNotFound,
       });
   }
 };

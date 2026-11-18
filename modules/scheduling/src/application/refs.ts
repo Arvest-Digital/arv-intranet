@@ -1,6 +1,7 @@
 import { IdentityApi } from '@arv/identity';
-import { type EmployeeId, Today, type UserId } from '@arv/kernel';
+import { type EmployeeId, type ProjectId, Today, type UserId } from '@arv/kernel';
 import { OrgApi, type TeamId, type TeamRef } from '@arv/org';
+import { type ProjectInfo, ProjectsApi } from '@arv/projects';
 import { Effect } from 'effect';
 
 // What the read endpoints show beside ids: team names, resource names and who changed something
@@ -26,6 +27,8 @@ export interface Refs {
   readonly user: (id: UserId) => ChangerRef;
   /** Only for ids passed as `employeeIds`; an unknown one is a defect (records are never deleted). */
   readonly employee: (id: EmployeeId) => EmployeeRef;
+  /** Only for ids passed as `projectIds`; an unknown one is a defect (projects are never deleted). */
+  readonly project: (id: ProjectId) => ProjectInfo;
 }
 
 export interface RefsRequest {
@@ -33,9 +36,11 @@ export interface RefsRequest {
   readonly userIds?: Iterable<UserId>;
   /** Resources the answer names by id only; their names and teams are read from org. */
   readonly employeeIds?: Iterable<EmployeeId>;
+  /** Projects the answer names by id only, read from projects. */
+  readonly projectIds?: Iterable<ProjectId>;
 }
 
-/** Reads the teams, users and resources named in `request`: at most three facade calls. */
+/** Reads the teams, users, resources and projects named in `request`: at most four facade calls. */
 export const resolveRefs = (request: RefsRequest) =>
   Effect.gen(function* () {
     const org = yield* OrgApi;
@@ -59,6 +64,13 @@ export const resolveRefs = (request: RefsRequest) =>
       (userIds.length === 0 ? [] : yield* identity.userNames(userIds)).map((u) => [u.id, u.name]),
     );
 
+    const projectIds = [...new Set(request.projectIds ?? [])];
+    const projects = new Map(
+      (projectIds.length === 0 ? [] : yield* (yield* ProjectsApi).listByIds(projectIds)).map(
+        (p) => [p.id, p],
+      ),
+    );
+
     const team = (id: TeamId | null): TeamRef | null =>
       id === null ? null : (teams.get(id) ?? null);
     const employees = new Map(
@@ -73,6 +85,11 @@ export const resolveRefs = (request: RefsRequest) =>
       employee: (id) => {
         const found = employees.get(id);
         if (found === undefined) throw new Error(`unknown employee ${id}`);
+        return found;
+      },
+      project: (id) => {
+        const found = projects.get(id);
+        if (found === undefined) throw new Error(`unknown project ${id}`);
         return found;
       },
     };

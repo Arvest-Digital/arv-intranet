@@ -1266,6 +1266,7 @@ components:
               - hours_over_24_per_day
               - hours_over_24_per_working_day
               - starts_before_today
+              - ends_before_today
               - outside_employment_period
               - past_project_close_date
               - not_a_leave_project
@@ -1486,7 +1487,10 @@ components:
       required: [allocationId, project, days]
       additionalProperties: false
       properties:
-        allocationId: { type: string, format: uuid }
+        allocationId:
+          type: [string, "null"]
+          format: uuid
+          description: null for the work allocation being created, which has no id yet
         project: { $ref: "#/components/schemas/ProjectRef" }
         days:
           type: array
