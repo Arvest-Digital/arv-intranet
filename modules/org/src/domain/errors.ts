@@ -111,3 +111,19 @@ export class CapacityConfirmationRequired extends Schema.TaggedError<CapacityCon
   'CapacityConfirmationRequired',
   { overbookedWeeks: Schema.NonEmptyArray(OverbookedWeek) },
 ) {}
+
+// --- Import (AC-30, AC-31) -----------------------------------------------------------------------
+
+/**
+ * A record handed to the import command breaks an AC-20 rule. The import preview checks every row
+ * first (AC-31), so this only fires when the caller skipped or got the check wrong; it fails the
+ * caller's unit of work, so nothing is imported. `index` is the record's position in the input.
+ */
+export class ImportedRecordInvalid extends Schema.TaggedError<ImportedRecordInvalid>()(
+  'ImportedRecordInvalid',
+  {
+    index: Schema.Int,
+    fullName: Schema.String,
+    violations: Schema.NonEmptyArray(EmployeeRecordRuleViolation),
+  },
+) {}

@@ -215,6 +215,7 @@ export const makeSchedulingFakes = () => {
           .filter((t) => teamIds.includes(t.id))
           .sort((a, b) => a.name.localeCompare(b.name)),
       ),
+    importRecords: () => Effect.dieMessage('OrgApi.importRecords is not faked'),
   };
 
   const projects: ProjectsApi['Type'] = {
