@@ -222,6 +222,7 @@ export const makeSchedulingFakes = () => {
     get: (id) => Effect.sync(() => Option.fromNullable(store.projects.get(id))),
     listByIds: (ids) =>
       Effect.sync(() => [...store.projects.values()].filter((p) => ids.includes(p.id))),
+    importProjects: () => Effect.dieMessage('ProjectsApi.importProjects is not faked'),
   };
 
   const identity: IdentityApi['Type'] = {
