@@ -2,15 +2,12 @@ import { ProjectId } from '@arv/kernel';
 import { Effect, Layer, Option } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { isOpenOn } from '../domain/project';
-import { ProjectRepository } from './ports';
 import { ProjectsApi, ProjectsApiLive } from './projects-api';
 import { makeProjectsFakes } from './testing';
 
 const setup = () => {
   const fakes = makeProjectsFakes();
-  const layer = ProjectsApiLive.pipe(
-    Layer.provide(Layer.succeed(ProjectRepository, fakes.projects)),
-  );
+  const layer = ProjectsApiLive.pipe(Layer.provide(fakes.layer));
   const run = <A>(f: (api: ProjectsApi['Type']) => Effect.Effect<A>) =>
     Effect.runPromise(Effect.flatMap(ProjectsApi, f).pipe(Effect.provide(layer)));
   return { fakes, run };
