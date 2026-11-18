@@ -1,6 +1,6 @@
 import { makeSession, makeUser, seedSessions, seedUsers } from '@arv/db/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import app from '../../../src/index';
+import { app } from '../../../src/index';
 import { isPublicRoute } from '../../../src/middleware/authenticate';
 import { api, resetDb, withDb } from '../../helpers';
 
