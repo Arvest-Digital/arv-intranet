@@ -5,3 +5,9 @@ declare namespace Cloudflare {
     mainModule: typeof import('../src/index');
   }
 }
+
+/** A file's text, imported with Vite's `?raw` suffix (the redaction matrix reads openapi.yaml). */
+declare module '*?raw' {
+  const text: string;
+  export default text;
+}
