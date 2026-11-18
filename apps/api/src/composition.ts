@@ -87,3 +87,13 @@ export type AppServices = Layer.Layer.Success<ReturnType<typeof makeAppLayer>>;
 /** Just enough to resolve the actor, before the full app Layer exists. */
 export const makeIdentityLayer = (env: Bindings, database: Layer.Layer<Database>) =>
   IdentityLive(env).pipe(Layer.provide(database));
+
+/**
+ * For the `scheduled` entry point (Cron Trigger): no request and no actor, so only what the jobs
+ * need, the scheduling facade over its repositories, `Today` and the run's one Database.
+ */
+export const makeScheduledLayer = (env: Bindings, database: Layer.Layer<Database>) =>
+  SchedulingModuleLive.pipe(
+    Layer.provide(TodayLive(env.COMPANY_TIME_ZONE)),
+    Layer.provide(database),
+  );

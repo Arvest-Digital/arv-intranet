@@ -1,6 +1,6 @@
 import { Database, type DbError, query } from '@arv/db';
 import { EmployeeId, ProjectId, UserId } from '@arv/kernel';
-import { and, asc, eq, gte, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, lt, min } from 'drizzle-orm';
 import { Effect, Layer, Schema } from 'effect';
 import { AllocationHistoryRepository, type StoredHistoryEntry } from '../application/ports';
 import { AllocationId, type ChangeKind, HistoryEntry, Segment } from '../domain/allocation';
@@ -79,6 +79,13 @@ export const DrizzleAllocationHistoryRepositoryLive = Layer.effect(
               .returning({ id: allocationHistory.id }),
           ),
         ).pipe(Effect.map((rows) => rows.length)),
+      // `idx_allocation_history_created_at`: the index's first entry.
+      oldestCreatedAt: () =>
+        run(
+          query((db) =>
+            db.select({ oldest: min(allocationHistory.createdAt) }).from(allocationHistory),
+          ),
+        ).pipe(Effect.map((rows) => rows[0]?.oldest ?? null)),
     };
   }),
 );

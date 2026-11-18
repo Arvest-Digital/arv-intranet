@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test';
 import { makeSession, seedAdmin, seedSessions } from '@arv/db/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import host from '../../../src/index';
+import { app as host } from '../../../src/index';
 import { isPublicRoute } from '../../../src/middleware/authenticate';
 import { api, resetDb, withDb } from '../../helpers';
 import { FailingDatabase, makeTestApp, request } from './qg1-pipeline';

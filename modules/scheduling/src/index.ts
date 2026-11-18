@@ -1,3 +1,4 @@
+export type { PurgeReport } from './application/purge-history';
 export { SchedulingApi } from './application/scheduling-api';
 export {
   EDIT_ALLOCATIONS,

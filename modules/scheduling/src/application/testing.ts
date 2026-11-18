@@ -174,6 +174,13 @@ export const makeSchedulingFakes = () => {
         store.history = store.history.filter((h) => h.createdAt >= cutOff);
         return before - store.history.length;
       }),
+    oldestCreatedAt: () =>
+      Effect.sync(() =>
+        store.history.reduce<Date | null>(
+          (oldest, h) => (oldest === null || h.createdAt < oldest ? h.createdAt : oldest),
+          null,
+        ),
+      ),
   };
 
   const importRuns: ImportRunRepository['Type'] = {

@@ -40,7 +40,7 @@ flowchart LR
   mods --> hd --> pg
 ```
 
-The api has no public URL; only web can call it. Today it has one entry point, `fetch`. A `scheduled` entry point (outbox relay) and a `queue` entry point (event consumers) are added together with the first asynchronous use case (see [Cross-module communication](#cross-module-communication)). All entry points go through the same composition root.
+The api has no public URL; only web can call it. It has two entry points: `fetch`, and `scheduled` for its Cron Triggers (`triggers.crons` in `wrangler.jsonc`). Today the one cron, `0 3 1 * *`, runs scheduling's monthly allocation-history purge through the `SchedulingApi` facade, with a Layer built by `makeScheduledLayer` (no request, no actor). The outbox relay joins `scheduled`, and a `queue` entry point (event consumers) is added, together with the first asynchronous use case (see [Cross-module communication](#cross-module-communication)). All entry points go through the same composition root.
 
 ## Principles
 

@@ -127,6 +127,8 @@ export class AllocationHistoryRepository extends Context.Tag(
     ) => Effect.Effect<ReadonlyArray<StoredHistoryEntry>>;
     /** Deletes the entries recorded before `cutOff`; returns how many. Idempotent. */
     readonly deleteBefore: (cutOff: Date) => Effect.Effect<number>;
+    /** When the oldest remaining entry was recorded; `null` when there is none (retention report). */
+    readonly oldestCreatedAt: () => Effect.Effect<Date | null>;
   }
 >() {}
 

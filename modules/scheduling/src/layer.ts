@@ -15,5 +15,8 @@ const RepositoriesLive = Layer.mergeAll(
   DrizzleImportRunRepositoryLive,
 );
 
-/** Everything the scheduling module provides: the facade and its Drizzle repositories. Requires `Database`. */
+/**
+ * Everything the scheduling module provides: the facade and its Drizzle repositories. Requires
+ * `Database` and `Today`.
+ */
 export const SchedulingModuleLive = SchedulingApiLive.pipe(Layer.provideMerge(RepositoriesLive));
