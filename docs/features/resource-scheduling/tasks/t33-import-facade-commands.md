@@ -7,7 +7,7 @@ acs: ["AC-30"]
 files_hint: ["modules/org/src/application/import.ts", "modules/org/src/application/org-api.ts", "modules/projects/src/application/import.ts", "modules/projects/src/application/projects-api.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T33 — Add org and projects import commands that join the caller's unit of work
@@ -26,8 +26,8 @@ Files: `modules/org/src/application/import.ts`, `modules/org/src/application/org
 
 ## Definition of Done
 
-- [ ] Integration test: calling both commands inside one `transactional` and then failing leaves no rows in either schema.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Integration test: calling both commands inside one `transactional` and then failing leaves no rows in either schema.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
