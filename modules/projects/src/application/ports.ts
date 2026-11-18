@@ -74,7 +74,7 @@ export class ProjectClosingHook extends Context.Tag('projects/ProjectClosingHook
 
 /**
  * The default `ProjectClosingHook`: nothing to trim, so projects composes and tests without
- * scheduling. The host must replace it with scheduling's (T30), or closes skip the trim.
+ * scheduling. The host replaces it with scheduling's; left in place, closes skip the trim.
  */
 export const ProjectClosingHookNoop = Layer.succeed(ProjectClosingHook, {
   preview: () => Effect.succeed({ endingAtCloseDate: [], removed: [] }),

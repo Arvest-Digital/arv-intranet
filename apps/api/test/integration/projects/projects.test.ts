@@ -25,7 +25,8 @@ import { api, resetDb, withDb } from '../../helpers';
 /**
  * T17 — project endpoints (openapi.yaml `listProjects`, `createProject`, `closeProject`; AC-23–
  * AC-26, AC-29) through the real Worker. The closing preview is checked against the host's own
- * composition with `ProjectClosingHook` stubbed, since scheduling's lands with T30.
+ * composition with `ProjectClosingHook` stubbed; scheduling's real hook is covered in
+ * `composition/ports.test.ts`.
  */
 
 beforeEach(resetDb);

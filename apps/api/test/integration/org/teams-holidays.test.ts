@@ -29,8 +29,8 @@ import { api, resetDb, withDb } from '../../helpers';
  * T13 — team and public-holiday endpoints (openapi.yaml `listTeams`, `createTeam`, `updateTeam`,
  * `deleteTeam`, `listPublicHolidays`, `createPublicHoliday`, `deletePublicHoliday`; AC-19d,
  * AC-27, AC-28, api-sync-report D-5) through the real Worker. The capacity warning is checked
- * against the host's own composition with `CapacityImpactCheck` stubbed, since the real one
- * lands with scheduling (T30).
+ * against the host's own composition with `CapacityImpactCheck` stubbed; scheduling's real
+ * check is covered in `composition/ports.test.ts`.
  */
 
 beforeEach(resetDb);
@@ -50,7 +50,7 @@ const call = (path: string, init: Call = {}) => api(path, request(init));
 
 /**
  * The host's authenticate + composition with org's routes, but `CapacityImpactCheck` reporting
- * `weeks` for every change (the stub merges last, so it wins over the no-op).
+ * `weeks` for every change (the stub merges last, so it wins over scheduling's).
  */
 const callWithImpact = (weeks: ReadonlyArray<OverbookedWeek>, path: string, init: Call = {}) => {
   const stub = Layer.succeed(CapacityImpactCheck, {

@@ -151,7 +151,7 @@ export class CapacityImpactCheck extends Context.Tag('org/CapacityImpactCheck')<
 
 /**
  * The default `CapacityImpactCheck`: reports nothing, so org composes and tests without
- * scheduling. The host must replace it with scheduling's (T30), or the warning is skipped.
+ * scheduling. The host replaces it with scheduling's; left in place, the warning is skipped.
  */
 export const CapacityImpactCheckNoop = Layer.succeed(CapacityImpactCheck, {
   termsChange: () => Effect.succeed([]),

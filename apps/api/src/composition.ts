@@ -3,11 +3,15 @@ import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
 import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
 import { orgPermissions } from '@arv/org';
-import { CapacityImpactCheckNoop, OrgModuleLive } from '@arv/org/layer';
+import { OrgModuleLive } from '@arv/org/layer';
 import { projectsPermissions } from '@arv/projects';
-import { ProjectClosingHookNoop, ProjectsModuleLive } from '@arv/projects/layer';
+import { ProjectsModuleLive } from '@arv/projects/layer';
 import { schedulingPermissions } from '@arv/scheduling';
-import { SchedulingModuleLive } from '@arv/scheduling/layer';
+import {
+  CapacityImpactCheckLive,
+  ProjectClosingHookLive,
+  SchedulingModuleLive,
+} from '@arv/scheduling/layer';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
 
@@ -49,9 +53,10 @@ const IdentityLive = (env: Bindings) =>
  */
 const ModulesLive = (env: Bindings) =>
   Layer.empty.pipe(
-    // org's capacity-impact and projects' closing ports (ADR-0007): no-ops until scheduling's
-    // implementations land (T30).
-    Layer.provideMerge(Layer.merge(CapacityImpactCheckNoop, ProjectClosingHookNoop)),
+    // org's capacity-impact and projects' closing ports, implemented by scheduling (ADR-0007).
+    // Built from scheduling's repositories, `OrgApi` and `Today`; org's and projects' use cases
+    // read them per call, so no Layer cycle. Never the modules' no-op defaults here.
+    Layer.provideMerge(Layer.merge(CapacityImpactCheckLive, ProjectClosingHookLive)),
     Layer.provideMerge(SchedulingModuleLive), // calls identity, org, projects
     Layer.provideMerge(ProjectsModuleLive), // calls no module
     Layer.provideMerge(OrgModuleLive), // calls identity
