@@ -17,6 +17,7 @@ import {
   AllocationHistoryRepository,
   AllocationRepository,
   ImportRunRepository,
+  type NewHistoryEntry,
   type StoredAllocation,
   type StoredHistoryEntry,
 } from './ports';
@@ -285,6 +286,10 @@ export const makeSchedulingFakes = () => {
     allocation: (id: AllocationId) => store.allocations.get(id),
     allocations: () => [...store.allocations.values()],
     history: () => [...store.history],
+    /** A history entry recorded at `createdAt`, e.g. a trim or an import written elsewhere. */
+    seedHistory: (entry: NewHistoryEntry, createdAt: Date) => {
+      store.history.push({ ...entry, id: nextUuid(), createdAt });
+    },
     /** Another user's save of `id` (AC-07b): bumps its version and stamps `changedBy`. */
     saveAsOther: (id: AllocationId, changedBy: UserId) => {
       const current = store.allocations.get(id);

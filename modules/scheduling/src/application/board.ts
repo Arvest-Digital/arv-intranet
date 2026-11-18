@@ -48,7 +48,7 @@ export interface BoardWindow extends DateWindow {
 }
 
 /** The same calendar day `months` months earlier, clamped to the month's last day. */
-const monthsBefore = (date: IsoDate, months: number): IsoDate => {
+export const monthsBefore = (date: IsoDate, months: number): IsoDate => {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
   const first = new Date(Date.UTC(y, m - 1 - months, 1));
   const lastDay = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
@@ -158,7 +158,7 @@ const projectOf = (projects: ReadonlyMap<ProjectId, ProjectInfo>, id: ProjectId)
   return project;
 };
 
-const buildRow = (
+export const buildRow = (
   viewer: Viewer,
   window: BoardWindow,
   resource: ResourceTerms,

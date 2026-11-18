@@ -137,3 +137,12 @@ export class FreeListQueryInvalid extends Schema.TaggedError<FreeListQueryInvali
     issues: Schema.NonEmptyArray(FreeListQueryIssue),
   },
 ) {}
+
+/**
+ * `scheduling.not_a_resource` (AC-18): the signed-in login is not linked to any employee record,
+ * so there is no own schedule; someone with manage-employee-records can link it.
+ */
+export class NotSetUpAsResource extends Schema.TaggedError<NotSetUpAsResource>()(
+  'NotSetUpAsResource',
+  { userId: Schema.String },
+) {}
