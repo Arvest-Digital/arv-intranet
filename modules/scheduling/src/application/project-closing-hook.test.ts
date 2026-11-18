@@ -121,16 +121,16 @@ describe('ProjectClosingHook.preview', () => {
             endsOn: '2026-12-31',
           },
           {
-            allocationId: allocations.inside.allocation.id,
-            employee: alan,
-            startsOn: '2026-11-02',
-            endsOn: '2026-11-30',
-          },
-          {
             allocationId: allocations.split.allocation.id,
             employee: ada,
             startsOn: '2026-11-02',
             endsOn: '2026-11-27',
+          },
+          {
+            allocationId: allocations.inside.allocation.id,
+            employee: alan,
+            startsOn: '2026-11-02',
+            endsOn: '2026-11-30',
           },
         ],
         removed: [
@@ -200,8 +200,8 @@ describe('ProjectClosingHook.apply', () => {
     const history = fakes.history();
     expect(history.map((h) => [h.allocationId, h.entry.changeKind, h.changedBy])).toEqual([
       [allocations.running.allocation.id, 'trimmed', closer],
-      [allocations.inside.allocation.id, 'trimmed', closer],
       [allocations.split.allocation.id, 'trimmed', closer],
+      [allocations.inside.allocation.id, 'trimmed', closer],
       [allocations.later.allocation.id, 'removed', closer],
       [allocations.muchLater.allocation.id, 'removed', closer],
     ]);

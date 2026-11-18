@@ -113,6 +113,13 @@ export const makeSchedulingFakes = () => {
               a.segments.length > 0 &&
               (filter.employeeIds === undefined || filter.employeeIds.includes(a.employeeId)) &&
               (filter.projectId === undefined || filter.projectId === a.projectId),
+          )
+          // Same order as the Drizzle adapter: employee, then project, then id.
+          .sort(
+            (a, b) =>
+              a.employeeId.localeCompare(b.employeeId) ||
+              a.projectId.localeCompare(b.projectId) ||
+              a.id.localeCompare(b.id),
           ),
       ),
     insert: (input, changedBy) =>
