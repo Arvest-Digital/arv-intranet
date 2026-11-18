@@ -7,7 +7,7 @@ acs: ["AC-16", "AC-17", "AC-18", "AC-29", "AC-12b"]
 files_hint: ["modules/scheduling/src/application/my-schedule.ts", "modules/scheduling/src/application/history.ts", "modules/scheduling/src/application/ports.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T26 — Implement the my-schedule and allocation-history queries
@@ -27,8 +27,8 @@ Files: `modules/scheduling/src/application/my-schedule.ts`, `modules/scheduling/
 
 ## Definition of Done
 
-- [ ] Use-case tests: AC-17, AC-18 (not set up as a resource), AC-16 ordering with trim attributed to the closer, AC-29 history redaction, AC-12b (edit-allocations may read history).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Use-case tests: AC-17, AC-18 (not set up as a resource), AC-16 ordering with trim attributed to the closer, AC-29 history redaction, AC-12b (edit-allocations may read history).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
