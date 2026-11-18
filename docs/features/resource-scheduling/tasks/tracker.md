@@ -34,7 +34,7 @@
 | T27 | [Implement CapacityImpactCheck and ProjectClosingHook in scheduling](./t27-scheduling-port-implementations.md) | app | TBD (backend lead) | M | T11, T16, T23 | done |
 | T28 | [Expose board, free-list, my-schedule, allocation and history read endpoints](./t28-scheduling-http-reads.md) | ports | TBD (backend lead) | M | T03, T25, T26 | done |
 | T29 | [Expose allocation and leave write endpoints](./t29-scheduling-http-writes.md) | ports | TBD (backend lead) | M | T23, T24, T28 | done |
-| T30 | [Wire scheduling's port implementations in the composition root](./t30-wire-composition-ports.md) | wiring | TBD (backend lead) | M | T13, T17, T27, T29 | todo |
+| T30 | [Wire scheduling's port implementations in the composition root](./t30-wire-composition-ports.md) | wiring | TBD (backend lead) | M | T13, T17, T27, T29 | done |
 | T31 | [Add the monthly allocation-history purge and its Cron Trigger](./t31-history-purge-cron.md) | wiring | TBD (backend lead) | M | T22, T30 | todo |
 | T32 | [Add the QG-2 redaction matrix and the concurrent-save test](./t32-redaction-concurrency-matrix.md) | tests | TBD (backend lead) | L | T30 | todo |
 | T33 | [Add org and projects import commands that join the caller's unit of work](./t33-import-facade-commands.md) | app | TBD (backend lead) | M | T10, T16 | todo |
