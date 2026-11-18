@@ -8,7 +8,7 @@ import {
   UnitOfWork,
   UserId,
 } from '@arv/kernel';
-import { type Holiday, OrgApi, type ResourceTerms } from '@arv/org';
+import { type Holiday, OrgApi, type ResourceTerms, TeamId, type TeamRef } from '@arv/org';
 import { type ProjectInfo, ProjectsApi, type ProjectType } from '@arv/projects';
 import { Effect, Exit, Layer, Option } from 'effect';
 import { Allocation, AllocationId, type Segment } from '../domain/allocation';
@@ -40,6 +40,7 @@ interface Store {
   resources: Map<EmployeeId, ResourceTerms>;
   projects: Map<ProjectId, ProjectInfo>;
   holidays: Array<Holiday>;
+  teams: Map<TeamId, TeamRef>;
 }
 
 const cloneStore = (store: Store): Store => ({
@@ -48,6 +49,7 @@ const cloneStore = (store: Store): Store => ({
   resources: new Map(store.resources),
   projects: new Map(store.projects),
   holidays: [...store.holidays],
+  teams: new Map(store.teams),
 });
 
 export const makeSchedulingFakes = () => {
@@ -57,6 +59,7 @@ export const makeSchedulingFakes = () => {
     resources: new Map(),
     projects: new Map(),
     holidays: [],
+    teams: new Map(),
   };
   let sequence = 0;
   const nextUuid = () => `00000000-0000-7000-8000-${String(++sequence).padStart(12, '0')}`;
@@ -194,6 +197,12 @@ export const makeSchedulingFakes = () => {
       ),
     resourcesInTeam: (teamId) =>
       Effect.sync(() => [...store.resources.values()].filter((r) => r.teamId === teamId)),
+    teamsByIds: (teamIds) =>
+      Effect.sync(() =>
+        [...store.teams.values()]
+          .filter((t) => teamIds.includes(t.id))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      ),
   };
 
   const projects: ProjectsApi['Type'] = {
@@ -261,6 +270,11 @@ export const makeSchedulingFakes = () => {
       };
       store.projects.set(project.id, project);
       return project;
+    },
+    seedTeam: (name: string): TeamRef => {
+      const team: TeamRef = { id: TeamId.make(nextUuid()), name };
+      store.teams.set(team.id, team);
+      return team;
     },
     seedHoliday: (holidayDate: string, name = 'Holiday') => {
       store.holidays.push({ holidayDate, name });

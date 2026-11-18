@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Option } from 'effect';
 import type { CalendarDate, IsoWeekday } from '../domain/calendar';
 import type { EmployeeRecord } from '../domain/employee-record';
 import type { TeamId } from '../domain/team';
-import { EmployeeRecordRepository, PublicHolidayRepository } from './ports';
+import { EmployeeRecordRepository, PublicHolidayRepository, TeamRepository } from './ports';
 
 /**
  * A resource as scheduling computes capacity from it (ADR-0005). Carries the employment end date
@@ -25,6 +25,12 @@ export interface ResourceTerms {
 /** A company-wide non-working date (US-09). */
 export interface Holiday {
   readonly holidayDate: CalendarDate;
+  readonly name: string;
+}
+
+/** A team as other modules name it (e.g. projects' closing preview, AC-25). */
+export interface TeamRef {
+  readonly id: TeamId;
   readonly name: string;
 }
 
@@ -69,6 +75,8 @@ export class OrgApi extends Context.Tag('org/OrgApi')<
     readonly employeeByLogin: (userId: UserId) => Effect.Effect<Option.Option<ResourceTerms>>;
     /** The resources in the team, by full name (board team filter, AC-02). */
     readonly resourcesInTeam: (teamId: TeamId) => Effect.Effect<ReadonlyArray<ResourceTerms>>;
+    /** The teams among `teamIds` (unknown ids skipped), by name (closing preview, AC-25). */
+    readonly teamsByIds: (teamIds: ReadonlyArray<TeamId>) => Effect.Effect<ReadonlyArray<TeamRef>>;
   }
 >() {}
 
@@ -93,6 +101,7 @@ export const OrgApiLive = Layer.effect(
   Effect.gen(function* () {
     const records = yield* EmployeeRecordRepository;
     const holidays = yield* PublicHolidayRepository;
+    const teams = yield* TeamRepository;
     return {
       employmentTerms: (employeeIds, window) =>
         // Sequential: inside a caller's UnitOfWork both run on one transaction connection.
@@ -121,6 +130,18 @@ export const OrgApiLive = Layer.effect(
         records.findByUserId(userId).pipe(Effect.map(Option.map(toResourceTerms))),
       resourcesInTeam: (teamId) =>
         records.listByTeam(teamId).pipe(Effect.map((rows) => rows.map(toResourceTerms))),
+      teamsByIds: (teamIds) =>
+        teamIds.length === 0
+          ? Effect.succeed([])
+          : teams
+              .list()
+              .pipe(
+                Effect.map((rows) =>
+                  rows
+                    .filter(({ team }) => teamIds.includes(team.id))
+                    .map(({ team }) => ({ id: team.id, name: team.name })),
+                ),
+              ),
     };
   }),
 );

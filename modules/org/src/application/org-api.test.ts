@@ -1,6 +1,7 @@
 import { EmployeeId } from '@arv/kernel';
 import { Effect, Layer, Option } from 'effect';
 import { describe, expect, it } from 'vitest';
+import { TeamId } from '../domain/team';
 import { OrgApi, OrgApiLive } from './org-api';
 import { makeOrgFakes } from './testing';
 
@@ -124,5 +125,26 @@ describe('OrgApi', () => {
       '2027-01-02',
     ]);
     expect(team.resources.map((r) => r.employeeId)).toEqual([stayer.id, leaver.id]);
+  });
+
+  it('teamsByIds: the asked teams by name, unknown ids skipped', async () => {
+    const { fakes, leaver } = setup();
+    const atlas = fakes.seedTeam('Atlas');
+    fakes.seedTeam('Elsewhere');
+
+    const teams = await viaFacade(fakes, (org) =>
+      org.teamsByIds([
+        leaver.teamId!,
+        atlas.id,
+        TeamId.make('01a135e4-c4d9-797e-ad76-ae23c85d58cd'),
+      ]),
+    );
+    const none = await viaFacade(fakes, (org) => org.teamsByIds([]));
+
+    expect(teams).toEqual([
+      { id: atlas.id, name: 'Atlas' },
+      { id: leaver.teamId, name: 'Platform' },
+    ]);
+    expect(none).toEqual([]);
   });
 });

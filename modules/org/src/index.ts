@@ -3,6 +3,7 @@ export {
   type Holiday,
   OrgApi,
   type ResourceTerms,
+  type TeamRef,
 } from './application/org-api';
 export { CapacityImpactCheck } from './application/ports';
 export type { CalendarDate, IsoWeekday } from './domain/calendar';
