@@ -11,9 +11,14 @@ export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', {
   id: Schema.String,
   /** Defaults to `platform.not_found`. */
   code: Schema.optional(ErrorCode),
+  /**
+   * Replaces the default «<resource> <id> not found» when the contract words it otherwise, e.g.
+   * `scheduling.not_a_resource` (AC-18).
+   */
+  explanation: Schema.optional(Schema.String),
 }) {
   override get message() {
-    return `${this.resource} ${this.id} not found`;
+    return this.explanation ?? `${this.resource} ${this.id} not found`;
   }
 }
 

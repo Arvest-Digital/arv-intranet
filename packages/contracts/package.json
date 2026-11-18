@@ -7,7 +7,8 @@
     "./shared": "./src/shared/index.ts",
     "./identity": "./src/identity/index.ts",
     "./org": "./src/org/index.ts",
-    "./projects": "./src/projects/index.ts"
+    "./projects": "./src/projects/index.ts",
+    "./scheduling": "./src/scheduling/index.ts"
   },
   "scripts": {
     "typecheck": "tsc",

@@ -52,7 +52,7 @@ const ModulesLive = (env: Bindings) =>
     // org's capacity-impact and projects' closing ports (ADR-0007): no-ops until scheduling's
     // implementations land (T30).
     Layer.provideMerge(Layer.merge(CapacityImpactCheckNoop, ProjectClosingHookNoop)),
-    Layer.provideMerge(SchedulingModuleLive), // calls org, projects
+    Layer.provideMerge(SchedulingModuleLive), // calls identity, org, projects
     Layer.provideMerge(ProjectsModuleLive), // calls no module
     Layer.provideMerge(OrgModuleLive), // calls identity
     Layer.provideMerge(IdentityLive(env)), // foundation

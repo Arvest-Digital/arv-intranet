@@ -72,6 +72,20 @@ describe('toHttpError', () => {
     expect(decoded(toHttpError(notFound).body).code).toBe('identity.user_not_found');
   });
 
+  it('words a NotFound by its explanation when the presenter gives one', () => {
+    const notFound = new NotFound({
+      resource: 'Employee record',
+      id: 'x',
+      code: 'scheduling.not_a_resource',
+      explanation: 'You are not set up as a resource yet',
+    });
+    expect(decoded(toHttpError(notFound).body)).toEqual({
+      _tag: 'NotFound',
+      code: 'scheduling.not_a_resource',
+      message: 'You are not set up as a resource yet',
+    });
+  });
+
   it('keeps Conflict at 409 with its message, code and details', () => {
     const { status, body } = toHttpError(
       new Conflict({

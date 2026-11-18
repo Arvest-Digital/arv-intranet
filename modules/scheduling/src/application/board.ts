@@ -1,5 +1,5 @@
-import { type EmployeeId, type ProjectId, Today, type UserId } from '@arv/kernel';
-import { OrgApi, type ResourceTerms, type TeamId } from '@arv/org';
+import { type EmployeeId, ProjectId, Today, type UserId } from '@arv/kernel';
+import { OrgApi, type ResourceTerms, TeamId } from '@arv/org';
 import { type ProjectInfo, ProjectsApi } from '@arv/projects';
 import { Effect, Option } from 'effect';
 import type { AllocationId, IsoDate } from '../domain/allocation';
@@ -40,6 +40,21 @@ export interface BoardQuery {
   readonly teamId?: TeamId;
   readonly projectId?: ProjectId;
 }
+
+/** The board query as the route decodes it: ids still plain uuids. */
+export interface BoardQueryInput {
+  readonly from?: IsoDate;
+  readonly weeks?: number;
+  readonly teamId?: string;
+  readonly projectId?: string;
+}
+
+/** Brands the filter ids the contract already checked as uuids. */
+export const boardQueryFrom = ({ teamId, projectId, ...window }: BoardQueryInput): BoardQuery => ({
+  ...window,
+  ...(teamId === undefined ? {} : { teamId: TeamId.make(teamId) }),
+  ...(projectId === undefined ? {} : { projectId: ProjectId.make(projectId) }),
+});
 
 /** A board window: whole ISO weeks, Monday of the first to Sunday of the last. */
 export interface BoardWindow extends DateWindow {

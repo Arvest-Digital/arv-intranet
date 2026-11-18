@@ -51,6 +51,9 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
     devDependencies:
+      '@arv/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@arv/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -304,6 +307,9 @@ importers:
       '@arv/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@arv/identity':
+        specifier: workspace:*
+        version: link:../identity
       '@arv/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel

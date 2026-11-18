@@ -36,6 +36,7 @@ const toStored = (row: AllocationRow, segments: ReadonlyArray<SegmentRow>): Stor
     }),
     lastChangedBy: UserId.make(row.lastChangedBy),
     lastChangedAt: row.lastChangedAt,
+    createdAt: row.createdAt,
   };
 };
 

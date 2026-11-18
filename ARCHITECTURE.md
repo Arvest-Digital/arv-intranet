@@ -115,7 +115,7 @@ Every arrow points toward packages that change less often. `@arv/migrations` is 
 | `identity` | Google sign-in, sessions, the access list, access roles and the `identity:manage-access` permission. Resolves the actor (and its permissions) of each request. | `identity` | none (foundation) | none yet |
 | `org` | Employee records (contract hours, working days, employment period, team, login link), teams and the company-wide public-holiday list. Defines the `CapacityImpactCheck` port, implemented by scheduling and wired in the host ([resource-scheduling ADR-0003](docs/features/resource-scheduling/adr/0003-split-into-org-projects-scheduling-modules.md), [ADR-0007](docs/features/resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md)). | `org` | identity | none |
 | `projects` | Projects of every type (client, internal, bench, training, leave), open/closed state and close dates, name uniqueness. Defines the `ProjectClosingHook` port, implemented by scheduling and wired in the host. | `projects` | none | none |
-| `scheduling` | Allocations (leave included) as effective-dated segments, capacity, availability and overbooking, the board and free list, allocation history and its retention, the one-time planning import. Implements org's and projects' ports. | `scheduling` | org, projects | none |
+| `scheduling` | Allocations (leave included) as effective-dated segments, capacity, availability and overbooking, the board and free list, allocation history and its retention, the one-time planning import. Implements org's and projects' ports. Reads user names from identity for «last changed by». | `scheduling` | identity, org, projects | none |
 
 **Tiers.** *Foundation* modules (identity) depend on `@arv/kernel` only, and every other module may call them. *Core* modules may call the foundation and core modules listed before them. *Supporting* modules (notifications, search, audit) react to events and are never called synchronously.
 
@@ -125,7 +125,7 @@ The graph below is checked by `pnpm check:modules` (part of `pnpm lint`) against
 - identity → (none)
 - org → identity
 - projects → (none)
-- scheduling → org, projects
+- scheduling → identity, org, projects
 <!-- module-graph:end -->
 
 Domains we expect to add, as examples of how the graph grows: `documents`, `requests` → identity, org; `booking`, `news` → identity; `notifications`, `search`, `audit` → events only.

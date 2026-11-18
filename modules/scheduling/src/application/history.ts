@@ -5,6 +5,7 @@ import { Effect, Equal } from 'effect';
 import { type AllocationId, type ChangeKind, type IsoDate, Segment } from '../domain/allocation';
 import { employmentEndView, ProjectLabel, projectLabel } from '../domain/visibility';
 import { monthsBefore } from './board';
+import { type PageRequest, pageInOrder } from './page';
 import { AllocationHistoryRepository, type StoredHistoryEntry } from './ports';
 import { requireBoardViewer, withOwnEmployee } from './viewer';
 
@@ -125,3 +126,10 @@ export const getAllocationHistory = (allocationId: AllocationId) =>
     const items: ReadonlyArray<AllocationHistoryItem> = entries.flatMap(redact);
     return items;
   });
+
+/**
+ * `listAllocationHistory`: one cursor page of `getAllocationHistory`, oldest first, with an
+ * entry's id as the cursor. An unknown id gives an empty page.
+ */
+export const listAllocationHistory = (allocationId: AllocationId, page: PageRequest = {}) =>
+  getAllocationHistory(allocationId).pipe(Effect.map((items) => pageInOrder(items, page)));

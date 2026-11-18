@@ -28,6 +28,7 @@
     "pg": "8.23.1"
   },
   "devDependencies": {
+    "@arv/contracts": "workspace:*",
     "@arv/tsconfig": "workspace:*",
     "@cloudflare/vitest-plugin": "1.3.7",
     "@types/node": "^24.0.0",

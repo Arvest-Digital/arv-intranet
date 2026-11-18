@@ -15,6 +15,7 @@
   "dependencies": {
     "@arv/contracts": "workspace:*",
     "@arv/db": "workspace:*",
+    "@arv/identity": "workspace:*",
     "@arv/kernel": "workspace:*",
     "@arv/org": "workspace:*",
     "@arv/platform": "workspace:*",

@@ -14,11 +14,12 @@ import type { AllocationNotFound, AllocationVersionConflict } from '../domain/er
 // adapter joins an open `UnitOfWork`, so a command writes the allocation, its segments and its
 // history entry in one transaction (ADR-0006).
 
-/** An allocation as stored: the aggregate plus «last changed by», with the time (AC-07). */
+/** An allocation as stored: the aggregate plus «last changed by» with the time (AC-07), and when it was created. */
 export interface StoredAllocation {
   readonly allocation: Allocation;
   readonly lastChangedBy: UserId;
   readonly lastChangedAt: Date;
+  readonly createdAt: Date;
 }
 
 /** What a new allocation is stored from: its first segments, already checked by the domain. */

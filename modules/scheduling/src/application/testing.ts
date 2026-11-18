@@ -1,3 +1,4 @@
+import { IdentityApi } from '@arv/identity';
 import {
   Actor,
   CurrentActor,
@@ -23,7 +24,7 @@ import {
 } from './ports';
 
 /**
- * In-memory fakes of every scheduling port plus the `org` and `projects` facades and `Today`, for
+ * In-memory fakes of every scheduling port plus the `identity`, `org` and `projects` facades and `Today`, for
  * use-case unit tests. One shared store; the fake `UnitOfWork` restores it when the wrapped effect
  * fails (like a Postgres rollback). Ids are deterministic (`…0001`, `…0002`, …).
  *
@@ -41,6 +42,7 @@ interface Store {
   projects: Map<ProjectId, ProjectInfo>;
   holidays: Array<Holiday>;
   teams: Map<TeamId, TeamRef>;
+  userNames: Map<UserId, string>;
 }
 
 const cloneStore = (store: Store): Store => ({
@@ -50,6 +52,7 @@ const cloneStore = (store: Store): Store => ({
   projects: new Map(store.projects),
   holidays: [...store.holidays],
   teams: new Map(store.teams),
+  userNames: new Map(store.userNames),
 });
 
 export const makeSchedulingFakes = () => {
@@ -60,6 +63,7 @@ export const makeSchedulingFakes = () => {
     projects: new Map(),
     holidays: [],
     teams: new Map(),
+    userNames: new Map(),
   };
   let sequence = 0;
   const nextUuid = () => `00000000-0000-7000-8000-${String(++sequence).padStart(12, '0')}`;
@@ -68,7 +72,8 @@ export const makeSchedulingFakes = () => {
   const hooks = { beforeWrite: (): void => undefined };
 
   const store_ = (allocation: Allocation, changedBy: UserId): StoredAllocation => {
-    const stored = { allocation, lastChangedBy: changedBy, lastChangedAt: NOW };
+    const createdAt = store.allocations.get(allocation.id)?.createdAt ?? NOW;
+    const stored = { allocation, lastChangedBy: changedBy, lastChangedAt: NOW, createdAt };
     store.allocations.set(allocation.id, stored);
     return stored;
   };
@@ -218,6 +223,18 @@ export const makeSchedulingFakes = () => {
       Effect.sync(() => [...store.projects.values()].filter((p) => ids.includes(p.id))),
   };
 
+  const identity: IdentityApi['Type'] = {
+    resolveActor: () => Effect.die(new Error('resolveActor is not faked')),
+    userExists: (id) => Effect.sync(() => store.userNames.has(id)),
+    userNames: (ids) =>
+      Effect.sync(() =>
+        [...new Set(ids)].flatMap((id) => {
+          const name = store.userNames.get(id);
+          return name === undefined ? [] : [{ id, name }];
+        }),
+      ),
+  };
+
   const unitOfWork: UnitOfWork['Type'] = {
     transactional: (effect) =>
       Effect.suspend(() => {
@@ -236,6 +253,7 @@ export const makeSchedulingFakes = () => {
     Layer.succeed(AllocationRepository, allocations),
     Layer.succeed(AllocationHistoryRepository, history),
     Layer.succeed(ImportRunRepository, importRuns),
+    Layer.succeed(IdentityApi, identity),
     Layer.succeed(OrgApi, org),
     Layer.succeed(ProjectsApi, projects),
     Layer.succeed(Today, { date: Effect.sync(() => clock.today) }),
@@ -282,6 +300,10 @@ export const makeSchedulingFakes = () => {
       const team: TeamRef = { id: TeamId.make(nextUuid()), name };
       store.teams.set(team.id, team);
       return team;
+    },
+    /** The intranet user's display name, as identity answers it. */
+    seedUserName: (id: UserId, name: string) => {
+      store.userNames.set(id, name);
     },
     seedHoliday: (holidayDate: string, name = 'Holiday') => {
       store.holidays.push({ holidayDate, name });
