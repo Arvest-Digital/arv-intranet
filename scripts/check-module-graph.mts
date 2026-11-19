@@ -27,7 +27,9 @@ for (const line of block[1].split('\n')) {
 }
 
 const modules = readdirSync(join(root, 'modules'), { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && !entry.name.startsWith('_'))
+  .filter(
+    (entry) => entry.isDirectory() && !entry.name.startsWith('_') && !entry.name.startsWith('.'),
+  )
   .map((entry) => entry.name);
 
 const problems: string[] = [];
