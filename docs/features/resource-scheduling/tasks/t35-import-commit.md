@@ -7,7 +7,7 @@ acs: ["AC-30", "AC-32", "AC-33"]
 files_hint: ["modules/scheduling/src/application/import-commit.ts", "modules/scheduling/src/http/routes.ts", "packages/contracts/src/scheduling/", "apps/api/test/integration/scheduling/"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T35 — Implement the one-time import commit and its endpoints
@@ -27,10 +27,15 @@ Files: `modules/scheduling/src/application/import-commit.ts`, `modules/schedulin
 
 ## Definition of Done
 
-- [ ] Api integration tests: unconfirmed upload → 409 `ConfirmationRequired` with the preview; confirmed → everything created; second import → refused with the one-time message; a failing row mid-commit leaves nothing.
-- [ ] Bodies validate against the OpenAPI examples.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Api integration tests: unconfirmed upload → 409 `ConfirmationRequired` with the preview; confirmed → everything created; second import → refused with the one-time message; a failing row mid-commit leaves nothing (`apps/api/test/integration/scheduling/import.test.ts`).
+- [x] Bodies validate against the OpenAPI examples (`packages/contracts/src/scheduling/imports.test.ts`).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 
-- **Blocked until the PM supplies the real spreadsheet sample** (PRD §8; sad §11 High risk; sync report D-6). Whether a parser package may be added is an open Tech Lead decision (sad §11) — ask before adding one.
+- Built on T34's assumed CSV format (see the T34 notes); revisit with the PM's sample (PRD §8, D-6). The endpoint takes any file part, so only the reader in `domain/import-rows.ts` changes.
+- The use case takes the upload, not its text: permissions (AC-33) and the one-time check (AC-32) run before the file is read; files over 5 MB are refused unread (`ImportFileInvalid` → `platform.validation_failed`).
+- The confirmed commit re-reads the import run and re-plans inside the unit of work, then calls `OrgApi.importRecords`, `ProjectsApi.importProjects`, `AllocationRepository.insertMany`, `AllocationHistoryRepository.appendMany` (`imported` entries) and `ImportRunRepository.insert`. The two bulk methods are new: batches of 1,000 rows, allocation ids drawn up front with `uuidv7()` so segment rows never depend on RETURNING order. 2,500 allocations insert in a handful of statements instead of ~7,500 round trips.
+- `ImportRunRepository.exists` became `findCompleted` (the AC-32 refusal carries `completedAt`; `getImportStatus` returns the run); `insert` returns the stored run.
+- AC-33's refusal is the shared `Refused` (403 `Forbidden`, `scheduling.missing_permission`, `details.missingPermissions` lists all missing) — the kernel's `PermissionDenied` names only one.
+- The redaction matrix (T32) now covers `getImportStatus`.

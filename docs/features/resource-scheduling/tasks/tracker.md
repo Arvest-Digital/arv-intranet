@@ -39,7 +39,7 @@
 | T32 | [Add the QG-2 redaction matrix and the concurrent-save test](./t32-redaction-concurrency-matrix.md) | tests | TBD (backend lead) | L | T30 | done |
 | T33 | [Add org and projects import commands that join the caller's unit of work](./t33-import-facade-commands.md) | app | TBD (backend lead) | M | T10, T16 | done |
 | T34 | [Implement import parsing, validation and the preview](./t34-import-preview.md) | app | TBD (backend lead) | L | T23, T33 | done |
-| T35 | [Implement the one-time import commit and its endpoints](./t35-import-commit.md) | app | TBD (backend lead) | M | T29, T34 | blocked |
+| T35 | [Implement the one-time import commit and its endpoints](./t35-import-commit.md) | app | TBD (backend lead) | M | T29, T34 | done |
 | T36 | [Build the employee-record screens](./t36-web-employee-records.md) | ui | TBD (frontend lead) | L | T12 | todo |
 | T37 | [Build the teams and public-holiday screens](./t37-web-teams-holidays.md) | ui | TBD (frontend lead) | M | T13 | todo |
 | T38 | [Build the project list, create and close-with-preview screens](./t38-web-projects.md) | ui | TBD (frontend lead) | M | T17 | todo |
@@ -47,7 +47,7 @@
 | T40 | [Build the free-list drawer and the my-schedule screen](./t40-web-free-list-my-schedule.md) | ui | TBD (frontend lead) | M | T28, T39 | todo |
 | T41 | [Build the allocation create, change and remove dialog](./t41-web-allocation-dialog.md) | ui | TBD (frontend lead) | L | T29, T39 | todo |
 | T42 | [Build the leave dialog and the allocation history panel](./t42-web-leave-history.md) | ui | TBD (frontend lead) | M | T41 | todo |
-| T43 | [Build the import upload, preview and confirm screen](./t43-web-import.md) | ui | TBD (frontend lead) | M | T35 | blocked |
+| T43 | [Build the import upload, preview and confirm screen](./t43-web-import.md) | ui | TBD (frontend lead) | M | T35 | todo |
 | T44 | [Add the board end-to-end test with the accessibility audit](./t44-e2e-board-a11y.md) | tests | TBD (backend lead) | M | T30, T39, T41 | todo |
 
 **Total:** 44 tasks, ~26.5 person-days (S = 2 h, M = half-day, L = 1 day).
