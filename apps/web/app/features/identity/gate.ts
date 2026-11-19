@@ -9,6 +9,12 @@ export const canManageAccess = (me: Me) => me.permissions.includes(MANAGE_ACCESS
 export const canManageEmployeeRecords = (me: Me) =>
   me.permissions.includes('org:manage-employee-records');
 
+/** Shows «Schedule»: the board needs view-whole-board or edit-allocations (AC-01, AC-03). */
+export const canViewBoard = (me: Me) =>
+  ['scheduling:view-whole-board', 'scheduling:edit-allocations'].some((permission) =>
+    me.permissions.includes(permission),
+  );
+
 /**
  * Shows «Projects» in the navigation: project upkeep and the board's readers may list them
  * (openapi `listProjects`, AC-26).
