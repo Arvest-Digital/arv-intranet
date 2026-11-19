@@ -7,7 +7,7 @@ acs: ["AC-04", "AC-05", "AC-17", "AC-18"]
 files_hint: ["apps/web/app/features/scheduling/routes/board*", "apps/web/app/features/scheduling/routes/my-schedule*", "apps/web/app/features/scheduling/components/free-list-*"]
 owner: "TBD (frontend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T40 — Build the free-list drawer and the my-schedule screen
@@ -29,9 +29,12 @@ Files: `apps/web/app/features/scheduling/routes/board*` (loader + drawer param),
 
 ## Definition of Done
 
-- [ ] Route/component tests: drawer opens from the URL params and the loader calls the free list only then, AC-05 message on bad input, ordering of results (AC-04), own leave type shown (AC-17), AC-18 state.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Route/component tests: drawer opens from the URL params and the loader calls the free list only then, AC-05 message on bad input, ordering of results (AC-04), own leave type shown (AC-17), AC-18 state.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
-- —
+- «Allocate» links to the board without the drawer plus `allocate=<employeeId>&allocateFrom=<from>&allocateTo=<to>` (the free list's period). T41 reads these params to open the dialog prefilled.
+- The contract's `FreeListEntry` has no per-week state, so an overbooked week shows «0h» in the drawer rather than the design's «0 · overbooked».
+- `free=1` with no `freeWeeks` / `minFreeHours` opens on AC-04's 16 hours over 2 weeks. The form is a GET form with `noValidate`, so a bad value reaches the api and comes back with the AC-05 message.
+- «My schedule» is in the nav for everyone signed in. Unlinked logins get the AC-18 state.
