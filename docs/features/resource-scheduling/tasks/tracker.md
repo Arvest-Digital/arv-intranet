@@ -38,7 +38,7 @@
 | T31 | [Add the monthly allocation-history purge and its Cron Trigger](./t31-history-purge-cron.md) | wiring | TBD (backend lead) | M | T22, T30 | done |
 | T32 | [Add the QG-2 redaction matrix and the concurrent-save test](./t32-redaction-concurrency-matrix.md) | tests | TBD (backend lead) | L | T30 | done |
 | T33 | [Add org and projects import commands that join the caller's unit of work](./t33-import-facade-commands.md) | app | TBD (backend lead) | M | T10, T16 | done |
-| T34 | [Implement import parsing, validation and the preview](./t34-import-preview.md) | app | TBD (backend lead) | L | T23, T33 | todo |
+| T34 | [Implement import parsing, validation and the preview](./t34-import-preview.md) | app | TBD (backend lead) | L | T23, T33 | done |
 | T35 | [Implement the one-time import commit and its endpoints](./t35-import-commit.md) | app | TBD (backend lead) | M | T29, T34 | blocked |
 | T36 | [Build the employee-record screens](./t36-web-employee-records.md) | ui | TBD (frontend lead) | L | T12 | todo |
 | T37 | [Build the teams and public-holiday screens](./t37-web-teams-holidays.md) | ui | TBD (frontend lead) | M | T13 | todo |
