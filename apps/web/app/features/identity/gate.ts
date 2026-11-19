@@ -12,6 +12,7 @@ export const canManageEmployeeRecords = (me: Me) =>
 export {
   ACCESS_REMOVED,
   MISSING_PERMISSION,
+  missingPermissionOf,
   type Refusal,
   refusalOf,
 } from '~/shared/lib/refusal';

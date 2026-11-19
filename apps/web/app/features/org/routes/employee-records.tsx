@@ -10,6 +10,7 @@ import { Alert } from '~/shared/ui/alert';
 import { Button } from '~/shared/ui/button';
 import { EmployeeRecordDialog } from '../components/employee-record-dialog';
 import { EmployeeRecordList } from '../components/employee-record-list';
+import { PeopleHeader } from '../components/people-header';
 import { dateText, type EmployeeRecordActionResult } from '../employee-record';
 import { readRecordForm, recordFailure } from '../employee-record-action.server';
 import { orgGateway } from '../org.server';
@@ -20,7 +21,7 @@ export const meta: Route.MetaFunction = () => [{ title: 'People · ARV Intranet'
 /** 403 → «you lack the permission to manage employee records», showing nothing (AC-22). */
 async function loadFailure(failed: ApiFailure, request: Request) {
   return (
-    (await refusalResponse(failed, request)) ??
+    (await refusalResponse(failed, request, 'manage employee records')) ??
     data('Could not load the employee records', { status: 502 })
   );
 }
@@ -99,7 +100,7 @@ export default function EmployeeRecords({ loaderData }: Route.ComponentProps) {
 
   return (
     <main className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">People</h1>
+      <PeopleHeader />
       {saved ? <SavedNotice saved={saved} onDismiss={() => setSaved(null)} /> : null}
       <EmployeeRecordList
         records={records}

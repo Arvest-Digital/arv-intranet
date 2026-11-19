@@ -14,7 +14,7 @@ import {
   MissingPermissionNotice,
   SignedOutErrorScreen,
 } from '~/features/identity/components/refusal-screens';
-import { refusalOf } from '~/features/identity/gate';
+import { missingPermissionOf, refusalOf } from '~/features/identity/gate';
 import { gate } from '~/features/identity/gate.server';
 import { SYSTEM_THEME_SCRIPT, themeClass } from '~/shared/theme/theme';
 import { getTheme } from '~/shared/theme/theme.server';
@@ -81,7 +81,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const signedIn = useRouteLoaderData<typeof loader>('root')?.me != null;
   const refusal = refusalOf(error);
   if (refusal === 'access-removed') return <AccessRemovedScreen />;
-  if (refusal === 'missing-permission') return <MissingPermissionNotice />;
+  if (refusal === 'missing-permission') {
+    return <MissingPermissionNotice permission={missingPermissionOf(error)} />;
+  }
 
   if (!isRouteErrorResponse(error)) console.error(error);
   // Without a session check that passed, show nothing but the error (fail closed).

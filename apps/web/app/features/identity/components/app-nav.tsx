@@ -54,6 +54,10 @@ export function AppNav({ me }: { me: Me }) {
             People
           </NavLink>
         ) : null}
+        {/* Anyone signed in reads the holiday list; adding and removing are checked there (AC-28). */}
+        <NavLink to="/holidays" className={linkClass}>
+          Holidays
+        </NavLink>
         {canManageAccess(me) ? (
           <NavLink
             to="/access/users"

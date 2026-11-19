@@ -12,6 +12,8 @@ export default [
   }),
   route('access/roles/:accessRoleId', 'features/identity/routes/access-role-edit.tsx'),
   route('people', 'features/org/routes/employee-records.tsx'),
+  route('people/teams', 'features/org/routes/teams.tsx'),
+  route('holidays', 'features/org/routes/holidays.tsx'),
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),
