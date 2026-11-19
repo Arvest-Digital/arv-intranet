@@ -40,7 +40,7 @@
 | T33 | [Add org and projects import commands that join the caller's unit of work](./t33-import-facade-commands.md) | app | TBD (backend lead) | M | T10, T16 | done |
 | T34 | [Implement import parsing, validation and the preview](./t34-import-preview.md) | app | TBD (backend lead) | L | T23, T33 | done |
 | T35 | [Implement the one-time import commit and its endpoints](./t35-import-commit.md) | app | TBD (backend lead) | M | T29, T34 | done |
-| T36 | [Build the employee-record screens](./t36-web-employee-records.md) | ui | TBD (frontend lead) | L | T12 | todo |
+| T36 | [Build the employee-record screens](./t36-web-employee-records.md) | ui | TBD (frontend lead) | L | T12 | done |
 | T37 | [Build the teams and public-holiday screens](./t37-web-teams-holidays.md) | ui | TBD (frontend lead) | M | T13 | todo |
 | T38 | [Build the project list, create and close-with-preview screens](./t38-web-projects.md) | ui | TBD (frontend lead) | M | T17 | todo |
 | T39 | [Build the schedule board with the week window and filters in the URL](./t39-web-board.md) | ui | TBD (frontend lead) | L | T28 | todo |
