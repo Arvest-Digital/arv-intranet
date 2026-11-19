@@ -8,12 +8,19 @@ import {
   Board as BoardDto,
   type AllocationRule as ContractAllocationRule,
   FreeList as FreeListDto,
+  ImportCompletedDetails,
+  type ImportCompletedDetailsEncoded,
+  ImportPreview as ImportPreviewDto,
+  type ImportProblemRowsDetails,
+  ImportResult as ImportResultDto,
+  ImportStatus as ImportStatusDto,
+  type MissingPermissions,
   MySchedule as MyScheduleDto,
   SchedulingErrorCodes,
   type ValidationIssues,
   type WindowRuleViolations,
 } from '@arv/contracts/scheduling';
-import { ConfirmationRequired, Conflict, Invalid, NotFound } from '@arv/contracts/shared';
+import { ConfirmationRequired, Conflict, Invalid, NotFound, Refused } from '@arv/contracts/shared';
 import type { ProjectId } from '@arv/kernel';
 import { Effect, Option, Schema } from 'effect';
 import type { AllocationRemoved } from '../application/allocations';
@@ -23,6 +30,7 @@ import type { AllocationView } from '../application/get-allocation';
 import type { AllocationHistoryItem } from '../application/history';
 import type { MySchedule } from '../application/my-schedule';
 import type { Page } from '../application/page';
+import type { StoredImportRun } from '../application/ports';
 import type { ChangerRef, Refs, WithRefs } from '../application/refs';
 import type { Segment } from '../domain/allocation';
 import type {
@@ -32,6 +40,11 @@ import type {
   BoardWindowOutOfRange,
   EmployeeRecordNotFound,
   FreeListQueryInvalid,
+  ImportAlreadyCompleted,
+  ImportConfirmationRequired,
+  ImportFileInvalid,
+  ImportPermissionsMissing,
+  ImportProblemRows,
   NotSetUpAsResource,
   OverbookingConfirmationRequired,
   ProjectClosed,
@@ -250,7 +263,12 @@ export type SchedulingError =
   | AllocationRulesBroken
   | ProjectClosed
   | EmployeeRecordNotFound
-  | ProjectNotFound;
+  | ProjectNotFound
+  | ImportPermissionsMissing
+  | ImportFileInvalid
+  | ImportProblemRows
+  | ImportAlreadyCompleted
+  | ImportConfirmationRequired;
 
 const SCHEDULING_ERROR_TAGS: ReadonlySet<string> = new Set<SchedulingError['_tag']>([
   'BoardWindowOutOfRange',
@@ -261,6 +279,11 @@ const SCHEDULING_ERROR_TAGS: ReadonlySet<string> = new Set<SchedulingError['_tag
   'ProjectClosed',
   'EmployeeRecordNotFound',
   'ProjectNotFound',
+  'ImportPermissionsMissing',
+  'ImportFileInvalid',
+  'ImportProblemRows',
+  'ImportAlreadyCompleted',
+  'ImportConfirmationRequired',
 ]);
 
 /**
@@ -397,8 +420,86 @@ export const toSchedulingContractError = (error: SchedulingError) => {
         id: error.projectId,
         code: SchedulingErrorCodes.projectNotFound,
       });
+    case 'ImportPermissionsMissing': {
+      const details: MissingPermissions = { missingPermissions: error.missing };
+      const names = error.missing.map(permissionName);
+      return new Refused({
+        code: SchedulingErrorCodes.missingPermission,
+        message:
+          names.length === 1
+            ? `You lack the permission to ${names[0]}`
+            : `You lack the permissions: ${names.join(', ')}`,
+        details,
+      });
+    }
+    case 'ImportFileInvalid': {
+      const details: ValidationIssues = { issues: [{ path: 'file', message: error.message }] };
+      return new Invalid({ message: error.message, code: 'platform.validation_failed', details });
+    }
+    case 'ImportProblemRows': {
+      const details: ImportProblemRowsDetails = { rows: error.rows };
+      const count = error.rows.length;
+      const rows = new Set(error.rows.map((r) => r.row)).size;
+      return new Invalid({
+        message: `${plural(rows, 'row needs', 'rows need')} fixing; nothing was imported${count > rows ? ` (${count} problems)` : ''}`,
+        code: SchedulingErrorCodes.importProblemRows,
+        details,
+      });
+    }
+    case 'ImportAlreadyCompleted': {
+      const details: ImportCompletedDetailsEncoded = Schema.encodeSync(ImportCompletedDetails)({
+        completedAt: error.completedAt,
+      });
+      return new Conflict({
+        message: 'The import is one-time; make later changes on the board',
+        code: SchedulingErrorCodes.importAlreadyCompleted,
+        details,
+      });
+    }
+    case 'ImportConfirmationRequired': {
+      const details = Schema.encodeSync(ImportPreviewDto)({
+        employeeRecordsToCreate: error.employeeRecordsToCreate,
+        projectsToCreate: error.projectsToCreate,
+        allocationsToCreate: error.allocationsToCreate,
+        incompleteRecords: error.incompleteRecords,
+        overbookedWeeks: error.overbookedWeeks,
+      });
+      return new ConfirmationRequired({
+        message: 'Review the import before confirming',
+        code: SchedulingErrorCodes.importConfirmationRequired,
+        details,
+      });
+    }
   }
 };
+
+/** `org:manage-employee-records` → `manage employee records`, as the refusal names it (AC-33). */
+const permissionName = (key: string) => (key.split(':')[1] ?? key).replaceAll('-', ' ');
+
+/** OpenAPI `ImportResult`: the completed run with the importing user named. */
+export const presentImportResult = ({ value: run, refs }: WithRefs<StoredImportRun>) =>
+  Schema.encodeSync(ImportResultDto)(importResultOf(run, refs));
+
+const importResultOf = (run: StoredImportRun, refs: Refs) => ({
+  id: run.id,
+  importedBy: userRef(refs.user(run.importedBy)),
+  employeeRecordsCreated: run.employeeRecordsCreated,
+  projectsCreated: run.projectsCreated,
+  allocationsCreated: run.allocationsCreated,
+  createdAt: run.createdAt,
+});
+
+/** OpenAPI `ImportStatus` (AC-32). */
+export const presentImportStatus = ({
+  value: run,
+  refs,
+}: WithRefs<Option.Option<StoredImportRun>>) =>
+  Schema.encodeSync(ImportStatusDto)(
+    Option.match(run, {
+      onNone: () => ({ completed: false, run: null }),
+      onSome: (completed) => ({ completed: true, run: importResultOf(completed, refs) }),
+    }),
+  );
 
 /**
  * Maps scheduling's domain failures to contract errors and lets every other failure through (the

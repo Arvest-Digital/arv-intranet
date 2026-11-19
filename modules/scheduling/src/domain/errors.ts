@@ -199,3 +199,36 @@ export class ImportPermissionsMissing extends Schema.TaggedError<ImportPermissio
   'ImportPermissionsMissing',
   { missing: Schema.NonEmptyArray(Schema.String) },
 ) {}
+
+/**
+ * `scheduling.import_already_completed` (AC-32): the import is one time; later changes are made on
+ * the board. `completedAt` is when the completed run was recorded.
+ */
+export class ImportAlreadyCompleted extends Schema.TaggedError<ImportAlreadyCompleted>()(
+  'ImportAlreadyCompleted',
+  { completedAt: Schema.DateFromSelf },
+) {}
+
+/** A resource-week the import would overbook; named by the spreadsheet's full name (AC-30). */
+export const ImportWeekOver = Schema.Struct({
+  fullName: Schema.String,
+  weekStart: Schema.String,
+  /** Exact minutes, possibly fractional (ADR-0009). */
+  overMinutes: Schema.Number,
+});
+
+/**
+ * `scheduling.import_confirmation_required` (AC-30, ADR-0010): the file is clean; this is the
+ * preview the user confirms once. Nothing was imported until the file is uploaded again with
+ * `confirm`.
+ */
+export class ImportConfirmationRequired extends Schema.TaggedError<ImportConfirmationRequired>()(
+  'ImportConfirmationRequired',
+  {
+    employeeRecordsToCreate: Schema.Int,
+    projectsToCreate: Schema.Int,
+    allocationsToCreate: Schema.Int,
+    incompleteRecords: Schema.Int,
+    overbookedWeeks: Schema.Array(ImportWeekOver),
+  },
+) {}

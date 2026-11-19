@@ -21,6 +21,7 @@ import {
   type NewHistoryEntry,
   type StoredAllocation,
   type StoredHistoryEntry,
+  type StoredImportRun,
 } from './ports';
 
 /**
@@ -43,6 +44,7 @@ interface Store {
   holidays: Array<Holiday>;
   teams: Map<TeamId, TeamRef>;
   userNames: Map<UserId, string>;
+  importRun: StoredImportRun | null;
 }
 
 const cloneStore = (store: Store): Store => ({
@@ -53,6 +55,7 @@ const cloneStore = (store: Store): Store => ({
   holidays: [...store.holidays],
   teams: new Map(store.teams),
   userNames: new Map(store.userNames),
+  importRun: store.importRun,
 });
 
 export const makeSchedulingFakes = () => {
@@ -64,12 +67,17 @@ export const makeSchedulingFakes = () => {
     holidays: [],
     teams: new Map(),
     userNames: new Map(),
+    importRun: null,
   };
   let sequence = 0;
   const nextUuid = () => `00000000-0000-7000-8000-${String(++sequence).padStart(12, '0')}`;
   const clock = { today: TODAY };
   /** Runs just before a guarded write: simulate another user's save in between (AC-07b). */
-  const hooks = { beforeWrite: (): void => undefined };
+  const hooks = {
+    beforeWrite: (): void => undefined,
+    /** Runs before each allocation `insertMany` stores: throw to simulate a failing row mid-commit. */
+    beforeInsertMany: (): void => undefined,
+  };
 
   const store_ = (allocation: Allocation, changedBy: UserId): StoredAllocation => {
     const createdAt = store.allocations.get(allocation.id)?.createdAt ?? NOW;
@@ -140,6 +148,22 @@ export const makeSchedulingFakes = () => {
           changedBy,
         ),
       ),
+    insertMany: (inputs, changedBy) =>
+      Effect.sync(() =>
+        inputs.map((input) => {
+          hooks.beforeInsertMany();
+          return store_(
+            new Allocation({
+              id: AllocationId.make(nextUuid()),
+              employeeId: input.employeeId,
+              projectId: input.projectId,
+              version: 1,
+              segments: input.segments,
+            }),
+            changedBy,
+          ).allocation.id;
+        }),
+      ),
     update: (id, expectedVersion, segments, changedBy) =>
       Effect.suspend(() => guard(id, expectedVersion)).pipe(
         Effect.map((current) =>
@@ -164,6 +188,11 @@ export const makeSchedulingFakes = () => {
       Effect.sync(() => {
         store.history.push({ ...entry, id: nextUuid(), createdAt: NOW });
       }),
+    appendMany: (entries) =>
+      Effect.sync(() => {
+        for (const entry of entries)
+          store.history.push({ ...entry, id: nextUuid(), createdAt: NOW });
+      }),
     listForAllocation: (allocationId, since) =>
       Effect.sync(() =>
         store.history.filter((h) => h.allocationId === allocationId && h.createdAt >= since),
@@ -184,8 +213,15 @@ export const makeSchedulingFakes = () => {
   };
 
   const importRuns: ImportRunRepository['Type'] = {
-    exists: () => Effect.succeed(false),
-    insert: () => Effect.void,
+    findCompleted: () => Effect.sync(() => Option.fromNullable(store.importRun)),
+    insert: (input) =>
+      Effect.suspend(() => {
+        // The one-time unique index (AC-32): a second run is a defect.
+        if (store.importRun !== null)
+          return Effect.dieMessage('a completed import run already exists');
+        store.importRun = { ...input, id: nextUuid(), createdAt: NOW };
+        return Effect.succeed(store.importRun);
+      }),
   };
 
   const org: OrgApi['Type'] = {
@@ -231,7 +267,39 @@ export const makeSchedulingFakes = () => {
           .filter((t) => teamIds.includes(t.id))
           .sort((a, b) => a.name.localeCompare(b.name)),
       ),
-    importRecords: () => Effect.dieMessage('OrgApi.importRecords is not faked'),
+    // Like org's command: teams matched by name ignoring case and surrounding spaces, the rest
+    // created; every record created, in input order.
+    importRecords: (input, _importedBy) =>
+      Effect.sync(() => {
+        const key = (name: string) => name.trim().toLowerCase();
+        const teams = new Map<string, { team: TeamRef; created: boolean }>();
+        for (const name of [...input.teams, ...input.records.flatMap((r) => r.teamName ?? [])]) {
+          if (teams.has(key(name))) continue;
+          const existing = [...store.teams.values()].find((t) => key(t.name) === key(name));
+          const team = existing ?? { id: TeamId.make(nextUuid()), name };
+          if (existing === undefined) store.teams.set(team.id, team);
+          teams.set(key(name), { team, created: existing === undefined });
+        }
+        const records = input.records.map((record) => {
+          const resource: ResourceTerms = {
+            employeeId: EmployeeId.make(nextUuid()),
+            fullName: record.fullName,
+            userId: null,
+            teamId:
+              record.teamName === null ? null : (teams.get(key(record.teamName))?.team.id ?? null),
+            contractMinutes: record.contractMinutes,
+            workingDays: record.workingDays ?? [1, 2, 3, 4, 5],
+            employmentStart: record.employmentStart,
+            employmentEnd: record.employmentEnd,
+          };
+          store.resources.set(resource.employeeId, resource);
+          return resource;
+        });
+        return {
+          teams: [...teams.values()].map(({ team, created }) => ({ ...team, created })),
+          records,
+        };
+      }),
   };
 
   const projects: ProjectsApi['Type'] = {
@@ -244,7 +312,31 @@ export const makeSchedulingFakes = () => {
           .filter((p) => isOpenOn(p, date))
           .sort((a, b) => a.name.localeCompare(b.name)),
       ),
-    importProjects: () => Effect.dieMessage('ProjectsApi.importProjects is not faked'),
+    // Like projects' command: an open project with the same name key is reused, else created.
+    importProjects: (imported) =>
+      Effect.sync(() => {
+        const key = (name: string) => name.trim().toLowerCase();
+        const results = new Map<string, ProjectInfo & { created: boolean }>();
+        for (const { name, type } of imported) {
+          if (results.has(key(name))) continue;
+          const open = [...store.projects.values()].find(
+            (p) => key(p.name) === key(name) && isOpenOn(p, clock.today),
+          );
+          if (open !== undefined) {
+            results.set(key(name), { ...open, created: false });
+            continue;
+          }
+          const project: ProjectInfo = {
+            id: ProjectId.make(nextUuid()),
+            name,
+            type,
+            closeDate: null,
+          };
+          store.projects.set(project.id, project);
+          results.set(key(name), { ...project, created: true });
+        }
+        return [...results.values()];
+      }),
   };
 
   const identity: IdentityApi['Type'] = {
@@ -349,6 +441,21 @@ export const makeSchedulingFakes = () => {
         }),
         changedBy,
       ),
+    /** A completed import run (AC-32). */
+    seedImportRun: (importedBy: UserId, createdAt = NOW): StoredImportRun => {
+      store.importRun = {
+        id: nextUuid(),
+        importedBy,
+        employeeRecordsCreated: 1,
+        projectsCreated: 1,
+        allocationsCreated: 1,
+        createdAt,
+      };
+      return store.importRun;
+    },
+    importRun: () => store.importRun,
+    resources: () => [...store.resources.values()],
+    projects: () => [...store.projects.values()],
     /** The stored allocation, read straight from the store. */
     allocation: (id: AllocationId) => store.allocations.get(id),
     allocations: () => [...store.allocations.values()],

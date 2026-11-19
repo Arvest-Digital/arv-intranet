@@ -6,12 +6,13 @@ import {
   AllocationRemovalQuery,
   BoardQuery,
   FreeListQuery,
+  ImportUpload,
   LeaveBooking,
   MyScheduleQuery,
 } from '@arv/contracts/scheduling';
 import { EmployeeId, ProjectId } from '@arv/kernel';
 import { type HttpEnv, runEffect, validate } from '@arv/platform/http';
-import { Effect } from 'effect';
+import { Effect, Option } from 'effect';
 import { Hono } from 'hono';
 import { changeAllocation, createAllocation, removeAllocation } from '../application/allocations';
 import { boardQueryFrom, getBoard } from '../application/board';
@@ -19,6 +20,7 @@ import type { AllocationChangedMeanwhile } from '../application/errors';
 import { getFreeList } from '../application/free-list';
 import { type AllocationView, getAllocation, viewAllocation } from '../application/get-allocation';
 import { listAllocationHistory } from '../application/history';
+import { getImportStatus, importSpreadsheet } from '../application/import-commit';
 import { bookLeave } from '../application/leave';
 import { getMySchedule } from '../application/my-schedule';
 import type { StoredAllocation } from '../application/ports';
@@ -34,6 +36,8 @@ import {
   presentAllocationRemoval,
   presentBoard,
   presentFreeList,
+  presentImportResult,
+  presentImportStatus,
   presentMySchedule,
 } from './presenter';
 
@@ -230,7 +234,33 @@ export const schedulingRoutes = new Hono<HttpEnv>()
           mapSchedulingErrors,
         ),
       ),
-  );
+  )
+  // The one-time import (US-11, flow 13). The upload is multipart: the file is read only after
+  // the access and one-time checks, and never stored (ADR-0010).
+  .get('/scheduling/import', (c) =>
+    runEffect(
+      c,
+      getImportStatus.pipe(
+        Effect.flatMap(
+          withRefs((run) => ({ userIds: Option.toArray(run).map((r) => r.importedBy) })),
+        ),
+        Effect.map(presentImportStatus),
+        mapSchedulingErrors,
+      ),
+    ),
+  )
+  .post('/scheduling/import', validate('form', ImportUpload), (c) => {
+    const { file, confirm } = c.req.valid('form');
+    return runEffect(
+      c,
+      importSpreadsheet({ file, confirm }).pipe(
+        Effect.flatMap(withRefs((run) => ({ userIds: [run.importedBy] }))),
+        Effect.map(presentImportResult),
+        mapSchedulingErrors,
+      ),
+      201,
+    );
+  });
 
 /** Route types for the scheduling client in apps/web (`hc<SchedulingRoutes>`). */
 export type SchedulingRoutes = typeof schedulingRoutes;

@@ -77,6 +77,15 @@ export class AllocationRepository extends Context.Tag('scheduling/AllocationRepo
     /** Inserts the allocation at version 1 with its segments. */
     readonly insert: (input: NewAllocation, changedBy: UserId) => Effect.Effect<StoredAllocation>;
     /**
+     * Inserts many allocations at version 1 with their segments, in a few batched statements (the
+     * one-time import, flow 13). Returns their ids in input order. No overbooking check: the
+     * caller's use case has shown it already (AC-30).
+     */
+    readonly insertMany: (
+      inputs: ReadonlyArray<NewAllocation>,
+      changedBy: UserId,
+    ) => Effect.Effect<ReadonlyArray<AllocationId>>;
+    /**
      * Stores `segments` as the allocation's segments while it is still at `expectedVersion`, and
      * bumps the version. Segments already stored unchanged (the past, AC-09b) keep their rows;
      * the others are replaced.
@@ -120,6 +129,8 @@ export class AllocationHistoryRepository extends Context.Tag(
   AllocationHistoryRepository,
   {
     readonly append: (entry: NewHistoryEntry) => Effect.Effect<void>;
+    /** Appends many entries in a few batched statements (the one-time import, flow 13). */
+    readonly appendMany: (entries: ReadonlyArray<NewHistoryEntry>) => Effect.Effect<void>;
     /** The allocation's entries recorded at or after `since`, oldest first. */
     readonly listForAllocation: (
       allocationId: AllocationId,
@@ -140,14 +151,22 @@ export interface ImportRunInput {
   readonly allocationsCreated: number;
 }
 
+/** A completed import run as stored (contract `ImportResult`, by user id). */
+export interface StoredImportRun extends ImportRunInput {
+  readonly id: string;
+  readonly createdAt: Date;
+}
+
 /**
- * Completed import runs: at most one ever (AC-32). The use case checks `exists` first; the unique
- * index is the backstop for two concurrent imports, whose loser's transaction rolls back.
+ * Completed import runs: at most one ever (AC-32). The use case reads `findCompleted` first; the
+ * unique index is the backstop for two concurrent imports, whose loser's transaction rolls back.
  */
 export class ImportRunRepository extends Context.Tag('scheduling/ImportRunRepository')<
   ImportRunRepository,
   {
-    readonly exists: () => Effect.Effect<boolean>;
-    readonly insert: (input: ImportRunInput) => Effect.Effect<void>;
+    /** The completed run, if the import has happened. */
+    readonly findCompleted: () => Effect.Effect<Option.Option<StoredImportRun>>;
+    /** Records the completed run; a second one is a defect (the one-time unique index). */
+    readonly insert: (input: ImportRunInput) => Effect.Effect<StoredImportRun>;
   }
 >() {}

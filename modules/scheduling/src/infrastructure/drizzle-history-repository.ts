@@ -8,6 +8,9 @@ import { allocationHistory } from './schema';
 
 type Row = typeof allocationHistory.$inferSelect;
 
+/** Rows per batched INSERT in `appendMany`. */
+const BATCH_SIZE = 1000;
+
 /** The before / after snapshots: an opaque JSON list of segments (data-model.md). */
 const Snapshot = Schema.NullOr(Schema.Array(Segment));
 const encodeSnapshot = Schema.encodeSync(Snapshot);
@@ -52,6 +55,26 @@ export const DrizzleAllocationHistoryRepositoryLive = Layer.effect(
               changedBy,
             }),
           ),
+        ),
+      // Batched for the import (flow 13): 8 bind parameters a row, well below Postgres's 65,535.
+      appendMany: (entries) =>
+        run(
+          query(async (db) => {
+            for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+              await db.insert(allocationHistory).values(
+                entries.slice(i, i + BATCH_SIZE).map((e) => ({
+                  allocationId: e.allocationId,
+                  employeeId: e.employeeId,
+                  projectId: e.projectId,
+                  changeKind: e.entry.changeKind,
+                  effectiveFrom: e.entry.effectiveFrom,
+                  beforeValues: encodeSnapshot(e.entry.before),
+                  afterValues: encodeSnapshot(e.entry.after),
+                  changedBy: e.changedBy,
+                })),
+              );
+            }
+          }),
         ),
       // `idx_allocation_history_allocation_id_created_at`; ids are UUIDv7, so they break ties in
       // the order the entries were written.

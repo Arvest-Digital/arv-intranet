@@ -12,6 +12,9 @@ import { AllocationNotFound, AllocationVersionConflict } from '../domain/errors'
 import { allocationSegments, allocations } from './schema';
 
 type AllocationRow = typeof allocations.$inferSelect;
+
+/** Rows per batched INSERT in `insertMany`: 5 bind parameters each, far below the 65,535 limit. */
+const BATCH_SIZE = 1000;
 type SegmentRow = typeof allocationSegments.$inferSelect;
 
 /** A row as the domain segment; a row the domain refuses is a defect (the domain owns the rules). */
@@ -195,6 +198,39 @@ export const DrizzleAllocationRepositoryLive = Layer.effect(
             );
           }),
         ),
+
+      // The import (flow 13): ids are drawn first, so each segment row knows its allocation without
+      // relying on the order of RETURNING rows; then batched INSERTs, well under Postgres's 65,535
+      // bind parameters per statement.
+      insertMany: (inputs, changedBy) =>
+        inputs.length === 0
+          ? Effect.succeed([])
+          : run(
+              query(async (db) => {
+                const drawn = await db
+                  .select({ id: sql<string>`uuidv7()` })
+                  .from(sql`generate_series(1, ${inputs.length})`);
+                const ids = drawn.map((row) => row.id);
+                if (ids.length !== inputs.length) throw new Error('uuidv7() drew too few ids');
+                const pairs = inputs.map((input, i) => ({ id: ids[i] as string, input }));
+                for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
+                  const batch = pairs.slice(i, i + BATCH_SIZE);
+                  await db.insert(allocations).values(
+                    batch.map(({ id, input }) => ({
+                      id,
+                      employeeId: input.employeeId,
+                      projectId: input.projectId,
+                      version: 1,
+                      lastChangedBy: changedBy,
+                    })),
+                  );
+                  await db
+                    .insert(allocationSegments)
+                    .values(batch.flatMap(({ id, input }) => segmentValues(id, input.segments)));
+                }
+                return ids.map((id) => AllocationId.make(id));
+              }),
+            ),
 
       // `UPDATE … WHERE version = $n`: a stale version matches no row (AC-07b). Stored segments
       // that the new list keeps unchanged stay as they are (the past, AC-09b); the rest go.
