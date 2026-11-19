@@ -1,6 +1,6 @@
 import { type ProjectId, Today } from '@arv/kernel';
 import { Context, Effect, Layer, Option } from 'effect';
-import type { Project, ProjectType } from '../domain/project';
+import { isOpenOn, type Project, type ProjectType } from '../domain/project';
 import { type ImportedProject, importProjects } from './import';
 import { ProjectRepository } from './ports';
 
@@ -33,6 +33,8 @@ export class ProjectsApi extends Context.Tag('projects/ProjectsApi')<
     readonly listByIds: (
       ids: ReadonlyArray<ProjectId>,
     ) => Effect.Effect<ReadonlyArray<ProjectInfo>>;
+    /** The projects open on `date` (`YYYY-MM-DD`), by name (import preview, flow 13, AC-31). */
+    readonly listOpenOn: (date: string) => Effect.Effect<ReadonlyArray<ProjectInfo>>;
     /**
      * Import command (flow 13, AC-30): creates the projects as open, reusing a project open today
      * with the same name (AC-24) as it is. Opens no transaction: call it inside the import's
@@ -59,6 +61,10 @@ export const ProjectsApiLive = Layer.effect(
     return {
       get: (id) => projects.findById(id).pipe(Effect.map(Option.map(toInfo))),
       listByIds: (ids) => projects.listByIds(ids).pipe(Effect.map((rows) => rows.map(toInfo))),
+      listOpenOn: (date) =>
+        projects
+          .list()
+          .pipe(Effect.map((rows) => rows.filter((p) => isOpenOn(p, date)).map(toInfo))),
       importProjects: (imported) =>
         today.date.pipe(
           Effect.flatMap((date) => importProjects(imported, date)),

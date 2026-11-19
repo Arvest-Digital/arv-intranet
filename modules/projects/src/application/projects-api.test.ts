@@ -38,6 +38,19 @@ describe('ProjectsApi', () => {
     expect(listed.map((p) => p.name)).toEqual(['atlas', 'Zeus']);
   });
 
+  it('lists the projects open on a date by name, closed ones left out', async () => {
+    const { fakes, run } = setup();
+    fakes.seedProject('Zeus');
+    fakes.seedProject('atlas', 'internal', '2026-11-30');
+    fakes.seedProject('Hermes', 'client', '2026-11-29');
+
+    const open = await run((api) => api.listOpenOn('2026-11-30'));
+    expect(open.map((p) => [p.name, p.type])).toEqual([
+      ['atlas', 'internal'],
+      ['Zeus', 'client'],
+    ]);
+  });
+
   it('a project is open through its close date and closed the day after', async () => {
     const { fakes, run } = setup();
     const atlas = fakes.seedProject('Atlas', 'client', '2026-11-30');
