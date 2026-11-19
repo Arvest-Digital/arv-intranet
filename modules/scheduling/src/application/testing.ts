@@ -10,7 +10,7 @@ import {
   UserId,
 } from '@arv/kernel';
 import { type Holiday, OrgApi, type ResourceTerms, TeamId, type TeamRef } from '@arv/org';
-import { type ProjectInfo, ProjectsApi, type ProjectType } from '@arv/projects';
+import { isOpenOn, type ProjectInfo, ProjectsApi, type ProjectType } from '@arv/projects';
 import { Effect, Exit, Layer, Option } from 'effect';
 import { Allocation, AllocationId, type Segment } from '../domain/allocation';
 import { AllocationNotFound, AllocationVersionConflict } from '../domain/errors';
@@ -210,6 +210,15 @@ export const makeSchedulingFakes = () => {
           (h) => h.holidayDate >= window.from && h.holidayDate <= window.to,
         ),
       })),
+    allResources: (window) =>
+      Effect.sync(() => ({
+        resources: [...store.resources.values()].sort((a, b) =>
+          a.fullName.localeCompare(b.fullName),
+        ),
+        holidays: store.holidays.filter(
+          (h) => h.holidayDate >= window.from && h.holidayDate <= window.to,
+        ),
+      })),
     employeeByLogin: (userId) =>
       Effect.sync(() =>
         Option.fromNullable([...store.resources.values()].find((r) => r.userId === userId)),
@@ -229,6 +238,12 @@ export const makeSchedulingFakes = () => {
     get: (id) => Effect.sync(() => Option.fromNullable(store.projects.get(id))),
     listByIds: (ids) =>
       Effect.sync(() => [...store.projects.values()].filter((p) => ids.includes(p.id))),
+    listOpenOn: (date) =>
+      Effect.sync(() =>
+        [...store.projects.values()]
+          .filter((p) => isOpenOn(p, date))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      ),
     importProjects: () => Effect.dieMessage('ProjectsApi.importProjects is not faked'),
   };
 

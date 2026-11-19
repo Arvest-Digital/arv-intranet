@@ -132,7 +132,7 @@ export const rateRules = (rate: Rate, workingDaysPerWeek: number): AllocationRul
  * The rules a booked stretch `[startsOn, endsOn]` must meet: end not before start, inside the
  * employment period (AC-13, AC-21b) and not past the project's close date (AC-25).
  */
-const periodRules = (
+export const periodRules = (
   startsOn: IsoDate,
   endsOn: IsoDate,
   ctx: BookingContext,

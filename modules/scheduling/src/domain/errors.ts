@@ -146,3 +146,56 @@ export class NotSetUpAsResource extends Schema.TaggedError<NotSetUpAsResource>()
   'NotSetUpAsResource',
   { userId: Schema.String },
 ) {}
+
+// ─── One-time import (US-11) ─────────────────────────────────────────────────────────────────
+
+/**
+ * Why a spreadsheet row stops the import (AC-31). The values match the contract's
+ * `ImportProblemRowsDetails.reason`.
+ */
+export const ImportProblemReason = Schema.Literal(
+  'empty_hours',
+  'end_before_start',
+  'similar_name',
+  'invalid_allocation',
+  'outside_employment_period',
+  'invalid_employee_record',
+);
+export type ImportProblemReason = typeof ImportProblemReason.Type;
+
+/** One problem on one spreadsheet row; a row with several problems appears once per problem. */
+export const ImportProblemRow = Schema.Struct({
+  /** The spreadsheet row number; the header is row 1. */
+  row: Schema.Int,
+  reason: ImportProblemReason,
+  message: Schema.String,
+});
+export type ImportProblemRow = typeof ImportProblemRow.Type;
+
+/**
+ * `scheduling.import_problem_rows` (AC-31): rows break the manual-entry rules or carry names that
+ * look like different spellings of one person or project. Nothing is imported; the user fixes the
+ * spreadsheet and tries again. Rows are in row order.
+ */
+export class ImportProblemRows extends Schema.TaggedError<ImportProblemRows>()(
+  'ImportProblemRows',
+  { rows: Schema.NonEmptyArray(ImportProblemRow) },
+) {}
+
+/**
+ * `platform.validation_failed`: the file cannot be read as the planning spreadsheet at all — not
+ * CSV, a header column missing, no rows, or too many — so there are no rows to report on.
+ */
+export class ImportFileInvalid extends Schema.TaggedError<ImportFileInvalid>()(
+  'ImportFileInvalid',
+  { message: Schema.String },
+) {}
+
+/**
+ * `scheduling.missing_permission` (AC-33): the import needs edit-allocations,
+ * manage-employee-records and manage-projects; `missing` names every one the actor lacks.
+ */
+export class ImportPermissionsMissing extends Schema.TaggedError<ImportPermissionsMissing>()(
+  'ImportPermissionsMissing',
+  { missing: Schema.NonEmptyArray(Schema.String) },
+) {}
