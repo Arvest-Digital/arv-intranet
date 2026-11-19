@@ -78,6 +78,14 @@ export class OrgApi extends Context.Tag('org/OrgApi')<
       readonly resources: ReadonlyArray<ResourceTerms>;
       readonly holidays: ReadonlyArray<Holiday>;
     }>;
+    /**
+     * Every employee record, whatever its employment period, by full name, with the public holidays
+     * in `window` — what the import preview matches spreadsheet names against (flow 13, AC-31).
+     */
+    readonly allResources: (window: DateWindow) => Effect.Effect<{
+      readonly resources: ReadonlyArray<ResourceTerms>;
+      readonly holidays: ReadonlyArray<Holiday>;
+    }>;
     /** The resource linked to the login, if any (flow 8; `None` → AC-18). */
     readonly employeeByLogin: (userId: UserId) => Effect.Effect<Option.Option<ResourceTerms>>;
     /** The resources in the team, by full name (board team filter, AC-02). */
@@ -146,6 +154,16 @@ export const OrgApiLive = Layer.effect(
             resources: found.resources
               .filter((record) => overlaps(record, window))
               .map(toResourceTerms),
+            holidays: found.holidays.map(({ holidayDate, name }) => ({ holidayDate, name })),
+          })),
+        ),
+      allResources: (window) =>
+        Effect.all({
+          resources: records.list(),
+          holidays: holidays.listInRange(window.from, window.to),
+        }).pipe(
+          Effect.map((found) => ({
+            resources: found.resources.map(toResourceTerms),
             holidays: found.holidays.map(({ holidayDate, name }) => ({ holidayDate, name })),
           })),
         ),

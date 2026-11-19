@@ -127,6 +127,28 @@ describe('OrgApi', () => {
     expect(team.resources.map((r) => r.employeeId)).toEqual([stayer.id, leaver.id]);
   });
 
+  it('allResources: every record whatever its employment period, by full name, with the window’s holidays', async () => {
+    const { fakes, leaver, stayer, elsewhere } = setup();
+    const manager = fakes.seedLogin();
+    const future = fakes.seedRecord(
+      { fullName: 'Test User 5', employmentStart: '2027-02-01' },
+      manager,
+    );
+
+    const all = await viaFacade(fakes, (org) =>
+      org.allResources({ from: '2026-12-16', to: '2027-01-01' }),
+    );
+
+    // The leaver ended on 2026-12-15 and the last record starts later: both still listed.
+    expect(all.resources.map((r) => r.employeeId)).toEqual([
+      stayer.id,
+      leaver.id,
+      elsewhere.id,
+      future.id,
+    ]);
+    expect(all.holidays.map((h) => h.holidayDate)).toEqual(['2026-12-25', '2027-01-01']);
+  });
+
   it('teamsByIds: the asked teams by name, unknown ids skipped', async () => {
     const { fakes, leaver } = setup();
     const atlas = fakes.seedTeam('Atlas');
