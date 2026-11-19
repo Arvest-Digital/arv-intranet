@@ -4,6 +4,7 @@ import type {
   BoardCell,
   BoardRow,
   CellState,
+  MySchedule,
 } from '@arv/contracts/scheduling';
 
 // A board for W47–W48 2026 (Mon 16 Nov, Mon 23 Nov) used by the scheduling tests.
@@ -141,4 +142,26 @@ export function everyStateBoard(): Board {
       [allocation(ATLAS, [[W47, 16]]), allocation(null, [[W48, 16]], true)],
     ),
   ]);
+}
+
+/** Olena's own schedule for W47–W48: work, and her own sick leave named with its type (AC-17). */
+export function mySchedule(): MySchedule {
+  return {
+    employee: {
+      id: '01933b8e-0000-7000-8000-000000000301',
+      fullName: 'Olena Kovalenko',
+      team: TEAM_DELIVERY,
+    },
+    from: W47,
+    to: '2026-11-29',
+    weeks: [W47, W48],
+    cells: [cell(W47, 'partly-booked', 24, 40), cell(W48, 'partly-booked', 32, 40, 2)],
+    allocations: [
+      allocation(ATLAS, [
+        [W47, 24],
+        [W48, 16],
+      ]),
+      allocation(SICK, [[W48, 16]], true),
+    ],
+  };
 }

@@ -54,6 +54,10 @@ export function AppNav({ me }: { me: Me }) {
             Schedule
           </NavLink>
         ) : null}
+        {/* Anyone signed in has an own schedule, or is told how to get one (AC-17, AC-18). */}
+        <NavLink to="/my-schedule" className={linkClass}>
+          My schedule
+        </NavLink>
         {canManageEmployeeRecords(me) ? (
           <NavLink to="/people" className={linkClass}>
             People

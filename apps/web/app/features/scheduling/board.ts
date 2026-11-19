@@ -24,6 +24,15 @@ export const WEEKS_AHEAD = 52;
 
 export type BoardView = 'people' | 'project';
 
+/**
+ * The «who's free» drawer's query (`freeWeeks`, `minFreeHours`). Kept as the raw strings from the
+ * URL: the api checks them and answers every bad value with the one AC-05 message.
+ */
+export type FreeParams = { readonly weeks: string; readonly minFreeHours: string };
+
+/** What the drawer asks first: AC-04's «at least 16 free hours over the next 2 weeks». */
+export const FREE_DEFAULTS: FreeParams = { weeks: '2', minFreeHours: '16' };
+
 /** The board's state, all of it in the URL (ADR-0002). */
 export type BoardParams = {
   /** The first week's Monday, or none for the current week. */
@@ -32,6 +41,8 @@ export type BoardParams = {
   readonly team: string | null;
   readonly project: string | null;
   readonly view: BoardView;
+  /** The «who's free» drawer, open when set (`free=1`); it ignores the window and filters. */
+  readonly free: FreeParams | null;
 };
 
 /** A team or project the filters offer. */
@@ -64,6 +75,12 @@ export function parseBoardParams(search: URLSearchParams): BoardParams {
     team: UUID.test(team) ? team : null,
     project: UUID.test(project) ? project : null,
     view: search.get('view') === 'project' ? 'project' : 'people',
+    free: search.has('free')
+      ? {
+          weeks: search.get('freeWeeks') ?? FREE_DEFAULTS.weeks,
+          minFreeHours: search.get('minFreeHours') ?? FREE_DEFAULTS.minFreeHours,
+        }
+      : null,
   };
 }
 
@@ -76,6 +93,20 @@ export function boardHref(params: BoardParams, patch: Partial<BoardParams> = {})
   if (next.team) search.set('team', next.team);
   if (next.project) search.set('project', next.project);
   if (next.view !== 'people') search.set('view', next.view);
+  if (next.free) {
+    search.set('free', '1');
+    search.set('freeWeeks', next.free.weeks);
+    search.set('minFreeHours', next.free.minFreeHours);
+  }
+  const query = search.toString();
+  return query ? `?${query}` : '?';
+}
+
+/** `?from=…&weeks=…` for the window; defaults stay out of the URL (ADR-0002). */
+export function myScheduleHref(window: { from: string | null; weeks: number }): string {
+  const search = new URLSearchParams();
+  if (window.from) search.set('from', window.from);
+  if (window.weeks !== MAX_WEEKS) search.set('weeks', String(window.weeks));
   const query = search.toString();
   return query ? `?${query}` : '?';
 }

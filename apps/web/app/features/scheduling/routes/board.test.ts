@@ -1,8 +1,8 @@
-import { Board } from '@arv/contracts/scheduling';
+import { Board, FreeList } from '@arv/contracts/scheduling';
 import { Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { fakeApi, json } from '../../../test/fake-api';
-import { ATLAS, everyStateBoard, TEAM_DELIVERY } from '../test-data';
+import { ATLAS, everyStateBoard, TEAM_DELIVERY, W47, W48 } from '../test-data';
 import { loader } from './board';
 
 const WEB = 'http://web.test';
@@ -15,11 +15,23 @@ const encodedBoard = Schema.encodeSync(Board)(everyStateBoard());
 const page = (items: unknown[]) =>
   json({ items, hasNext: false, hasPrev: false, nextCursor: null });
 
-/** Answers the board, teams and projects calls; `board` overrides the board's answer. */
-function api(board: () => Response = () => json(encodedBoard)) {
+const encodedFreeList = Schema.encodeSync(FreeList)({
+  from: '2026-11-18',
+  to: '2026-11-29',
+  weeks: [W47, W48],
+  items: [],
+  incompleteRecords: [],
+});
+
+/** Answers the board, teams and projects calls; `board` / `free` override those answers. */
+function api(
+  board: () => Response = () => json(encodedBoard),
+  free: () => Response = () => json(encodedFreeList),
+) {
   return fakeApi((request) => {
     const path = new URL(request.url).pathname;
     if (path === '/scheduling/board') return board();
+    if (path === '/scheduling/free-list') return free();
     if (path === '/org/teams') {
       return page([{ ...TEAM_DELIVERY, teamLead: null, createdAt: '2026-10-31T09:00:00Z' }]);
     }
@@ -100,5 +112,64 @@ describe('board loader', () => {
     expect((thrown as Response).headers.get('Location')).toBe(
       `/sign-in?${new URLSearchParams({ returnTo: '/schedule?weeks=4' })}`,
     );
+  });
+
+  it('asks who is free only when the drawer is open in the URL (AC-04)', async () => {
+    const closed = api();
+    expect(body(await load(closed, '?weeks=4'))).toMatchObject({ free: null });
+    expect(closed.requests.map((r) => new URL(r.url).pathname)).not.toContain(
+      '/scheduling/free-list',
+    );
+
+    const open = api();
+    const result = await load(
+      open,
+      `?weeks=4&team=${TEAM_DELIVERY.id}&free=1&freeWeeks=3&minFreeHours=8`,
+    );
+    const freeCall = open.requests.find((r) => new URL(r.url).pathname === '/scheduling/free-list');
+    // The board's window and filters do not narrow the free list.
+    expect(Object.fromEntries(new URL(freeCall?.url ?? '').searchParams)).toEqual({
+      weeks: '3',
+      minFreeHours: '8',
+    });
+    expect(body(result)).toMatchObject({
+      params: { free: { weeks: '3', minFreeHours: '8' } },
+      free: { kind: 'list', list: { from: '2026-11-18', items: [] } },
+    });
+  });
+
+  it('opens on 16 hours over 2 weeks without a query (AC-04)', async () => {
+    const fake = api();
+    await load(fake, '?free=1');
+    const freeCall = fake.requests.find((r) => new URL(r.url).pathname === '/scheduling/free-list');
+    expect(Object.fromEntries(new URL(freeCall?.url ?? '').searchParams)).toEqual({
+      weeks: '2',
+      minFreeHours: '16',
+    });
+  });
+
+  it('passes a bad query through and shows the AC-05 message with no results', async () => {
+    const message =
+      'The number of weeks must be from 1 to 12 and the free hours must be zero or more';
+    const fake = api(undefined, () =>
+      json(
+        {
+          error: {
+            _tag: 'ValidationError',
+            code: 'platform.validation_failed',
+            message,
+            details: { issues: [{ path: 'weeks', message: 'Expected a number between 1 and 12' }] },
+          },
+        },
+        400,
+      ),
+    );
+    const result = await load(fake, '?free=1&freeWeeks=14&minFreeHours=16');
+    const freeCall = fake.requests.find((r) => new URL(r.url).pathname === '/scheduling/free-list');
+    expect(new URL(freeCall?.url ?? '').searchParams.get('weeks')).toBe('14');
+    expect(body(result)).toMatchObject({
+      kind: 'board',
+      free: { kind: 'invalid', message, fields: ['weeks'] },
+    });
   });
 });

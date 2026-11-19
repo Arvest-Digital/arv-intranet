@@ -1,6 +1,7 @@
-import { SchedulingErrorCodes } from '@arv/contracts/scheduling';
+import { type FreeList, SchedulingErrorCodes } from '@arv/contracts/scheduling';
 import { LockIcon } from 'lucide-react';
 import { data, useRouteLoaderData } from 'react-router';
+import type { ApiResult } from '~/shared/lib/api.server';
 import { refusalResponse } from '~/shared/lib/refusal.server';
 import { getSessionToken } from '~/shared/lib/session.server';
 import type { loader as rootLoader } from '../../../root';
@@ -23,6 +24,8 @@ import {
   WindowOutOfRange,
 } from '../components/board-states';
 import { BoardToolbar } from '../components/board-toolbar';
+import { FreeListDrawer } from '../components/free-list-drawer';
+import type { FreeListResult } from '../free-list';
 import { schedulingGateway } from '../scheduling.server';
 import type { Route } from './+types/board';
 
@@ -31,7 +34,9 @@ export const meta: Route.MetaFunction = () => [{ title: 'Schedule · ARV Intrane
 /**
  * The board for the window and filters in the URL (ADR-0002): `from`, `weeks`, `team`, `project`
  * and `view`. One `getBoard` call per window; by-project regroups the same response (AC-02b).
- * Without a board permission the page offers the viewer's own schedule (AC-03).
+ * Without a board permission the page offers the viewer's own schedule (AC-03). With `free` set
+ * the loader also asks who is free (`freeWeeks`, `minFreeHours`) for the drawer (AC-04, AC-05);
+ * the board's window and filters do not apply to that list.
  */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const params = parseBoardParams(new URL(request.url).searchParams);
@@ -52,7 +57,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   // The filters' choices; without them the board still shows, with no choices to offer.
-  const [teams, projects] = await Promise.all([gateway.listTeams(), gateway.listProjects()]);
+  const [teams, projects, free] = await Promise.all([
+    gateway.listTeams(),
+    gateway.listProjects(),
+    params.free ? gateway.getFreeList(params.free) : null,
+  ]);
   return {
     kind: 'board' as const,
     params,
@@ -60,7 +69,31 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     board: board.value,
     teams: teams.ok ? teams.value : [],
     projects: projects.ok ? projects.value : [],
+    free: free === null ? null : await freeListResult(free, request),
   };
+}
+
+/** The drawer's content: the list, AC-05's message for a bad query, or a failure in its place. */
+async function freeListResult(
+  free: ApiResult<FreeList>,
+  request: Request,
+): Promise<FreeListResult> {
+  if (free.ok) return { kind: 'list', list: free.value };
+  const refused = await refusalResponse(free, request);
+  if (refused) throw refused;
+  if (free.status === 400) {
+    const issues = free.details?.issues;
+    return {
+      kind: 'invalid',
+      message: free.message,
+      fields: Array.isArray(issues)
+        ? issues.flatMap((issue: { path?: unknown }) =>
+            typeof issue?.path === 'string' ? [issue.path] : [],
+          )
+        : [],
+    };
+  }
+  return { kind: 'error', message: free.message };
 }
 
 export default function BoardRoute({ loaderData }: Route.ComponentProps) {
@@ -75,8 +108,9 @@ export default function BoardRoute({ loaderData }: Route.ComponentProps) {
     );
   }
 
-  const { params, today, board, teams, projects } = loaderData;
+  const { params, today, board, teams, projects, free } = loaderData;
   const permissions = me?.permissions ?? [];
+  const canEdit = permissions.includes(EDIT_ALLOCATIONS);
   const canSeeLeaveReasons = permissions.includes(SEE_LEAVE_REASONS);
   // AC-22: the needing-attention mark only for those who may see it.
   const showAttention =
@@ -125,6 +159,9 @@ export default function BoardRoute({ loaderData }: Route.ComponentProps) {
         </div>
         <BoardLegend showAttention={showAttention} />
       </div>
+      {params.free && free ? (
+        <FreeListDrawer params={params} free={params.free} result={free} canEdit={canEdit} />
+      ) : null}
     </main>
   );
 }

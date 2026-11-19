@@ -36,6 +36,7 @@ describe('board params', () => {
       team: '01933b8e-0000-7000-8000-000000000101',
       project: '01933b8e-0000-7000-8000-000000000501',
       view: 'project',
+      free: null,
     });
   });
 
@@ -46,6 +47,7 @@ describe('board params', () => {
       team: null,
       project: null,
       view: 'people',
+      free: null,
     });
   });
 

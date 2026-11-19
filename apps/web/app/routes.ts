@@ -16,6 +16,7 @@ export default [
   route('holidays', 'features/org/routes/holidays.tsx'),
   route('projects', 'features/projects/routes/projects.tsx'),
   route('schedule', 'features/scheduling/routes/board.tsx'),
+  route('my-schedule', 'features/scheduling/routes/my-schedule.tsx'),
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),

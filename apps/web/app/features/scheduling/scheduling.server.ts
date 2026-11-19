@@ -1,14 +1,16 @@
 import type { OrgRoutes, ProjectsRoutes, SchedulingRoutes } from '@arv/api';
 import { TeamPage } from '@arv/contracts/org';
 import { ProjectPage } from '@arv/contracts/projects';
-import { Board } from '@arv/contracts/scheduling';
+import { Board, FreeList, MySchedule } from '@arv/contracts/scheduling';
 import { PAGE_LIMIT_MAX } from '@arv/contracts/shared';
 import { Schema } from 'effect';
 import { hc } from 'hono/client';
 import { API_BASE_URL, type ApiResult, bindingFetch, failure } from '../../shared/lib/api.server';
-import type { BoardParams, FilterOption } from './board';
+import type { BoardParams, FilterOption, FreeParams } from './board';
 
 const decodeBoard = Schema.decodeUnknownSync(Board);
+const decodeFreeList = Schema.decodeUnknownSync(FreeList);
+const decodeMySchedule = Schema.decodeUnknownSync(MySchedule);
 const decodeTeamPage = Schema.decodeUnknownSync(TeamPage);
 const decodeProjectPage = Schema.decodeUnknownSync(ProjectPage);
 
@@ -39,7 +41,7 @@ const pageQuery = (after: string | undefined) => ({
 });
 
 /**
- * Scheduling API calls for the board's loader, plus the team and project lists its filters offer.
+ * Scheduling API calls for the board and my-schedule loaders, plus the team and project lists its filters offer.
  * `sessionToken` is forwarded as `Authorization: Bearer`; responses are decoded with the contracts.
  */
 export function schedulingGateway(api: Fetcher, sessionToken: string | null) {
@@ -65,6 +67,33 @@ export function schedulingGateway(api: Fetcher, sessionToken: string | null) {
       });
       if (!res.ok) return failure(res, 'Could not load the schedule');
       return { ok: true, value: decodeBoard(await res.json()) };
+    },
+
+    /**
+     * «Who's free» from today over the next N weeks, most free first (AC-04), incomplete records
+     * apart (AC-06). The raw query goes as typed: a bad value answers 400 with the AC-05 message.
+     */
+    async getFreeList(free: FreeParams): Promise<ApiResult<FreeList>> {
+      const res = await scheduling.scheduling['free-list'].$get({
+        query: { weeks: free.weeks, minFreeHours: free.minFreeHours },
+      });
+      if (!res.ok) return failure(res, 'Could not load who is free');
+      return { ok: true, value: decodeFreeList(await res.json()) };
+    },
+
+    /**
+     * The signed-in user's own schedule for a week window, with their own leave type (AC-17).
+     * A login not linked to an employee record answers 404 `scheduling.not_a_resource` (AC-18).
+     */
+    async getMySchedule(window: {
+      readonly from: string | null;
+      readonly weeks: number;
+    }): Promise<ApiResult<MySchedule>> {
+      const res = await scheduling.scheduling['my-schedule'].$get({
+        query: { ...(window.from ? { from: window.from } : {}), weeks: window.weeks },
+      });
+      if (!res.ok) return failure(res, 'Could not load your schedule');
+      return { ok: true, value: decodeMySchedule(await res.json()) };
     },
 
     /** Every team, for the team filter (AC-02). */

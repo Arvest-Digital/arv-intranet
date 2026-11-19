@@ -1,4 +1,4 @@
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, UserSearchIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { cn } from '~/shared/lib/utils';
 import { Button, buttonVariants } from '~/shared/ui/button';
@@ -16,6 +16,7 @@ import {
   type BoardParams,
   boardHref,
   type FilterOption,
+  FREE_DEFAULTS,
   TYPE_LABEL,
   windowLabel,
   windowNav,
@@ -166,7 +167,8 @@ function projectSections(projects: ReadonlyArray<FilterOption>) {
 /**
  * The board's toolbar: grouping (by people / by project, AC-02b), the week window (a week at a
  * time within the limits, AC-01) with zoom presets that only set `weeks`, and the team / project
- * filters (AC-02). Every control is a URL change; the loader does the rest (ADR-0002).
+ * filters (AC-02), and «Who's free», which opens the free-list drawer (US-02). Every control is a
+ * URL change; the loader does the rest (ADR-0002).
  */
 export function BoardToolbar({
   params,
@@ -267,6 +269,16 @@ export function BoardToolbar({
           </Button>
         ) : null}
       </div>
+      <Link
+        to={boardHref(params, { free: params.free ?? FREE_DEFAULTS })}
+        preventScrollReset
+        aria-haspopup="dialog"
+        aria-expanded={params.free !== null}
+        className={buttonVariants({ variant: 'outline', size: 'sm', className: 'ml-auto' })}
+      >
+        <UserSearchIcon aria-hidden="true" />
+        Who’s free
+      </Link>
     </div>
   );
 }
