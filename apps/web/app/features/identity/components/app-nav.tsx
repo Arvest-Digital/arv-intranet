@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/shared/ui/dropdown-menu';
-import { canManageAccess, canManageEmployeeRecords } from '../gate';
+import { canManageAccess, canManageEmployeeRecords, canReadProjects } from '../gate';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -52,6 +52,11 @@ export function AppNav({ me }: { me: Me }) {
         {canManageEmployeeRecords(me) ? (
           <NavLink to="/people" className={linkClass}>
             People
+          </NavLink>
+        ) : null}
+        {canReadProjects(me) ? (
+          <NavLink to="/projects" className={linkClass}>
+            Projects
           </NavLink>
         ) : null}
         {/* Anyone signed in reads the holiday list; adding and removing are checked there (AC-28). */}

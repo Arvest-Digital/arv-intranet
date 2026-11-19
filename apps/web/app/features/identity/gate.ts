@@ -9,6 +9,15 @@ export const canManageAccess = (me: Me) => me.permissions.includes(MANAGE_ACCESS
 export const canManageEmployeeRecords = (me: Me) =>
   me.permissions.includes('org:manage-employee-records');
 
+/**
+ * Shows «Projects» in the navigation: project upkeep and the board's readers may list them
+ * (openapi `listProjects`, AC-26).
+ */
+export const canReadProjects = (me: Me) =>
+  ['projects:manage-projects', 'scheduling:view-whole-board', 'scheduling:edit-allocations'].some(
+    (permission) => me.permissions.includes(permission),
+  );
+
 export {
   ACCESS_REMOVED,
   MISSING_PERMISSION,
