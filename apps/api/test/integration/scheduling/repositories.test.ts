@@ -135,6 +135,37 @@ describe('DrizzleAllocationRepository: write and read the aggregate', () => {
     expect(Option.getOrThrow(found)).toEqual(stored);
   });
 
+  it('insertMany: 2,500 allocations in batches, ids in input order, each with its segments (flow 13)', async () => {
+    const inputs = Array.from({ length: 2500 }, (_, i) => ({
+      employeeId: i % 2 === 0 ? EMPLOYEE : OTHER_EMPLOYEE,
+      projectId: i % 3 === 0 ? PROJECT : OTHER_PROJECT,
+      segments: [new Segment(seg('2026-11-16', '2026-12-31', 15 * (1 + (i % 32))))] as const,
+    }));
+    const ids = await run(
+      Effect.flatMap(AllocationRepository, (repo) => repo.insertMany(inputs, CHANGER)),
+    );
+
+    expect(ids).toHaveLength(2500);
+    expect(new Set(ids).size).toBe(2500);
+    expect(await countRows('allocations')).toBe(2500);
+    expect(await countRows('allocation_segments')).toBe(2500);
+    for (const i of [0, 1, 999, 1000, 2499]) {
+      const found = Option.getOrThrow(
+        await run(Effect.flatMap(AllocationRepository, (repo) => repo.findById(ids[i]!))),
+      );
+      expect(found.allocation).toMatchObject({
+        employeeId: inputs[i]!.employeeId,
+        projectId: inputs[i]!.projectId,
+        version: 1,
+        segments: [{ rateMinutes: 15 * (1 + (i % 32)) }],
+      });
+      expect(found.lastChangedBy).toBe(CHANGER);
+    }
+    expect(
+      await run(Effect.flatMap(AllocationRepository, (repo) => repo.insertMany([], CHANGER))),
+    ).toEqual([]);
+  });
+
   it('finds nothing for an unknown id', async () => {
     const found = await run(Effect.flatMap(AllocationRepository, (repo) => repo.findById(UNKNOWN)));
     expect(Option.isNone(found)).toBe(true);
@@ -449,6 +480,33 @@ describe('DrizzleAllocationHistoryRepository (AC-16)', () => {
   });
 });
 
+describe('DrizzleAllocationHistoryRepository.appendMany (flow 13)', () => {
+  it('appends every entry in batches', async () => {
+    const [id] = await seed({ segments: [seg('2026-11-16', '2026-12-31')] });
+    const entries = Array.from({ length: 1500 }, () => ({
+      allocationId: id!,
+      employeeId: EMPLOYEE,
+      projectId: PROJECT,
+      changedBy: CHANGER,
+      entry: new HistoryEntry({
+        changeKind: 'imported',
+        effectiveFrom: null,
+        before: null,
+        after: [new Segment(seg('2026-11-16', '2026-12-31'))],
+      }),
+    }));
+    await run(Effect.flatMap(AllocationHistoryRepository, (repo) => repo.appendMany(entries)));
+
+    expect(await countRows('allocation_history', "change_kind = 'imported'")).toBe(1500);
+    const listed = await run(
+      Effect.flatMap(AllocationHistoryRepository, (repo) =>
+        repo.listForAllocation(id!, new Date(0)),
+      ),
+    );
+    expect(listed[0]?.entry).toEqual(entries[0]!.entry);
+  });
+});
+
 describe('DrizzleImportRunRepository (AC-32)', () => {
   const report = {
     importedBy: CHANGER,
@@ -457,12 +515,14 @@ describe('DrizzleImportRunRepository (AC-32)', () => {
     allocationsCreated: 5,
   };
 
-  it('records one completed run and reports that it exists', async () => {
-    const repo = (f: (r: ImportRunRepository['Type']) => Effect.Effect<unknown>) =>
+  it('records one completed run and finds it', async () => {
+    const repo = <A>(f: (r: ImportRunRepository['Type']) => Effect.Effect<A>) =>
       run(Effect.flatMap(ImportRunRepository, f));
-    expect(await repo((r) => r.exists())).toBe(false);
-    await repo((r) => r.insert(report));
-    expect(await repo((r) => r.exists())).toBe(true);
+    expect(await repo((r) => r.findCompleted())).toEqual(Option.none());
+    const stored = await repo((r) => r.insert(report));
+    expect(stored).toMatchObject(report);
+    expect(stored.createdAt).toBeInstanceOf(Date);
+    expect(await repo((r) => r.findCompleted())).toEqual(Option.some(stored));
   });
 
   it('refuses a second run as a defect (the one-time unique index)', async () => {

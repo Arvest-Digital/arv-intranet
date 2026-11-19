@@ -10,6 +10,7 @@ import {
   AllocationHistoryPage,
   Board,
   FreeList,
+  ImportStatus,
   MySchedule,
 } from '@arv/contracts/scheduling';
 import { ApiErrorBody } from '@arv/contracts/shared';
@@ -343,6 +344,15 @@ const MATRIX: Record<string, ReadCheck> = {
     );
     if (!mayListLeaveProjects(v)) expectNoSickLeave(v, res.text);
   },
+
+  // AC-32: edit-allocations only; names nobody's schedule, so nothing to redact.
+  async getImportStatus(v) {
+    const res = await get('/scheduling/import', v);
+    expectNoSickLeave(v, res.text);
+    if (!holds(v, 'E')) return expectForbidden(res, 'scheduling');
+    expectStatus(res, 200);
+    expect(decode(ImportStatus, res.text)).toEqual({ completed: false, run: null });
+  },
 };
 
 /**
@@ -350,9 +360,7 @@ const MATRIX: Record<string, ReadCheck> = {
  * Each must still answer 404 `platform.not_found`: once its route is mounted, that test fails
  * until the operation moves into `MATRIX`.
  */
-const NOT_YET_MOUNTED: Record<string, { readonly path: string; readonly task: string }> = {
-  getImportStatus: { path: '/scheduling/import', task: 'T34' },
-};
+const NOT_YET_MOUNTED: Record<string, { readonly path: string; readonly task: string }> = {};
 
 /** The `operationId` of every `get` operation in openapi.yaml. */
 const readOperations = (yaml: string): string[] => {
