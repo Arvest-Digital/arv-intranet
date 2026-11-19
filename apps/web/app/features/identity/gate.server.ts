@@ -1,9 +1,10 @@
-import { IdentityErrorCodes, type Me } from '@arv/contracts/identity';
-import { data, redirect } from 'react-router';
-import type { ApiFailure } from '~/shared/lib/api.server';
-import { destroySession, getSessionToken } from '~/shared/lib/session.server';
-import { ACCESS_REMOVED, MISSING_PERMISSION } from './gate';
+import type { Me } from '@arv/contracts/identity';
+import { refuse, signInRedirect } from '~/shared/lib/refusal.server';
+import { getSessionToken } from '~/shared/lib/session.server';
 import { identityGateway } from './identity.server';
+
+/** Feature loaders use it from `~/shared/lib/refusal.server`; re-exported for identity's own. */
+export { refusalResponse } from '~/shared/lib/refusal.server';
 
 /** The only pages outside the gate (ADR-0002): they must render without a session. */
 const PUBLIC_PATHS = new Set(['/sign-in', '/sign-in/return', '/sign-out']);
@@ -31,30 +32,4 @@ export async function gate(request: Request, api: Fetcher): Promise<Me | null> {
   const me = await identityGateway(api, token).getMe();
   if (me.ok) return me.value;
   throw await refuse(me, url);
-}
-
-/**
- * For feature loaders and actions: turns a refused api call into the same answer the gate gives,
- * and a 403 into «you lack the permission» (AC-08). Returns null for other failures, which the
- * caller handles itself.
- */
-export async function refusalResponse(failed: ApiFailure, request: Request) {
-  if (failed.status === 401 || failed.status === 403) return refuse(failed, new URL(request.url));
-  return null;
-}
-
-async function refuse(failed: ApiFailure, url: URL) {
-  if (failed.status === 401) {
-    const clearCookie = { 'Set-Cookie': await destroySession() };
-    return failed.code === IdentityErrorCodes.accessRemoved
-      ? data(ACCESS_REMOVED, { status: 401, headers: clearCookie })
-      : signInRedirect(url, clearCookie);
-  }
-  if (failed.status === 403) return data(MISSING_PERMISSION, { status: 403 });
-  return data('Something went wrong', { status: 502 });
-}
-
-function signInRedirect(url: URL, headers?: HeadersInit) {
-  const query = new URLSearchParams({ returnTo: url.pathname + url.search });
-  return redirect(`/sign-in?${query}`, { headers });
 }

@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/shared/ui/dropdown-menu';
-import { canManageAccess } from '../gate';
+import { canManageAccess, canManageEmployeeRecords } from '../gate';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -49,6 +49,11 @@ export function AppNav({ me }: { me: Me }) {
         <NavLink to="/" end className={linkClass}>
           Home
         </NavLink>
+        {canManageEmployeeRecords(me) ? (
+          <NavLink to="/people" className={linkClass}>
+            People
+          </NavLink>
+        ) : null}
         {canManageAccess(me) ? (
           <NavLink
             to="/access/users"
