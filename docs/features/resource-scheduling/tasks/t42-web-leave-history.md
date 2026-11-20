@@ -7,7 +7,7 @@ acs: ["AC-15", "AC-16", "AC-29"]
 files_hint: ["apps/web/app/features/scheduling/components/leave-dialog*", "apps/web/app/features/scheduling/components/history-panel*"]
 owner: "TBD (frontend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T42 — Build the leave dialog and the allocation history panel
@@ -28,9 +28,11 @@ Files: `apps/web/app/features/scheduling/components/leave-dialog*`, `apps/web/ap
 
 ## Definition of Done
 
-- [ ] Route/component tests: leave-day conflict confirm names the work allocations (AC-15), history renders trim and imported entries (AC-16), redacted entry shows «away» (AC-29).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Route/component tests: leave-day conflict confirm names the work allocations (AC-15), history renders trim and imported entries (AC-16), redacted entry shows «away» (AC-29).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 
-- —
+- «Book leave» sits in the board toolbar beside «New allocation» (editors only); it posts `intent=leave` to the board's allocation action (`/schedule/allocations`), which calls `POST /scheduling/leave`. Work on the leave days comes back as `ConfirmationRequired`; the confirm view names each work allocation and its days, plus any overbooked weeks, and «Book anyway» resends with `confirm`.
+- The day summary lists the weekdays in the range and the weekends it skips. The web has no holiday calendar or working pattern, so unlike the design it shows no exact working-day count or hours and says that holidays and days off are skipped too.
+- «History» is in every allocation's details popover, viewers included, and opens a right sheet. Its data comes from the resource route `/schedule/allocations/:allocationId/history`, which reads every page and lists them newest first. A trim's note names the project and who closed it; an import's note names the importer.
