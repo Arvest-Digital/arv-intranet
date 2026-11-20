@@ -22,6 +22,7 @@ export default [
     'features/scheduling/routes/allocation-history.ts',
   ),
   route('my-schedule', 'features/scheduling/routes/my-schedule.tsx'),
+  route('import', 'features/scheduling/routes/import.tsx'),
   route('theme', 'routes/theme.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),

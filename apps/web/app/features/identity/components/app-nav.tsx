@@ -13,7 +13,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '~/shared/ui/dropdown-menu';
-import { canManageAccess, canManageEmployeeRecords, canReadProjects, canViewBoard } from '../gate';
+import {
+  canImport,
+  canManageAccess,
+  canManageEmployeeRecords,
+  canReadProjects,
+  canViewBoard,
+} from '../gate';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -61,6 +67,11 @@ export function AppNav({ me }: { me: Me }) {
         {canManageEmployeeRecords(me) ? (
           <NavLink to="/people" className={linkClass}>
             People
+          </NavLink>
+        ) : null}
+        {canImport(me) ? (
+          <NavLink to="/import" className={linkClass}>
+            Import
           </NavLink>
         ) : null}
         {canReadProjects(me) ? (

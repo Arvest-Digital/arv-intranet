@@ -10,6 +10,8 @@ import {
   AllocationRemoval,
   Board,
   FreeList,
+  ImportResult,
+  ImportStatus,
   type LeaveBooking,
   MySchedule,
 } from '@arv/contracts/scheduling';
@@ -25,6 +27,8 @@ const decodeMySchedule = Schema.decodeUnknownSync(MySchedule);
 const decodeAllocation = Schema.decodeUnknownSync(Allocation);
 const decodeRemoval = Schema.decodeUnknownSync(AllocationRemoval);
 const decodeHistoryPage = Schema.decodeUnknownSync(AllocationHistoryPage);
+const decodeImportStatus = Schema.decodeUnknownSync(ImportStatus);
+const decodeImportResult = Schema.decodeUnknownSync(ImportResult);
 const decodeTeamPage = Schema.decodeUnknownSync(TeamPage);
 const decodeProjectPage = Schema.decodeUnknownSync(ProjectPage);
 
@@ -177,6 +181,30 @@ export function schedulingGateway(api: Fetcher, sessionToken: string | null) {
         if (!res.ok) return failure(res, 'Could not load the history');
         return { ok: true, value: decodeHistoryPage(await res.json()) };
       });
+    },
+
+    /**
+     * Whether the one-time import has run, and its run when it has (AC-32). Without all three
+     * import permissions it answers 403 naming each one missing (AC-33).
+     */
+    async getImportStatus(): Promise<ApiResult<ImportStatus>> {
+      const res = await scheduling.scheduling.import.$get();
+      if (!res.ok) return failure(res, 'Could not load the import');
+      return { ok: true, value: decodeImportStatus(await res.json()) };
+    },
+
+    /**
+     * Uploads the planning spreadsheet (US-11). Without `confirm` nothing is saved: a clean file
+     * answers 409 `import_confirmation_required` with the preview (AC-30), problem rows 400
+     * `import_problem_rows` (AC-31), a finished import 409 `import_already_completed` (AC-32).
+     * With `confirm` the same file is imported in one step.
+     */
+    async importSpreadsheet(file: File, confirm: boolean): Promise<ApiResult<ImportResult>> {
+      const res = await scheduling.scheduling.import.$post({
+        form: { file, confirm: confirm ? 'true' : 'false' },
+      });
+      if (!res.ok) return failure(res, 'Could not import the spreadsheet');
+      return { ok: true, value: decodeImportResult(await res.json()) };
     },
 
     /** Every team, for the team filter (AC-02). */

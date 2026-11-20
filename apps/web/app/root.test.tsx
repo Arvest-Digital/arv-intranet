@@ -30,6 +30,22 @@ describe('navigation by permission (AC-08)', () => {
     expect(await screen.findByRole('link', { name: 'Access' })).toBeTruthy();
   });
 
+  it('shows «Import» only with all three import permissions (AC-33)', async () => {
+    const all = [
+      'scheduling:edit-allocations',
+      'org:manage-employee-records',
+      'projects:manage-projects',
+    ];
+    renderNav(all);
+    expect(await screen.findByRole('link', { name: 'Import' })).toBeTruthy();
+    for (const left of all) {
+      cleanup();
+      renderNav(all.filter((p) => p !== left));
+      expect(await screen.findByRole('link', { name: 'Home' })).toBeTruthy();
+      expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
+    }
+  });
+
   it('puts the signed-in user and the sign-out menu in the nav', async () => {
     renderNav([]);
     expect(await screen.findByRole('button', { name: 'Ann' })).toBeTruthy();

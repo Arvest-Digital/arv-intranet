@@ -24,6 +24,15 @@ export const canReadProjects = (me: Me) =>
     (permission) => me.permissions.includes(permission),
   );
 
+/**
+ * Shows «Import»: the one-time import creates employee records, projects and allocations, so it
+ * needs all three permissions (AC-33). Whether it has run already is the page's to say.
+ */
+export const canImport = (me: Me) =>
+  ['scheduling:edit-allocations', 'org:manage-employee-records', 'projects:manage-projects'].every(
+    (permission) => me.permissions.includes(permission),
+  );
+
 export {
   ACCESS_REMOVED,
   MISSING_PERMISSION,
