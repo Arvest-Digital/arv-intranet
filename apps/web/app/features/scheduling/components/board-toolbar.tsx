@@ -118,11 +118,10 @@ function FilterMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={
-          <Button variant="outline" size="sm" aria-label={`${label}: ${current?.name ?? 'All'}`} />
-        }
+        // Named by its visible text, «Team All» (WCAG 2.5.3, label in name).
+        render={<Button variant="outline" size="sm" />}
       >
-        <span className="font-normal text-muted-foreground">{label}</span>
+        <span className="font-normal text-muted-foreground">{label}</span>{' '}
         <span className="max-w-40 truncate">{current?.name ?? 'All'}</span>
         <ChevronDownIcon aria-hidden="true" className="text-muted-foreground" />
       </DropdownMenuTrigger>
