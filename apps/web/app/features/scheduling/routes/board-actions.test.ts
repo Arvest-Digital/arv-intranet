@@ -308,3 +308,109 @@ describe('allocation action: change and remove', () => {
     expect(api.requests).toHaveLength(0);
   });
 });
+
+describe('allocation action: leave (AC-15)', () => {
+  const SICK_LEAVE = '01933b8e-0000-7000-8000-000000000509';
+  const leave = {
+    intent: 'leave',
+    employeeId: EMPLOYEE,
+    projectId: SICK_LEAVE,
+    projectName: 'Sick leave',
+    startsOn: '2026-11-30',
+    endsOn: '2026-12-02',
+  };
+  const leaveBody = () =>
+    allocationBody({
+      project: { id: SICK_LEAVE, name: 'Sick leave', type: 'leave' },
+      away: true,
+      segments: [
+        {
+          startsOn: '2026-11-30',
+          endsOn: '2026-12-02',
+          rateMinutes: null,
+          ratePeriod: 'full-day',
+        },
+      ],
+    });
+
+  it('books whole days on the leave project, with no hours', async () => {
+    const api = fakeApi(() => json(leaveBody(), 201));
+    expect(await submit(api, leave)).toEqual({
+      ok: true,
+      intent: 'leave',
+      allocationId: ALLOCATION,
+    });
+    const sent = api.requests[0]!;
+    expect(sent.method).toBe('POST');
+    expect(new URL(sent.url).pathname).toBe('/scheduling/leave');
+    expect(await sent.json()).toEqual({
+      employeeId: EMPLOYEE,
+      projectId: SICK_LEAVE,
+      startsOn: '2026-11-30',
+      endsOn: '2026-12-02',
+    });
+  });
+
+  it('answers the work on the leave days to confirm, then resends with confirm', async () => {
+    const api = fakeApi(() =>
+      apiError(
+        'ConfirmationRequired',
+        'scheduling.overbooking_confirmation_required',
+        '1 work allocation falls on the leave days',
+        409,
+        {
+          overbookedWeeks: [],
+          workOnLeaveDays: [
+            { allocationId: ALLOCATION, project: ATLAS, days: ['2026-11-30', '2026-12-01'] },
+          ],
+        },
+      ),
+    );
+    const result = await submit(api, leave);
+    expect(status(result)).toBe(409);
+    expect(body(result)).toEqual({
+      ok: false,
+      kind: 'confirm',
+      weeks: [],
+      onLeave: [
+        { projectId: ATLAS.id, projectName: ATLAS.name, days: ['2026-11-30', '2026-12-01'] },
+      ],
+    });
+    await submit(api, { ...leave, confirm: 'true' });
+    expect(await api.requests[1]!.json()).toMatchObject({ confirm: true });
+  });
+
+  it('checks the person, leave type and dates before calling the api', async () => {
+    const api = fakeApi(() => json(leaveBody(), 201));
+    const result = await submit(api, { intent: 'leave', employeeId: '', projectId: '' });
+    expect(status(result)).toBe(400);
+    expect(body(result)).toEqual({
+      ok: false,
+      kind: 'invalid',
+      fieldErrors: {
+        employeeId: [ALLOCATION_MESSAGE.employee],
+        projectId: [ALLOCATION_MESSAGE.leaveType],
+        startsOn: [ALLOCATION_MESSAGE.date],
+        endsOn: [ALLOCATION_MESSAGE.date],
+      },
+    });
+    expect(api.requests).toHaveLength(0);
+  });
+
+  it('puts a work project under the leave type field', async () => {
+    const api = fakeApi(() =>
+      apiError(
+        'ValidationError',
+        'scheduling.not_a_leave_project',
+        'Leave can only be booked on a leave-type project',
+        400,
+        { rules: ['not_a_leave_project'] },
+      ),
+    );
+    expect(body(await submit(api, { ...leave, projectId: ATLAS.id }))).toEqual({
+      ok: false,
+      kind: 'invalid',
+      fieldErrors: { projectId: [ALLOCATION_MESSAGE.rules.not_a_leave_project] },
+    });
+  });
+});

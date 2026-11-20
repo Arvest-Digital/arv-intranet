@@ -885,7 +885,7 @@ function RemoveBody({
   );
 }
 
-function FieldShell({
+export function FieldShell({
   label,
   htmlFor,
   messageId,
@@ -939,7 +939,7 @@ function ReadOnlyField({ label, children }: { label: string; children: React.Rea
   );
 }
 
-function DateInput({
+export function DateInput({
   id,
   value,
   min,
@@ -977,7 +977,7 @@ function DateInput({
 }
 
 /** A project's colour as a small square, or the dashed one for leave. */
-function ProjectSwatch({ projectId }: { projectId: string | undefined }) {
+export function ProjectSwatch({ projectId }: { projectId: string | undefined }) {
   return (
     <span
       aria-hidden="true"

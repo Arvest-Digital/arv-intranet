@@ -5,9 +5,12 @@ import {
   Allocation,
   type AllocationChange,
   type AllocationCreate,
+  type AllocationHistoryEntry,
+  AllocationHistoryPage,
   AllocationRemoval,
   Board,
   FreeList,
+  type LeaveBooking,
   MySchedule,
 } from '@arv/contracts/scheduling';
 import { PAGE_LIMIT_MAX } from '@arv/contracts/shared';
@@ -21,6 +24,7 @@ const decodeFreeList = Schema.decodeUnknownSync(FreeList);
 const decodeMySchedule = Schema.decodeUnknownSync(MySchedule);
 const decodeAllocation = Schema.decodeUnknownSync(Allocation);
 const decodeRemoval = Schema.decodeUnknownSync(AllocationRemoval);
+const decodeHistoryPage = Schema.decodeUnknownSync(AllocationHistoryPage);
 const decodeTeamPage = Schema.decodeUnknownSync(TeamPage);
 const decodeProjectPage = Schema.decodeUnknownSync(ProjectPage);
 
@@ -145,6 +149,34 @@ export function schedulingGateway(api: Fetcher, sessionToken: string | null) {
       });
       if (!res.ok) return failure(res, 'Could not remove the allocation');
       return { ok: true, value: decodeRemoval(await res.json()) };
+    },
+
+    /**
+     * Books whole working days of leave on an open leave-type project (AC-15). Work on the leave
+     * days answers 409 `ConfirmationRequired` with `workOnLeaveDays` until re-sent with
+     * `confirm: true`; a work project answers 400 `not_a_leave_project`.
+     */
+    async bookLeave(body: LeaveBooking): Promise<ApiResult<Allocation>> {
+      const res = await scheduling.scheduling.leave.$post({ json: body });
+      if (!res.ok) return failure(res, 'Could not book the leave');
+      return { ok: true, value: decodeAllocation(await res.json()) };
+    },
+
+    /**
+     * An allocation's changes over the last 12 months, oldest first, every page (AC-16); leave
+     * the viewer may not see the type of comes as «away» with no project (AC-29).
+     */
+    listAllocationHistory(
+      allocationId: string,
+    ): Promise<ApiResult<ReadonlyArray<AllocationHistoryEntry>>> {
+      return everyPage(async (after) => {
+        const res = await scheduling.scheduling.allocations[':allocationId'].history.$get({
+          param: { allocationId },
+          query: pageQuery(after),
+        });
+        if (!res.ok) return failure(res, 'Could not load the history');
+        return { ok: true, value: decodeHistoryPage(await res.json()) };
+      });
     },
 
     /** Every team, for the team filter (AC-02). */

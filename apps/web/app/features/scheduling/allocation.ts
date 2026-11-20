@@ -17,7 +17,11 @@ export type OverWeek = {
 };
 
 /** A work allocation with hours on leave days (AC-15). */
-export type OnLeave = { readonly projectName: string; readonly days: ReadonlyArray<string> };
+export type OnLeave = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly days: ReadonlyArray<string>;
+};
 
 /** An allocation's values as the conflict view compares them (AC-07b). */
 export type AllocationValues = {
@@ -31,7 +35,11 @@ export type AllocationValues = {
 
 /** What the board's allocation action answers the dialog. */
 export type AllocationActionResult =
-  | { readonly ok: true; readonly intent: 'create' | 'change'; readonly allocationId: string }
+  | {
+      readonly ok: true;
+      readonly intent: 'create' | 'change' | 'leave';
+      readonly allocationId: string;
+    }
   | {
       readonly ok: true;
       readonly intent: 'remove';
@@ -68,6 +76,7 @@ export type AllocationActionResult =
 export const ALLOCATION_MESSAGE = {
   employee: 'Choose a person',
   project: 'Choose an open project',
+  leaveType: 'Choose a leave type',
   date: 'Enter a date as YYYY-MM-DD',
   rate: 'Enter the hours',
   quarter: 'Hours must be a multiple of 0.25',

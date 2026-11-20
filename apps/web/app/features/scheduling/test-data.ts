@@ -6,6 +6,7 @@ import type {
   CellState,
   MySchedule,
 } from '@arv/contracts/scheduling';
+import type { HistoryEntry } from './history';
 
 // A board for W47–W48 2026 (Mon 16 Nov, Mon 23 Nov) used by the scheduling tests.
 
@@ -165,3 +166,117 @@ export function mySchedule(): MySchedule {
     ],
   };
 }
+
+// ---------- allocation history (T42) ----------
+
+// History entries for the T42 tests: Atlas CRM for Olena, imported, trimmed when Atlas closed,
+// then changed; and Sofia's leave as a viewer without see-leave-reasons gets it (AC-29).
+
+const HISTORY_OLENA = {
+  id: '01933b8e-0000-7000-8000-000000000301',
+  fullName: 'Olena Kovalenko',
+  team: null,
+};
+const SOFIA = {
+  id: '01933b8e-0000-7000-8000-000000000302',
+  fullName: 'Sofia Lys',
+  team: null,
+};
+const MARKO = { id: '01933b8e-0000-7000-8000-000000000201', name: 'Marko Ivanov' };
+const ANDRII = { id: '01933b8e-0000-7000-8000-000000000202', name: 'Andrii Melnyk' };
+
+export const ATLAS_ALLOCATION = '01933b8e-0000-7000-8000-000000000601';
+export const LEAVE_ALLOCATION = '01933b8e-0000-7000-8000-000000000602';
+
+const week = (startsOn: string, endsOn: string, hours: number) => ({
+  startsOn,
+  endsOn,
+  rateMinutes: hours * 60,
+  ratePeriod: 'week' as const,
+});
+
+const away = (startsOn: string, endsOn: string) => ({
+  startsOn,
+  endsOn,
+  rateMinutes: null,
+  ratePeriod: 'full-day' as const,
+});
+
+/** Atlas CRM's history, oldest first, as the api sends it. */
+export const atlasHistory: ReadonlyArray<HistoryEntry> = [
+  {
+    id: '01933b8e-0000-7000-8000-000000000801',
+    allocationId: ATLAS_ALLOCATION,
+    employee: HISTORY_OLENA,
+    project: ATLAS,
+    away: false,
+    changeKind: 'imported',
+    effectiveFrom: null,
+    before: null,
+    after: [week('2026-10-01', '2026-12-31', 20)],
+    changedBy: ANDRII,
+    createdAt: '2026-09-28T16:40:00.000Z',
+  },
+  {
+    id: '01933b8e-0000-7000-8000-000000000802',
+    allocationId: ATLAS_ALLOCATION,
+    employee: HISTORY_OLENA,
+    project: ATLAS,
+    away: false,
+    changeKind: 'trimmed',
+    effectiveFrom: '2026-12-01',
+    before: [week('2026-10-01', '2026-12-31', 20)],
+    after: [week('2026-10-01', '2026-11-30', 20)],
+    changedBy: ANDRII,
+    createdAt: '2026-11-02T10:15:00.000Z',
+  },
+  {
+    id: '01933b8e-0000-7000-8000-000000000803',
+    allocationId: ATLAS_ALLOCATION,
+    employee: HISTORY_OLENA,
+    project: ATLAS,
+    away: false,
+    changeKind: 'changed',
+    effectiveFrom: '2026-11-18',
+    before: [week('2026-10-01', '2026-11-30', 20)],
+    after: [week('2026-10-01', '2026-11-17', 20), week('2026-11-18', '2026-11-30', 10)],
+    changedBy: MARKO,
+    createdAt: '2026-11-18T14:32:00.000Z',
+  },
+];
+
+/** Sofia's sick leave as a viewer without see-leave-reasons gets it: no project (AC-29). */
+export const redactedLeaveHistory: ReadonlyArray<HistoryEntry> = [
+  {
+    id: '01933b8e-0000-7000-8000-000000000811',
+    allocationId: LEAVE_ALLOCATION,
+    employee: SOFIA,
+    project: null,
+    away: true,
+    changeKind: 'created',
+    effectiveFrom: null,
+    before: null,
+    after: [away('2026-11-12', '2026-11-12')],
+    changedBy: MARKO,
+    createdAt: '2026-11-12T08:05:00.000Z',
+  },
+  {
+    id: '01933b8e-0000-7000-8000-000000000812',
+    allocationId: LEAVE_ALLOCATION,
+    employee: SOFIA,
+    project: null,
+    away: true,
+    changeKind: 'changed',
+    effectiveFrom: '2026-11-13',
+    before: [away('2026-11-12', '2026-11-12')],
+    after: [away('2026-11-12', '2026-11-13')],
+    changedBy: MARKO,
+    createdAt: '2026-11-13T09:20:00.000Z',
+  },
+];
+
+/** The same leave for a viewer who may see its type. */
+export const visibleLeaveHistory: ReadonlyArray<HistoryEntry> = redactedLeaveHistory.map((e) => ({
+  ...e,
+  project: SICK,
+}));

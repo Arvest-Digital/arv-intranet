@@ -1,5 +1,12 @@
 import type { BoardAllocation, BoardCell } from '@arv/contracts/scheduling';
-import { PencilIcon, PlusIcon, Trash2Icon, TriangleAlertIcon, XIcon } from 'lucide-react';
+import {
+  HistoryIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+  XIcon,
+} from 'lucide-react';
 import { createContext, useContext } from 'react';
 import { projectColorStyle } from '~/shared/lib/project-color';
 import { cn } from '~/shared/lib/utils';
@@ -15,15 +22,18 @@ import { allocationTerms, changedAtText, firstName, rateText } from '../allocati
 import { allocationName, hours, mondayOf, TYPE_LABEL, weekName } from '../board';
 import type { AllocationDialogState } from './allocation-dialog';
 import { TypeChip } from './board-cell';
+import type { HistoryTarget } from './history-panel';
 
 /**
- * What the board offers to edit: set by the board route for holders of edit-allocations, absent
- * for viewers (and in tests that render the grid alone), so the grid shows no edit controls.
+ * What the board offers on an allocation: set by the board route (absent in tests that render the
+ * grid alone, so the grid shows no controls). Everyone on the board may open the history (US-05);
+ * only holders of edit-allocations get the edit controls.
  */
 export type AllocationEditing = {
   readonly canEdit: boolean;
   readonly today: string;
   readonly open: (state: AllocationDialogState) => void;
+  readonly openHistory: (target: HistoryTarget) => void;
 };
 
 export const AllocationEditingContext = createContext<AllocationEditing | null>(null);
@@ -63,8 +73,8 @@ export function NewAllocationCellButton({
 
 /**
  * An allocation's block as a button that opens its details (US-03): dates, rate, last changed by
- * (AC-07), the week's overbooking, and — for editors — «Edit» and «Remove». Leave is changed with
- * «Book leave», so a leave allocation offers only «Remove».
+ * (AC-07), the week's overbooking, «History» for everyone (US-05) and — for editors — «Edit» and
+ * «Remove». Leave is changed with «Book leave», so a leave allocation offers no «Edit».
  */
 export function AllocationPopover({
   allocation,
@@ -171,18 +181,25 @@ export function AllocationPopover({
             This week is in the past. Past weeks are view only.
           </p>
         ) : null}
-        {mayEdit ? (
-          <div className="mt-3 flex items-center gap-1 border-t border-border pt-3">
-            {allocation.away ? null : (
-              <PopoverClose
-                render={<Button variant="outline" size="sm" />}
-                onClick={() => editing.open({ mode: 'edit', target })}
-              >
-                <PencilIcon aria-hidden="true" />
-                Edit
-              </PopoverClose>
-            )}
-            <span className="grow" />
+        <div className="mt-3 flex items-center gap-1 border-t border-border pt-3">
+          {mayEdit && !allocation.away ? (
+            <PopoverClose
+              render={<Button variant="outline" size="sm" />}
+              onClick={() => editing.open({ mode: 'edit', target })}
+            >
+              <PencilIcon aria-hidden="true" />
+              Edit
+            </PopoverClose>
+          ) : null}
+          <PopoverClose
+            render={<Button variant="ghost" size="sm" aria-haspopup="dialog" />}
+            onClick={() => editing.openHistory({ allocation, employeeName })}
+          >
+            <HistoryIcon aria-hidden="true" />
+            History
+          </PopoverClose>
+          <span className="grow" />
+          {mayEdit ? (
             <PopoverClose
               render={
                 <Button
@@ -196,8 +213,8 @@ export function AllocationPopover({
               <Trash2Icon aria-hidden="true" />
               Remove
             </PopoverClose>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </PopoverContent>
     </Popover>
   );

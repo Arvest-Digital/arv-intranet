@@ -49,6 +49,7 @@ export function allocationFailure(
           kind: 'confirm',
           weeks: impact.overbookedWeeks.map((w) => ({ ...w })),
           onLeave: impact.workOnLeaveDays.map((w) => ({
+            projectId: w.project.id,
             projectName: w.project.name,
             days: [...w.days],
           })),

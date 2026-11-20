@@ -1,5 +1,5 @@
 import { type FreeList, SchedulingErrorCodes } from '@arv/contracts/scheduling';
-import { CircleCheckIcon, LockIcon, PlusIcon, XIcon } from 'lucide-react';
+import { CircleCheckIcon, LockIcon, PlaneIcon, PlusIcon, XIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { data, useNavigate, useRouteLoaderData, useSearchParams } from 'react-router';
 import type { ApiResult } from '~/shared/lib/api.server';
@@ -35,6 +35,8 @@ import {
 } from '../components/board-states';
 import { BoardToolbar } from '../components/board-toolbar';
 import { FreeListDrawer } from '../components/free-list-drawer';
+import { HistoryPanel, type HistoryTarget } from '../components/history-panel';
+import { LeaveDialog, type LeaveDialogState } from '../components/leave-dialog';
 import type { FreeListResult } from '../free-list';
 import { schedulingGateway } from '../scheduling.server';
 import type { Route } from './+types/board';
@@ -146,6 +148,8 @@ function BoardScreen({
   const navigate = useNavigate();
   const [search] = useSearchParams();
   const [dialog, setDialog] = useState<AllocationDialogState | null>(null);
+  const [leave, setLeave] = useState<LeaveDialogState | null>(null);
+  const [history, setHistory] = useState<HistoryTarget | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const { params, today, board, teams, projects, free } = loaderData;
   const permissions = me?.permissions ?? [];
@@ -173,6 +177,7 @@ function BoardScreen({
         setDone(null);
         setDialog(state);
       },
+      openHistory: setHistory,
     }),
     [canEdit, today],
   );
@@ -218,16 +223,35 @@ function BoardScreen({
             canSeeLeaveReasons={canSeeLeaveReasons}
             actions={
               canEdit ? (
-                <Button
-                  size="sm"
-                  aria-haspopup="dialog"
-                  onClick={() =>
-                    editing.open({ mode: 'create', employeeId: null, startsOn: null, endsOn: null })
-                  }
-                >
-                  <PlusIcon aria-hidden="true" />
-                  New allocation
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-haspopup="dialog"
+                    onClick={() => {
+                      setDone(null);
+                      setLeave({ employeeId: null });
+                    }}
+                  >
+                    <PlaneIcon aria-hidden="true" />
+                    Book leave
+                  </Button>
+                  <Button
+                    size="sm"
+                    aria-haspopup="dialog"
+                    onClick={() =>
+                      editing.open({
+                        mode: 'create',
+                        employeeId: null,
+                        startsOn: null,
+                        endsOn: null,
+                      })
+                    }
+                  >
+                    <PlusIcon aria-hidden="true" />
+                    New allocation
+                  </Button>
+                </>
               ) : null
             }
           />
@@ -272,6 +296,24 @@ function BoardScreen({
             onDone={setDone}
           />
         ) : null}
+        {canEdit ? (
+          <LeaveDialog
+            state={leave}
+            resources={resources}
+            projects={projects}
+            today={today}
+            onOpenChange={(open) => {
+              if (!open) setLeave(null);
+            }}
+            onDone={setDone}
+          />
+        ) : null}
+        <HistoryPanel
+          target={history}
+          onOpenChange={(open) => {
+            if (!open) setHistory(null);
+          }}
+        />
       </main>
     </AllocationEditingContext.Provider>
   );

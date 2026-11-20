@@ -33,7 +33,8 @@ export function loader() {
 
 /**
  * The board's allocation writes (ADR-0002: edits are route actions): `create` (AC-07), `change`
- * (AC-09b) and `remove` (AC-07a), each sent first without `confirm`; an overbooking answer is
+ * (AC-09b), `remove` (AC-07a) and `leave` (AC-15), each sent first without `confirm`; an
+ * overbooking or work-on-leave-days answer is
  * resent with `confirm=true` (AC-10, ADR-0010). Change and remove carry the `version` the
  * allocation was opened at, so a concurrent save is refused (AC-07b). The dates and hours are
  * checked here too, so plain mistakes never reach the api (AC-09).
@@ -80,6 +81,34 @@ export async function action({ request, context }: Route.ActionArgs) {
       return {
         ok: true,
         intent: 'create',
+        allocationId: result.value.id,
+      } satisfies AllocationActionResult;
+    }
+    return refused(result);
+  }
+
+  if (intent === 'leave') {
+    const employeeId = field(form, 'employeeId');
+    const projectId = field(form, 'projectId');
+    const startsOn = field(form, 'startsOn');
+    const endsOn = field(form, 'endsOn');
+    const fieldErrors: FieldErrors = {
+      ...(UUID.test(employeeId) ? {} : { employeeId: [ALLOCATION_MESSAGE.employee] }),
+      ...(UUID.test(projectId) ? {} : { projectId: [ALLOCATION_MESSAGE.leaveType] }),
+      ...dateErrors(startsOn, endsOn),
+    };
+    if (Object.keys(fieldErrors).length > 0) return invalid(fieldErrors);
+    const result = await gateway.bookLeave({
+      employeeId,
+      projectId,
+      startsOn,
+      endsOn,
+      ...(confirm ? { confirm: true } : {}),
+    });
+    if (result.ok) {
+      return {
+        ok: true,
+        intent: 'leave',
         allocationId: result.value.id,
       } satisfies AllocationActionResult;
     }

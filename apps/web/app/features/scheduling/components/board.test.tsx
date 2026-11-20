@@ -185,10 +185,15 @@ describe('board screens', () => {
 });
 
 describe('board editing (US-03)', () => {
-  const editing = (open: (state: AllocationDialogState) => void, canEdit = true) => ({
+  const editing = (
+    open: (state: AllocationDialogState) => void,
+    canEdit = true,
+    openHistory = vi.fn(),
+  ) => ({
     canEdit,
     today: '2026-11-18',
     open,
+    openHistory,
   });
 
   it('opens an allocation’s details from its block, then Edit or Remove', async () => {
@@ -215,6 +220,26 @@ describe('board editing (US-03)', () => {
         mode: 'edit',
         target: expect.objectContaining({ employeeName: 'Taras Melnyk' }),
       }),
+    );
+  });
+
+  it('opens an allocation’s history from its details, for viewers too (US-05)', async () => {
+    const openHistory = vi.fn();
+    renderAt(
+      <AllocationEditingContext.Provider value={editing(vi.fn(), false, openHistory)}>
+        <PeopleGrid board={everyStateBoard()} currentMonday={W47} />
+      </AllocationEditingContext.Provider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Show allocations for Taras Melnyk' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Cobalt billing, 24h in W47 2026. Open details' }),
+    );
+    const details = await screen.findByRole('dialog', { name: 'Cobalt billing' });
+    expect(within(details).queryByRole('button', { name: 'Edit' })).toBeNull();
+    await user.click(within(details).getByRole('button', { name: 'History' }));
+    expect(openHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ employeeName: 'Taras Melnyk' }),
     );
   });
 
