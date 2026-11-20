@@ -13,6 +13,7 @@
   "devDependencies": {
     "@arv/db": "workspace:*",
     "@arv/tsconfig": "workspace:*",
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.0",
     "@types/node": "^24.0.0",
     "typescript": "5.9.3"
