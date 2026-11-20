@@ -1,7 +1,15 @@
 import type { OrgRoutes, ProjectsRoutes, SchedulingRoutes } from '@arv/api';
 import { TeamPage } from '@arv/contracts/org';
 import { ProjectPage } from '@arv/contracts/projects';
-import { Board, FreeList, MySchedule } from '@arv/contracts/scheduling';
+import {
+  Allocation,
+  type AllocationChange,
+  type AllocationCreate,
+  AllocationRemoval,
+  Board,
+  FreeList,
+  MySchedule,
+} from '@arv/contracts/scheduling';
 import { PAGE_LIMIT_MAX } from '@arv/contracts/shared';
 import { Schema } from 'effect';
 import { hc } from 'hono/client';
@@ -11,6 +19,8 @@ import type { BoardParams, FilterOption, FreeParams } from './board';
 const decodeBoard = Schema.decodeUnknownSync(Board);
 const decodeFreeList = Schema.decodeUnknownSync(FreeList);
 const decodeMySchedule = Schema.decodeUnknownSync(MySchedule);
+const decodeAllocation = Schema.decodeUnknownSync(Allocation);
+const decodeRemoval = Schema.decodeUnknownSync(AllocationRemoval);
 const decodeTeamPage = Schema.decodeUnknownSync(TeamPage);
 const decodeProjectPage = Schema.decodeUnknownSync(ProjectPage);
 
@@ -94,6 +104,47 @@ export function schedulingGateway(api: Fetcher, sessionToken: string | null) {
       });
       if (!res.ok) return failure(res, 'Could not load your schedule');
       return { ok: true, value: decodeMySchedule(await res.json()) };
+    },
+
+    /**
+     * Allocates a resource to an open project (AC-07). A save that overbooks answers 409
+     * `ConfirmationRequired` until re-sent with `confirm: true` (AC-10, ADR-0010); broken rules
+     * answer 400 with `details.rules` (AC-09, AC-13); a closed project 409 (AC-11); no
+     * edit-allocations 403 (AC-12).
+     */
+    async createAllocation(body: AllocationCreate): Promise<ApiResult<Allocation>> {
+      const res = await scheduling.scheduling.allocations.$post({ json: body });
+      if (!res.ok) return failure(res, 'Could not save the allocation');
+      return { ok: true, value: decodeAllocation(await res.json()) };
+    },
+
+    /**
+     * Changes an allocation from today on (AC-09b) at the version it was opened at; a stale
+     * version answers 409 `version_conflict` with the current values (AC-07b).
+     */
+    async changeAllocation(
+      allocationId: string,
+      body: AllocationChange,
+    ): Promise<ApiResult<Allocation>> {
+      const res = await scheduling.scheduling.allocations[':allocationId'].$patch({
+        param: { allocationId },
+        json: body,
+      });
+      if (!res.ok) return failure(res, 'Could not save the allocation');
+      return { ok: true, value: decodeAllocation(await res.json()) };
+    },
+
+    /** Ends a started allocation yesterday, or deletes one that has not started (AC-07a, AC-09b). */
+    async removeAllocation(
+      allocationId: string,
+      version: number,
+    ): Promise<ApiResult<AllocationRemoval>> {
+      const res = await scheduling.scheduling.allocations[':allocationId'].$delete({
+        param: { allocationId },
+        query: { version: String(version) },
+      });
+      if (!res.ok) return failure(res, 'Could not remove the allocation');
+      return { ok: true, value: decodeRemoval(await res.json()) };
     },
 
     /** Every team, for the team filter (AC-02). */

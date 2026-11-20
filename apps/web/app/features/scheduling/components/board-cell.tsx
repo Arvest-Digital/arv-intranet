@@ -1,4 +1,4 @@
-import type { BoardAllocation } from '@arv/contracts/scheduling';
+import type { BoardAllocation, BoardCell } from '@arv/contracts/scheduling';
 import {
   BanIcon,
   CalendarXIcon,
@@ -19,7 +19,9 @@ import {
   hours,
   minutesIn,
   TYPE_LABEL,
+  weekName,
 } from '../board';
+import { AllocationPopover } from './allocation-popover';
 
 /** One icon per state, so states differ by shape as well as by text (QS-7). */
 export const STATE_ICON: Record<CellKind, LucideIcon> = {
@@ -161,11 +163,16 @@ export function WeekDetailCell({
   week,
   allocations,
   personName,
+  cell,
+  employmentEnd = null,
 }: {
   view: CellView;
   week: string;
   allocations: ReadonlyArray<BoardAllocation>;
   personName: string;
+  /** The week's cell, for the details' overbooking note. */
+  cell?: BoardCell;
+  employmentEnd?: string | null;
 }) {
   const thisWeek = allocations.filter((a) => minutesIn(a, week) > 0);
   return (
@@ -198,16 +205,28 @@ export function WeekDetailCell({
         ) : (
           thisWeek.map((allocation) => (
             <li key={allocation.id}>
-              <span className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background pr-2.5 pl-2 text-[13px]">
-                <AllocationBlock allocation={allocation} className="size-3 rounded-[2px]">
-                  {null}
-                </AllocationBlock>
-                <span>{allocationName(allocation)}</span>
-                {allocation.project ? (
-                  <TypeChip leave={allocation.away}>{TYPE_LABEL[allocation.project.type]}</TypeChip>
-                ) : null}
-                <span className="num font-semibold">{hours(minutesIn(allocation, week))}h</span>
-              </span>
+              <AllocationPopover
+                allocation={allocation}
+                employeeName={personName}
+                employmentEnd={employmentEnd}
+                week={week}
+                cell={cell}
+                label={`${allocationName(allocation)}, ${hours(minutesIn(allocation, week))}h in ${weekName(week)}. Open details`}
+                triggerClassName="inline-flex rounded-md"
+              >
+                <span className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background pr-2.5 pl-2 text-[13px]">
+                  <AllocationBlock allocation={allocation} className="size-3 rounded-[2px]">
+                    {null}
+                  </AllocationBlock>
+                  <span>{allocationName(allocation)}</span>
+                  {allocation.project ? (
+                    <TypeChip leave={allocation.away}>
+                      {TYPE_LABEL[allocation.project.type]}
+                    </TypeChip>
+                  ) : null}
+                  <span className="num font-semibold">{hours(minutesIn(allocation, week))}h</span>
+                </span>
+              </AllocationPopover>
             </li>
           ))
         )}

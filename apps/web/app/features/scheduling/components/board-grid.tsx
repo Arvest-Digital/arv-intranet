@@ -16,6 +16,7 @@ import {
   weekName,
   weekRange,
 } from '../board';
+import { AllocationPopover, NewAllocationCellButton } from './allocation-popover';
 import { AllocationBlock, cellTone, TypeChip, WeekCell, WeekDetailCell } from './board-cell';
 
 /** Where a week sits relative to today, for its tint and «view only» (AC-01). */
@@ -223,10 +224,12 @@ const spanOf = (allocation: BoardAllocation) => {
 /** One allocation of an expanded person row: its hours per week as project blocks. */
 function AllocationRow({
   allocation,
+  row,
   board,
   currentMonday,
 }: {
   allocation: BoardAllocation;
+  row: BoardRow;
   board: Board;
   currentMonday: string;
 }) {
@@ -255,14 +258,24 @@ function AllocationRow({
             className={cn(weekCellClass, 'p-1', when === 'current' && currentTint)}
           >
             {minutes > 0 ? (
-              <AllocationBlock
+              <AllocationPopover
                 allocation={allocation}
-                className="h-7 w-full px-2 text-xs font-medium"
+                employeeName={row.employee.fullName}
+                employmentEnd={row.employmentEnd}
+                week={week}
+                cell={row.cells.find((c) => c.weekStart === week)}
+                label={`${name}, ${hours(minutes)}h in ${weekName(week)}. Open details`}
+                triggerClassName="block w-full"
               >
-                <span className="num" title={`${name}, ${weekName(week)}: ${hours(minutes)}h`}>
-                  {hours(minutes)}h
-                </span>
-              </AllocationBlock>
+                <AllocationBlock
+                  allocation={allocation}
+                  className="h-7 w-full px-2 text-xs font-medium"
+                >
+                  <span className="num" title={`${name}, ${weekName(week)}: ${hours(minutes)}h`}>
+                    {hours(minutes)}h
+                  </span>
+                </AllocationBlock>
+              </AllocationPopover>
             ) : null}
           </TableCell>
         );
@@ -325,9 +338,20 @@ function PersonRow({
                   week={week}
                   allocations={row.allocations}
                   personName={name}
+                  cell={cell}
+                  employmentEnd={row.employmentEnd}
                 />
               ) : (
-                <WeekCell view={view} />
+                <>
+                  <WeekCell view={view} />
+                  {when === 'past' ? null : (
+                    <NewAllocationCellButton
+                      employeeId={row.employee.id}
+                      employeeName={name}
+                      week={week}
+                    />
+                  )}
+                </>
               )}
             </TableCell>
           );
@@ -338,6 +362,7 @@ function PersonRow({
             <AllocationRow
               key={allocation.id}
               allocation={allocation}
+              row={row}
               board={board}
               currentMonday={currentMonday}
             />

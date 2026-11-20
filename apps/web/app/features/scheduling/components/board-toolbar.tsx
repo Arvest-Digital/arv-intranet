@@ -23,9 +23,9 @@ import {
   ZOOMS,
 } from '../board';
 
-const segClass =
+export const segClass =
   'inline-flex h-8 items-center gap-0.5 rounded-md border border-border bg-background p-0.5';
-const segItemClass = (active: boolean) =>
+export const segItemClass = (active: boolean) =>
   cn(
     'inline-flex h-[26px] items-center justify-center rounded-sm px-2.5 text-[13px] font-medium text-muted-foreground outline-none transition-colors duration-150 ease-out hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30',
     active && 'bg-secondary text-foreground',
@@ -178,8 +178,11 @@ export function BoardToolbar({
   teams,
   projects,
   canSeeLeaveReasons,
+  actions,
 }: {
   params: BoardParams;
+  /** Editors' buttons before «Who's free»: «New allocation» (US-03). */
+  actions?: React.ReactNode;
   /** The window's first Monday, as the api answered it. */
   from: string;
   weeks: ReadonlyArray<string>;
@@ -269,16 +272,19 @@ export function BoardToolbar({
           </Button>
         ) : null}
       </div>
-      <Link
-        to={boardHref(params, { free: params.free ?? FREE_DEFAULTS })}
-        preventScrollReset
-        aria-haspopup="dialog"
-        aria-expanded={params.free !== null}
-        className={buttonVariants({ variant: 'outline', size: 'sm', className: 'ml-auto' })}
-      >
-        <UserSearchIcon aria-hidden="true" />
-        Who’s free
-      </Link>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {actions}
+        <Link
+          to={boardHref(params, { free: params.free ?? FREE_DEFAULTS })}
+          preventScrollReset
+          aria-haspopup="dialog"
+          aria-expanded={params.free !== null}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
+          <UserSearchIcon aria-hidden="true" />
+          Who’s free
+        </Link>
+      </div>
     </div>
   );
 }

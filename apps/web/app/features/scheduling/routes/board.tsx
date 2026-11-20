@@ -1,19 +1,29 @@
 import { type FreeList, SchedulingErrorCodes } from '@arv/contracts/scheduling';
-import { LockIcon } from 'lucide-react';
-import { data, useRouteLoaderData } from 'react-router';
+import { CircleCheckIcon, LockIcon, PlusIcon, XIcon } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { data, useNavigate, useRouteLoaderData, useSearchParams } from 'react-router';
 import type { ApiResult } from '~/shared/lib/api.server';
 import { refusalResponse } from '~/shared/lib/refusal.server';
 import { getSessionToken } from '~/shared/lib/session.server';
+import { Alert } from '~/shared/ui/alert';
+import { Button } from '~/shared/ui/button';
 import type { loader as rootLoader } from '../../../root';
 import {
   boardHref,
   EDIT_ALLOCATIONS,
+  isIsoDate,
   isoWeek,
   MANAGE_EMPLOYEE_RECORDS,
   mondayOf,
   parseBoardParams,
   SEE_LEAVE_REASONS,
 } from '../board';
+import {
+  AllocationDialog,
+  type AllocationDialogState,
+  type Resource,
+} from '../components/allocation-dialog';
+import { type AllocationEditing, AllocationEditingContext } from '../components/allocation-popover';
 import { ProjectGrid } from '../components/board-by-project';
 import { PeopleGrid } from '../components/board-grid';
 import { BoardLegend } from '../components/board-legend';
@@ -97,7 +107,6 @@ async function freeListResult(
 }
 
 export default function BoardRoute({ loaderData }: Route.ComponentProps) {
-  const me = useRouteLoaderData<typeof rootLoader>('root')?.me;
   if (loaderData.kind === 'forbidden') return <BoardForbidden />;
   if (loaderData.kind === 'out-of-range') {
     return (
@@ -108,6 +117,36 @@ export default function BoardRoute({ loaderData }: Route.ComponentProps) {
     );
   }
 
+  return <BoardScreen data={loaderData} />;
+}
+
+/**
+ * The «Allocate» link of «Who's free» (`allocate`, `allocateFrom`, `allocateTo`) opens «New
+ * allocation» for that person over that period.
+ */
+function allocateFromUrl(search: URLSearchParams): AllocationDialogState | null {
+  const employeeId = search.get('allocate');
+  if (!employeeId) return null;
+  const from = search.get('allocateFrom') ?? '';
+  const to = search.get('allocateTo') ?? '';
+  return {
+    mode: 'create',
+    employeeId,
+    startsOn: isIsoDate(from) ? from : null,
+    endsOn: isIsoDate(to) ? to : null,
+  };
+}
+
+function BoardScreen({
+  data: loaderData,
+}: {
+  data: Extract<Route.ComponentProps['loaderData'], { kind: 'board' }>;
+}) {
+  const me = useRouteLoaderData<typeof rootLoader>('root')?.me;
+  const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const [dialog, setDialog] = useState<AllocationDialogState | null>(null);
+  const [done, setDone] = useState<string | null>(null);
   const { params, today, board, teams, projects, free } = loaderData;
   const permissions = me?.permissions ?? [];
   const canEdit = permissions.includes(EDIT_ALLOCATIONS);
@@ -120,48 +159,120 @@ export default function BoardRoute({ loaderData }: Route.ComponentProps) {
   const filtered = params.team !== null || params.project !== null;
   const empty = board.rows.length === 0;
 
+  const fromUrl = canEdit ? allocateFromUrl(search) : null;
+  const openDialog = dialog ?? fromUrl;
+  const closeDialog = () => {
+    setDialog(null);
+    if (fromUrl) navigate(boardHref(params), { replace: true, preventScrollReset: true });
+  };
+  const editing = useMemo<AllocationEditing>(
+    () => ({
+      canEdit,
+      today,
+      open: (state) => {
+        setDone(null);
+        setDialog(state);
+      },
+    }),
+    [canEdit, today],
+  );
+  const resources = useMemo<ReadonlyArray<Resource>>(
+    () =>
+      board.rows
+        .map((r) => ({
+          id: r.employee.id,
+          fullName: r.employee.fullName,
+          team: r.employee.team?.name ?? 'No team',
+        }))
+        .sort((a, b) => a.fullName.localeCompare(b.fullName)),
+    [board.rows],
+  );
+
   return (
-    <main className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Schedule</h1>
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-background [--namew:248px] max-sm:[--namew:168px]">
-        <BoardToolbar
-          params={params}
-          from={board.from}
-          weeks={board.weeks}
-          today={today}
-          teams={teams}
-          projects={projects}
-          canSeeLeaveReasons={canSeeLeaveReasons}
-        />
-        {firstWeek < currentMonday ? (
-          <div
-            role="status"
-            className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-[13px]"
-          >
-            <LockIcon aria-hidden="true" className="size-4" />
-            Weeks before W{isoWeek(currentMonday)} are in the past and view only.
-          </div>
+    <AllocationEditingContext.Provider value={editing}>
+      <main className="flex flex-col gap-4">
+        <h1 className="text-2xl font-semibold">Schedule</h1>
+        {done ? (
+          <Alert role="status" className="pr-12">
+            <CircleCheckIcon aria-hidden="true" />
+            <p>{done}</p>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Dismiss"
+              className="absolute top-2 right-2"
+              onClick={() => setDone(null)}
+            >
+              <XIcon aria-hidden="true" />
+            </Button>
+          </Alert>
         ) : null}
-        <div className="relative max-h-[calc(100dvh-16rem)] min-h-64 overflow-auto overscroll-contain">
-          {empty && filtered ? (
-            <NoResults
-              clearHref={boardHref(params, { team: null, project: null })}
-              what={params.view === 'project' ? 'projects' : 'people'}
-            />
-          ) : params.view === 'project' ? (
-            <ProjectGrid board={board} currentMonday={currentMonday} />
-          ) : (
-            <PeopleGrid board={board} currentMonday={currentMonday} />
-          )}
-          {!filtered && board.rows.every((r) => r.allocations.length === 0) ? (
-            <EmptyWindow weeks={board.weeks.length} />
+        <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-background [--namew:248px] max-sm:[--namew:168px]">
+          <BoardToolbar
+            params={params}
+            from={board.from}
+            weeks={board.weeks}
+            today={today}
+            teams={teams}
+            projects={projects}
+            canSeeLeaveReasons={canSeeLeaveReasons}
+            actions={
+              canEdit ? (
+                <Button
+                  size="sm"
+                  aria-haspopup="dialog"
+                  onClick={() =>
+                    editing.open({ mode: 'create', employeeId: null, startsOn: null, endsOn: null })
+                  }
+                >
+                  <PlusIcon aria-hidden="true" />
+                  New allocation
+                </Button>
+              ) : null
+            }
+          />
+          {firstWeek < currentMonday ? (
+            <div
+              role="status"
+              className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2 text-[13px]"
+            >
+              <LockIcon aria-hidden="true" className="size-4" />
+              Weeks before W{isoWeek(currentMonday)} are in the past and view only.
+            </div>
           ) : null}
+          <div className="relative max-h-[calc(100dvh-16rem)] min-h-64 overflow-auto overscroll-contain">
+            {empty && filtered ? (
+              <NoResults
+                clearHref={boardHref(params, { team: null, project: null })}
+                what={params.view === 'project' ? 'projects' : 'people'}
+              />
+            ) : params.view === 'project' ? (
+              <ProjectGrid board={board} currentMonday={currentMonday} />
+            ) : (
+              <PeopleGrid board={board} currentMonday={currentMonday} />
+            )}
+            {!filtered && board.rows.every((r) => r.allocations.length === 0) ? (
+              <EmptyWindow weeks={board.weeks.length} />
+            ) : null}
+          </div>
+          <BoardLegend showAttention={showAttention} />
         </div>
-        <BoardLegend showAttention={showAttention} />
-      </div>
-      {params.free && free ? (
-        <FreeListDrawer params={params} free={params.free} result={free} canEdit={canEdit} />
-      ) : null}
-    </main>
+        {params.free && free ? (
+          <FreeListDrawer params={params} free={params.free} result={free} canEdit={canEdit} />
+        ) : null}
+        {canEdit ? (
+          <AllocationDialog
+            state={openDialog}
+            resources={resources}
+            projects={projects}
+            today={today}
+            onOpenChange={(open) => {
+              if (!open) closeDialog();
+            }}
+            onDone={setDone}
+          />
+        ) : null}
+      </main>
+    </AllocationEditingContext.Provider>
   );
 }

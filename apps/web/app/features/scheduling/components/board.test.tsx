@@ -1,9 +1,11 @@
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseBoardParams } from '../board';
 import { allocation, board, COBALT, cell, everyStateBoard, row, W47, W48 } from '../test-data';
+import type { AllocationDialogState } from './allocation-dialog';
+import { AllocationEditingContext } from './allocation-popover';
 import { ProjectGrid } from './board-by-project';
 import { PeopleGrid } from './board-grid';
 import { BoardLegend } from './board-legend';
@@ -179,5 +181,66 @@ describe('board screens', () => {
     cleanup();
     renderAt(<BoardLegend showAttention />);
     expect(screen.getByText('Needs attention')).toBeTruthy();
+  });
+});
+
+describe('board editing (US-03)', () => {
+  const editing = (open: (state: AllocationDialogState) => void, canEdit = true) => ({
+    canEdit,
+    today: '2026-11-18',
+    open,
+  });
+
+  it('opens an allocation’s details from its block, then Edit or Remove', async () => {
+    const open = vi.fn();
+    renderAt(
+      <AllocationEditingContext.Provider value={editing(open)}>
+        <PeopleGrid board={everyStateBoard()} currentMonday={W47} />
+      </AllocationEditingContext.Provider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Show allocations for Taras Melnyk' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Cobalt billing, 24h in W47 2026. Open details' }),
+    );
+    const details = await screen.findByRole('dialog', { name: 'Cobalt billing' });
+    // AC-07: who changed it last; the week's overbooking from the cell.
+    expect(within(details).getByText('Marko Ivanov · 10 Nov 2026, 09:00')).toBeTruthy();
+    expect(
+      within(details).getByText('Taras is 8h over capacity in W47 2026 (48/40).'),
+    ).toBeTruthy();
+    await user.click(within(details).getByRole('button', { name: 'Edit' }));
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'edit',
+        target: expect.objectContaining({ employeeName: 'Taras Melnyk' }),
+      }),
+    );
+  });
+
+  it('offers «New allocation» from a person’s week cell, not to viewers', async () => {
+    const open = vi.fn();
+    renderAt(
+      <AllocationEditingContext.Provider value={editing(open)}>
+        <PeopleGrid board={everyStateBoard()} currentMonday={W47} />
+      </AllocationEditingContext.Provider>,
+    );
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole('button', { name: 'New allocation for Olena Kovalenko from W48 2026' }),
+    );
+    expect(open).toHaveBeenCalledWith({
+      mode: 'create',
+      employeeId: '01933b8e-0000-7000-8000-000000000301',
+      startsOn: W48,
+      endsOn: null,
+    });
+    cleanup();
+    renderAt(
+      <AllocationEditingContext.Provider value={editing(open, false)}>
+        <PeopleGrid board={everyStateBoard()} currentMonday={W47} />
+      </AllocationEditingContext.Provider>,
+    );
+    expect(screen.queryByRole('button', { name: /^New allocation for/ })).toBeNull();
   });
 });
