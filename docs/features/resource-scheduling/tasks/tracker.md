@@ -47,7 +47,7 @@
 | T40 | [Build the free-list drawer and the my-schedule screen](./t40-web-free-list-my-schedule.md) | ui | TBD (frontend lead) | M | T28, T39 | done |
 | T41 | [Build the allocation create, change and remove dialog](./t41-web-allocation-dialog.md) | ui | TBD (frontend lead) | L | T29, T39 | done |
 | T42 | [Build the leave dialog and the allocation history panel](./t42-web-leave-history.md) | ui | TBD (frontend lead) | M | T41 | done |
-| T43 | [Build the import upload, preview and confirm screen](./t43-web-import.md) | ui | TBD (frontend lead) | M | T35 | todo |
+| T43 | [Build the import upload, preview and confirm screen](./t43-web-import.md) | ui | TBD (frontend lead) | M | T35 | done |
 | T44 | [Add the board end-to-end test with the accessibility audit](./t44-e2e-board-a11y.md) | tests | TBD (backend lead) | M | T30, T39, T41 | todo |
 
 **Total:** 44 tasks, ~26.5 person-days (S = 2 h, M = half-day, L = 1 day).
