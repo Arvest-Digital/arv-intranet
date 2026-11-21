@@ -7,7 +7,7 @@ acs: ["AC-03", "AC-07b", "AC-12b", "AC-22", "AC-29"]
 files_hint: ["apps/api/test/integration/redaction/", "apps/api/test/integration/scheduling/concurrency.test.ts"]
 owner: "TBD (backend lead)"
 estimate: "L"
-status: "todo"
+status: "done"
 ---
 
 # T32 — Add the QG-2 redaction matrix and the concurrent-save test
@@ -27,9 +27,9 @@ Files: `apps/api/test/integration/redaction/`, `apps/api/test/integration/schedu
 
 ## Definition of Done
 
-- [ ] Matrix covers every read operation in openapi.yaml (test enumerates them and fails if one is missing).
-- [ ] Concurrent-save test green; `pnpm test:integration` green.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Matrix covers every read operation in openapi.yaml (test enumerates them and fails if one is missing).
+- [x] Concurrent-save test green; `pnpm test:integration` green.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 

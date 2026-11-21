@@ -11,18 +11,42 @@ export class NotFound extends Schema.TaggedError<NotFound>()('NotFound', {
   id: Schema.String,
   /** Defaults to `platform.not_found`. */
   code: Schema.optional(ErrorCode),
+  /**
+   * Replaces the default «<resource> <id> not found» when the contract words it otherwise, e.g.
+   * `scheduling.not_a_resource` (AC-18).
+   */
+  explanation: Schema.optional(Schema.String),
 }) {
   override get message() {
-    return `${this.resource} ${this.id} not found`;
+    return this.explanation ?? `${this.resource} ${this.id} not found`;
   }
 }
 
+/**
+ * 409: the request breaks a module rule against current state. For a concurrent edit (e.g.
+ * `scheduling.version_conflict`) `details` carries the current values and who changed them last.
+ */
 export class Conflict extends Schema.TaggedError<Conflict>()('Conflict', {
   message: Schema.String,
   /** Every conflict is a module rule, so the presenter always names it (no `platform.` default). */
   code: ErrorCode,
   details: Schema.optional(ErrorDetails),
 }) {}
+
+/**
+ * 409: the save has consequences the user must confirm first (ADR-0010); nothing was saved.
+ * `details` is the impact list (e.g. overbooked weeks). The client re-sends the same request with
+ * `confirm: true` and the server recomputes the impact on fresh data. Like `Conflict`, the presenter
+ * always names the code (e.g. `scheduling.overbooking_confirmation_required`).
+ */
+export class ConfirmationRequired extends Schema.TaggedError<ConfirmationRequired>()(
+  'ConfirmationRequired',
+  {
+    message: Schema.String,
+    code: ErrorCode,
+    details: ErrorDetails,
+  },
+) {}
 
 /**
  * 401: no signed-in actor. `reason: 'access-removed'` when the session ended because the user was
@@ -78,6 +102,7 @@ export const ApiErrorTag = Schema.Literal(
   'Forbidden',
   'NotFound',
   'Conflict',
+  'ConfirmationRequired',
   'InternalError',
 );
 export type ApiErrorTag = typeof ApiErrorTag.Type;

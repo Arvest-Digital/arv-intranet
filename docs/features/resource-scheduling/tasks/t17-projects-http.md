@@ -7,7 +7,7 @@ acs: ["AC-23", "AC-24", "AC-25", "AC-26", "AC-29"]
 files_hint: ["packages/contracts/src/projects/", "modules/projects/src/http/", "apps/api/test/integration/projects/"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T17 — Expose project endpoints with leave-project redaction in the list
@@ -26,9 +26,9 @@ Files: `packages/contracts/src/projects/`, `modules/projects/src/http/`, `apps/a
 
 ## Definition of Done
 
-- [ ] Api integration tests: duplicate open name → 409, close without confirm → 409 `ConfirmationRequired`, missing permission → 403, leave projects absent from the list for a viewer without see-leave-reasons.
-- [ ] Bodies validate against the OpenAPI examples.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Api integration tests: duplicate open name → 409, close without confirm → 409 `ConfirmationRequired`, missing permission → 403, leave projects absent from the list for a viewer without see-leave-reasons.
+- [x] Bodies validate against the OpenAPI examples.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 

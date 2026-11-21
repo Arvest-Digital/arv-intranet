@@ -18,3 +18,76 @@ To decide:
 - Drop `.down.sql`, or keep it as documentation of a manual rollback?
 - Teach the SDLC plugin (`generate-data-model`, `implement-tasks`) to detect drizzle-kit and follow it, instead of
   the course defaults (timestamp names, `IF NOT EXISTS`, `CONCURRENTLY`, bootstrapping `rules/migrations.md`).
+
+## `listTeams` names scheduling's permission keys as strings
+
+`GET /org/teams` accepts `org:manage-employee-records`, `scheduling:view-whole-board` or `scheduling:edit-allocations`
+(openapi `listTeams`, api-sync-report D-5). Org can't import scheduling (scheduling calls org, so that would be a cycle),
+so `modules/org/src/application/teams/list-teams.ts` (`TEAM_LIST_READERS`) spells the two scheduling keys out as strings
+(decided 2026-11-16, T13). A renamed or retired scheduling key fails closed: its holders silently lose the team list.
+
+To check later:
+- Once scheduling declares its permissions (`schedulingPermissions`), confirm both keys are in it, e.g. an api test that
+  every key in `TEAM_LIST_READERS` is in the host's permission catalog (T30 is a natural place).
+- Revisit if more cross-module "any of" reads appear: a host-supplied list of reader permissions (a port wired in
+  `composition.ts`) would keep org from naming another module's keys.
+- The Security Lead still has to confirm the D-5 read matrix before launch.
+
+## `listProjects` names scheduling's permission keys as strings
+
+`GET /projects` accepts `projects:manage-projects`, `scheduling:view-whole-board` or `scheduling:edit-allocations`, and
+offers leave-type projects only to holders of `scheduling:see-leave-reasons`, `scheduling:edit-allocations` or
+`projects:manage-projects` (openapi `listProjects`, AC-29). Projects can't import scheduling (scheduling calls projects),
+so `modules/projects/src/application/projects/list-projects.ts` spells the three scheduling keys out as strings (T17,
+same choice as `listTeams` above). A renamed key fails closed: its holders lose the list, or the leave projects in it.
+
+To check later: the same catalog test as for `TEAM_LIST_READERS` should cover `PROJECT_LIST_READERS` and
+`LEAVE_PROJECT_READERS` (T30).
+
+## No-op ports must not reach production
+
+`apps/api/src/composition.ts` provides `CapacityImpactCheckNoop` (org) and `ProjectClosingHookNoop` (projects) until
+scheduling implements both ports (T27) and the host wires them (T30). The app composes and runs with the no-ops, it just
+stays silent: no overbooking warning when contract hours, working days or public holidays change (AC-19c, AC-27), and
+closing a project trims nothing (AC-25). Nothing fails if T30 is forgotten.
+
+To do (T30): an api test that the production `makeAppLayer` resolves both ports to scheduling's implementations, not the
+no-ops (e.g. a marker on the no-op values, or a behavioural check against seeded data).
+
+## In-memory fakes duplicate adapter logic
+
+Use-case tests run on fakes (`modules/*/src/application/testing.ts`) that re-implement what the Drizzle adapters do in
+SQL. Example: «employed in a window» exists in `OrgApiLive.employedIn` and again in scheduling's fake `employedIn`
+(T25). If one copy changes and the other doesn't, unit tests stay green and only integration tests (if any cover it)
+catch the drift.
+
+To decide: a shared contract test per port (one suite of expectations run against the fake and against the Drizzle
+adapter in `apps/api/test/integration/`), starting with the ports whose fakes carry real logic (`listInWindow`,
+`employmentTerms`, `employedIn`).
+
+## `OrgApi.employedIn` filters in memory
+
+`employedIn` (T25) loads every employee record (or a team's) through `records.list()` / `listByTeam()` and filters
+the employment-period overlap in JS. Fine at intranet scale; cost grows linearly with headcount on every board and
+free-list request.
+
+Fix when needed (cheap, hours): add `EmployeeRecordRepository.listEmployedIn(window, teamId?)` with the overlap in
+`WHERE` (`employment_start IS NULL OR employment_start <= $to`, `employment_end IS NULL OR employment_end >= $from`)
+and call it from `OrgApiLive`. The facade signature stays, so scheduling and its tests don't change.
+
+To decide: the threshold that triggers it (e.g. > 1000 employee records, or board latency below).
+
+## Board reads span three modules in separate queries
+
+No `JOIN` across module schemas, so `getBoard` reads org (resources, holidays, own login), scheduling (allocations)
+and projects (names, types) as separate queries. Every facade method takes id lists, so this is about five queries
+per board regardless of headcount, not N+1. Only the payload grows.
+
+To do: log `/scheduling/board` and `/scheduling/free-list` latency so the decision rests on numbers.
+
+If it becomes too slow, cheapest first:
+- Cache rarely changing reference data (public holidays, projects) per request window.
+- A read model in scheduling: a copy of the employee fields the board needs, kept current by org events. The clean
+  option within the architecture, but needs event infrastructure and handling of lag (days of work + ADR).
+- A read-only SQL view across schemas for the board only: fast, but an explicit exception to «no cross-schema links»,
+  so it needs an ADR.

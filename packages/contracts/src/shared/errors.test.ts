@@ -59,10 +59,66 @@ const openApiExamples = {
   },
 };
 
+// Error examples from docs/features/resource-scheduling/contracts/openapi.yaml (ADR-0010 kinds).
+const schedulingExamples = {
+  ForbiddenImport: {
+    error: {
+      _tag: 'Forbidden',
+      code: 'scheduling.missing_permission',
+      message: 'You lack the permissions: manage employee records, manage projects',
+      details: { missingPermissions: ['org:manage-employee-records', 'projects:manage-projects'] },
+    },
+  },
+  OutsideEmploymentPeriod: {
+    error: {
+      _tag: 'ValidationError',
+      code: 'scheduling.outside_employment_period',
+      message: "The allocation falls outside the resource's employment period",
+      details: { rules: ['outside_employment_period'], lastBookableDate: '2026-11-15' },
+    },
+  },
+  AllocationVersionConflict: {
+    error: {
+      _tag: 'Conflict',
+      code: 'scheduling.version_conflict',
+      message: 'Test User 2 changed this allocation meanwhile',
+      details: {
+        current: {
+          id: '01933b8e-0000-7000-8000-000000000601',
+          version: 2,
+          lastChangedBy: { id: '01933b8e-0000-7000-8000-000000000102', name: 'Test User 2' },
+          lastChangedAt: '2026-10-31T09:05:00Z',
+        },
+      },
+    },
+  },
+  OverbookingConfirmationRequired: {
+    error: {
+      _tag: 'ConfirmationRequired',
+      code: 'scheduling.overbooking_confirmation_required',
+      message: 'The resource will be overbooked in 1 week',
+      details: {
+        overbookedWeeks: [
+          {
+            weekStart: '2026-11-09',
+            capacityMinutes: 1920,
+            allocatedMinutes: 2400,
+            overMinutes: 480,
+          },
+        ],
+        workOnLeaveDays: [],
+      },
+    },
+  },
+};
+
 describe('ApiErrorBody', () => {
-  it.each(Object.entries(openApiExamples))('decodes the OpenAPI %s example', (_name, example) => {
-    expect(decode(example)).toEqual(Either.right(example));
-  });
+  it.each(Object.entries({ ...openApiExamples, ...schedulingExamples }))(
+    'decodes the OpenAPI %s example',
+    (_name, example) => {
+      expect(decode(example)).toEqual(Either.right(example));
+    },
+  );
 
   it('rejects a body without a code', () => {
     expect(Either.isLeft(decode({ error: { _tag: 'Conflict', message: 'x' } }))).toBe(true);

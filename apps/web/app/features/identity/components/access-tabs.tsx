@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 import { cn } from '~/shared/lib/utils';
+import { PATHS } from '~/shared/paths';
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -17,10 +18,10 @@ export function AccessHeader({ action }: { action: ReactNode }) {
         {action}
       </div>
       <nav aria-label="Access" className="flex gap-6 border-b border-border">
-        <NavLink to="/access/users" className={tabClass}>
+        <NavLink to={PATHS.accessUsers} className={tabClass}>
           Users
         </NavLink>
-        <NavLink to="/access/roles" end className={tabClass}>
+        <NavLink to={PATHS.accessRoles} end className={tabClass}>
           Roles
         </NavLink>
       </nav>

@@ -37,9 +37,16 @@ export const createDb = (client: pg.Pool | pg.Client): Db =>
  * for its access check and its work. The pool is intentionally not closed: the runtime drops
  * sockets when the request ends (matches Cloudflare's Hyperdrive + node-postgres guidance;
  * closing explicitly causes "socket has been closed" rejections).
+ *
+ * When the runtime drops an idle connection's socket, the pool removes that client and emits
+ * `error`. With no listener, `emit` throws as an unhandled rejection. The listener only absorbs
+ * that event: a query on a broken connection still fails its own promise (→ `DbError`).
  */
-export const openDatabase = (connectionString: string): Db =>
-  createDb(new pg.Pool({ connectionString, max: 5 }));
+export const openDatabase = (connectionString: string): Db => {
+  const pool = new pg.Pool({ connectionString, max: 5 });
+  pool.on('error', () => {});
+  return createDb(pool);
+};
 
 /** A `Database` Layer over an already opened `Db`, so several Layers can share one pool. */
 export const databaseLayer = (db: Db) => Layer.succeed(Database, db);

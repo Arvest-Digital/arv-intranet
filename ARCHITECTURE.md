@@ -30,7 +30,7 @@ flowchart LR
     web["@arv/web Worker<br/>React Router 7 SSR<br/>features/*"]
     subgraph api["@arv/api Worker · host"]
       host["middleware<br/>authenticate → actor<br/>provideAppLayer"]
-      mods["modules<br/>identity · …"]
+      mods["modules<br/>identity · org · projects · scheduling"]
       host --> mods
     end
     hd[("Hyperdrive")]
@@ -40,7 +40,7 @@ flowchart LR
   mods --> hd --> pg
 ```
 
-The api has no public URL; only web can call it. Today it has one entry point, `fetch`. A `scheduled` entry point (outbox relay) and a `queue` entry point (event consumers) are added together with the first asynchronous use case (see [Cross-module communication](#cross-module-communication)). All entry points go through the same composition root.
+The api has no public URL; only web can call it. It has two entry points: `fetch`, and `scheduled` for its Cron Triggers (`triggers.crons` in `wrangler.jsonc`). Today the one cron, `0 3 1 * *`, runs scheduling's monthly allocation-history purge through the `SchedulingApi` facade, with a Layer built by `makeScheduledLayer` (no request, no actor). The outbox relay joins `scheduled`, and a `queue` entry point (event consumers) is added, together with the first asynchronous use case (see [Cross-module communication](#cross-module-communication)). All entry points go through the same composition root.
 
 ## Principles
 
@@ -66,10 +66,15 @@ arv-intranet/
 ├── modules/
 │   ├── identity/                  @arv/identity: sign-in, sessions, access list, access roles;
 │   │                                resolves the actor of a request
+│   ├── org/                       @arv/org: employee records, teams, public holidays
+│   ├── projects/                  @arv/projects: projects, open/closed state
+│   ├── scheduling/                @arv/scheduling: allocations, capacity, board, history, import
 │   └── _template/                 copied by `pnpm new:module <name>` (not a workspace package)
 ├── packages/
-│   ├── kernel/                    @arv/kernel: shared branded IDs, Actor + CurrentActor,
-│   │                                DomainEvent, UnitOfWork + DomainEvents ports. effect only.
+│   ├── kernel/                    @arv/kernel: shared branded IDs (UserId, EmployeeId, ProjectId),
+│   │                                Actor + CurrentActor, Permission + requirePermission,
+│   │                                Today (company date over Clock), DomainEvent,
+│   │                                UnitOfWork + DomainEvents ports. effect only.
 │   ├── contracts/                 @arv/contracts: wire DTOs. /shared, /identity, … effect only.
 │   ├── db/                        @arv/db: Database, query, DbError, UnitOfWorkLive, /testing, /migrate. No tables.
 │   ├── platform/                  @arv/platform: /http (runEffect, validate, toHttpError)
@@ -108,6 +113,9 @@ Every arrow points toward packages that change less often. `@arv/migrations` is 
 | Module | Purpose | Postgres schema | May call | Events published |
 |---|---|---|---|---|
 | `identity` | Google sign-in, sessions, the access list, access roles and the `identity:manage-access` permission. Resolves the actor (and its permissions) of each request. | `identity` | none (foundation) | none yet |
+| `org` | Employee records (contract hours, working days, employment period, team, login link), teams and the company-wide public-holiday list. Defines the `CapacityImpactCheck` port, implemented by scheduling and wired in the host ([resource-scheduling ADR-0003](docs/features/resource-scheduling/adr/0003-split-into-org-projects-scheduling-modules.md), [ADR-0007](docs/features/resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md)). | `org` | identity | none |
+| `projects` | Projects of every type (client, internal, bench, training, leave), open/closed state and close dates, name uniqueness. Defines the `ProjectClosingHook` port, implemented by scheduling and wired in the host. | `projects` | none | none |
+| `scheduling` | Allocations (leave included) as effective-dated segments, capacity, availability and overbooking, the board and free list, allocation history and its retention, the one-time planning import. Implements org's and projects' ports. Reads user names from identity for «last changed by». | `scheduling` | identity, org, projects | none |
 
 **Tiers.** *Foundation* modules (identity) depend on `@arv/kernel` only, and every other module may call them. *Core* modules may call the foundation and core modules listed before them. *Supporting* modules (notifications, search, audit) react to events and are never called synchronously.
 
@@ -115,9 +123,12 @@ The graph below is checked by `pnpm check:modules` (part of `pnpm lint`) against
 
 <!-- module-graph:start -->
 - identity → (none)
+- org → identity
+- projects → (none)
+- scheduling → identity, org, projects
 <!-- module-graph:end -->
 
-Domains we expect to add, as examples of how the graph grows: `org` (people, departments) → identity; `documents`, `requests` → identity, org; `booking`, `news` → identity; `notifications`, `search`, `audit` → events only.
+Domains we expect to add, as examples of how the graph grows: `documents`, `requests` → identity, org; `booking`, `news` → identity; `notifications`, `search`, `audit` → events only.
 
 ## Module anatomy
 
@@ -215,6 +226,9 @@ create: (input) =>
 | Facade query | You need another module's data to decide something | Read in the same request | `OrgApi.approverChain(userId)` |
 | Facade command | Rare: the caller must know the outcome right away | Joins the caller's `UnitOfWork` while both share a database. Becomes an event + compensation if either moves out. | `IdentityApi.provisionUser(…)` |
 | Domain event via outbox | Side effects the publisher shouldn't know about | Eventual, at-least-once | `RequestApproved` → notifications, audit |
+| Host-wired port | A module's own command needs a *dependent* module's data, which a direct call would turn into a cycle | Same request, joins the caller's `UnitOfWork` | org's `CapacityImpactCheck` and projects' `ProjectClosingHook`, implemented by scheduling |
+
+**Host-wired ports** (resource-scheduling ADR-0007). The called-into module owns the port (`Context.Tag` in its `application/ports.ts`), exports it from its facade, and ships a no-op default Layer from `./layer` so it composes and tests on its own. The dependent module implements the port; only `apps/api/src/composition.ts` provides that implementation in place of the no-op. The package graph keeps its direction (scheduling → org); forgetting to swap the no-op silently skips the check, so each such operation gets an api integration test through the real composition root (`apps/api/test/integration/composition/`).
 
 **Status.** The `UnitOfWork` and `DomainEvents` ports exist in `@arv/kernel`. `UnitOfWorkLive` is in `@arv/db` and provided by the host's app Layer: `transactional(effect)` runs one `db.transaction` and puts the transaction in the `CurrentTx` FiberRef that `query()` reads, so every repository call inside it (in any module, forked fibers included) joins it with no change to the repository. Success commits; a failure, defect or interruption rolls back and is re-raised unchanged; a nested `transactional` joins the outer transaction (no savepoints). A failed COMMIT is a defect. The rest is added with the first real asynchronous use case: `DomainEventsLive` (inserts into `platform.outbox`), a Cron relay that forwards unsent rows to a Queue, and Queue consumers that dedupe through `platform.inbox`. Repositories need no changes then, because they already go through `query()`.
 
@@ -263,10 +277,10 @@ flowchart LR
 ```
 
 - Domain errors are `Schema.TaggedError`s in the module's `domain/errors.ts`.
-- The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared` (`NotFound`, `Conflict`).
+- The module's `http/presenter.ts` maps them to the shared contract errors in `@arv/contracts/shared`: `NotFound` (404), `Conflict` (409; `details` carries current values on a concurrent edit), `ConfirmationRequired` (409; warn-then-confirm, `details` is the impact list, the client re-sends with `confirm: true` — feature ADR resource-scheduling/0010), `Invalid` (400 `ValidationError` for a broken domain rule, `details.rules`) and `Refused` (403 `Forbidden` for a module rule).
 - `ContractError` and `toHttpError` live in `@arv/platform/http`. Only a new *kind* of HTTP failure needs a new contract error there, which should be rare.
 - Access refusals from the kernel's `requirePermission` are mapped once, in `runEffect`: `PermissionDenied` → 403 `Forbidden` (code `<module>.missing_permission`, from the permission key's prefix), `Unauthenticated` → 401 `Unauthenticated` (`platform.unauthenticated`, or `identity.access_removed` when `reason: 'access-removed'`). Presenters never see them (ADR-0005).
-- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, host-level failures use `platform.*`.
+- Every error response has the shape `{ error: { _tag, code, message, details? } }` (`ApiErrorBody`). `code` is `module.error_name`; presenters set the module code on `NotFound` (default `platform.not_found`) and must set it on `Conflict`, `ConfirmationRequired`, `Invalid` and `Refused`, host-level failures use `platform.*`.
 
 ## Web
 
@@ -274,8 +288,13 @@ The web app mirrors the modules as feature folders. Each feature has its own typ
 
 ```
 apps/web/app/
-├── routes.ts                         registers feature routes
+├── routes.ts                         registers feature routes, grouped into sections by layout()
 ├── routes/home.tsx                   pages that belong to no feature
+├── sections/schedule.tsx             a section: its side navigation (`section`), `handle`, <Outlet/>
+├── sections/index.ts                 SECTIONS: the switcher's order
+├── shell/                            top bar + section switcher, side navigation, its cookie
+├── shared/paths.ts                   PATHS: the one place page URLs are written
+├── shared/nav/section.ts             Section / NavItem types, visibility by `me`
 ├── features/identity/
 │   ├── routes/access-users.tsx       loader · action · UI
 │   ├── components/user-list.tsx
@@ -286,6 +305,7 @@ apps/web/app/
 
 - Loaders and actions stay thin. They call the feature's `*.server.ts` gateway, which wraps the client, decodes responses with contract schemas, and turns `ApiErrorBody` into a UI message (`ApiResult`).
 - Features don't import each other. Shared code goes in `shared/`; a page that combines several domains is composed at route level.
+- The app is split into **sections** (Schedule, Access & users). A section is a pathless `layout()` in `routes.ts` whose route module exports a `Section` (label, icon, nav items with a `visible(me)` predicate from `features/identity/gate.ts`) as its `handle`. The root `Layout` takes the deepest match's section and renders the shell: the switcher in the top bar and that section's side navigation. Pages outside a section (Home, 404) get the top bar only. Features know nothing of sections. Adding one: a file in `sections/`, an entry in `SECTIONS`, a `layout()` block in `routes.ts`, its URLs in `PATHS`.
 - Web never imports `@arv/db`, `@arv/kernel`, `@arv/platform` or a module package.
 
 ## Testing

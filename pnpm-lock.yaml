@@ -29,9 +29,18 @@ importers:
       '@arv/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@arv/org':
+        specifier: workspace:*
+        version: link:../../modules/org
       '@arv/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@arv/projects':
+        specifier: workspace:*
+        version: link:../../modules/projects
+      '@arv/scheduling':
+        specifier: workspace:*
+        version: link:../../modules/scheduling
       effect:
         specifier: 3.22.2
         version: 3.22.2
@@ -42,6 +51,9 @@ importers:
         specifier: 8.23.1
         version: 8.23.1
     devDependencies:
+      '@arv/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@arv/tsconfig':
         specifier: workspace:*
         version: link:../../packages/tsconfig
@@ -169,6 +181,9 @@ importers:
       '@arv/tsconfig':
         specifier: workspace:*
         version: link:../packages/tsconfig
+      '@axe-core/playwright':
+        specifier: 4.14.0
+        version: 4.14.0(playwright-core@1.64.0)
       '@playwright/test':
         specifier: 1.64.0
         version: 1.64.0
@@ -205,6 +220,120 @@ importers:
       oauth4webapi:
         specifier: 3.8.8
         version: 3.8.8
+    devDependencies:
+      '@arv/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.19.2)(jsdom@27.4.0)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15))
+
+  modules/org:
+    dependencies:
+      '@arv/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@arv/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@arv/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@arv/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@arv/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
+    devDependencies:
+      '@arv/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.19.2)(jsdom@27.4.0)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15))
+
+  modules/projects:
+    dependencies:
+      '@arv/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@arv/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@arv/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@arv/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
+    devDependencies:
+      '@arv/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@24.19.2)(jsdom@27.4.0)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15))
+
+  modules/scheduling:
+    dependencies:
+      '@arv/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@arv/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@arv/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@arv/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@arv/org':
+        specifier: workspace:*
+        version: link:../org
+      '@arv/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
+      '@arv/projects':
+        specifier: workspace:*
+        version: link:../projects
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
+      effect:
+        specifier: 3.22.2
+        version: 3.22.2
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
     devDependencies:
       '@arv/tsconfig':
         specifier: workspace:*
@@ -344,6 +473,12 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
+
+  '@axe-core/playwright@4.14.0':
+    resolution: {integrity: sha512-SGUhG5PIHd2eMdpgBF2PyQLOhX+qyDR2PT4cmoS4Qk2ak+jX/rrSvst9l0PGv5WTHolKpUMvVmoHpr4cZgf1RQ==}
+    engines: {node: '>=22.12.0'}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2009,6 +2144,10 @@ packages:
   atomically@1.7.0:
     resolution: {integrity: sha512-Xcz9l0z7y9yQ9rdDaxlmaI4uJHf/T8g9hOEzJcsEqX2SjCj4J20uK7+ldkDHMbpJDK76wF7xEIgxc/vSlsfw5w==}
     engines: {node: '>=10.12.0'}
+
+  axe-core@4.14.1:
+    resolution: {integrity: sha512-FHfa+lmNjQZfJz1q8wKqIDwC6DExcHt/pkjNQb09a3NPjCKg2rhu5qb2S4r76ASyFNNtuFooJpZe37OgudVGtQ==}
+    engines: {node: '>=4'}
 
   babel-dead-code-elimination@1.0.12:
     resolution: {integrity: sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig==}
@@ -3806,6 +3945,11 @@ snapshots:
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
+  '@axe-core/playwright@4.14.0(playwright-core@1.64.0)':
+    dependencies:
+      axe-core: 4.14.1
+      playwright-core: 1.64.0
+
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -5087,6 +5231,8 @@ snapshots:
       tslib: 2.8.1
 
   atomically@1.7.0: {}
+
+  axe-core@4.14.1: {}
 
   babel-dead-code-elimination@1.0.12:
     dependencies:

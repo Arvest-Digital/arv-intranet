@@ -7,7 +7,7 @@ acs: ["AC-19c", "AC-25", "AC-27", "AC-14"]
 files_hint: ["apps/api/src/composition.ts", "apps/api/test/integration/composition/", "ARCHITECTURE.md"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T30 — Wire scheduling's port implementations in the composition root
@@ -27,10 +27,10 @@ Files: `apps/api/src/composition.ts`, `apps/api/test/integration/composition/`, 
 
 ## Definition of Done
 
-- [ ] Api integration tests through the real composition root: contract-hours change that overbooks → 409 `ConfirmationRequired` (AC-19c); holiday add that overbooks → 409 (AC-27); confirmed project close trims allocations and writes history (AC-25).
-- [ ] Integration test: changing the stub grants between two requests changes the outcome (AC-14).
-- [ ] `pnpm check:modules` still passes (no new module edge).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Api integration tests through the real composition root: contract-hours change that overbooks → 409 `ConfirmationRequired` (AC-19c); holiday add that overbooks → 409 (AC-27); confirmed project close trims allocations and writes history (AC-25).
+- [x] Integration test: changing the stub grants between two requests changes the outcome (AC-14).
+- [x] `pnpm check:modules` still passes (no new module edge).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 

@@ -7,7 +7,7 @@ acs: ["AC-19c", "AC-25", "AC-27", "AC-16"]
 files_hint: ["modules/scheduling/src/application/capacity-impact-check.ts", "modules/scheduling/src/application/project-closing-hook.ts", "modules/scheduling/src/layer.ts"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T27 — Implement CapacityImpactCheck and ProjectClosingHook in scheduling
@@ -27,8 +27,8 @@ Files: `modules/scheduling/src/application/capacity-impact-check.ts`, `modules/s
 
 ## Definition of Done
 
-- [ ] Use-case tests: AC-19c lists the overbooked weeks and writes no history; AC-27 Monday holiday affects only the full-timer; AC-25 preview lists 3 trims + later removals, apply writes `trimmed` / `removed` history by the closer (AC-16).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Use-case tests: AC-19c lists the overbooked weeks and writes no history; AC-27 Monday holiday affects only the full-timer; AC-25 preview lists 3 trims + later removals, apply writes `trimmed` / `removed` history by the closer (AC-16).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean
 
 ## Notes
 

@@ -1,7 +1,17 @@
 import { type Database, UnitOfWorkLive } from '@arv/db';
 import { identityPermissions } from '@arv/identity';
 import { IdentityConfig, IdentityModuleLive, permissionCatalogLayer } from '@arv/identity/layer';
-import { type Actor, CurrentActor } from '@arv/kernel';
+import { type Actor, CurrentActor, TodayLive } from '@arv/kernel';
+import { orgPermissions } from '@arv/org';
+import { OrgModuleLive } from '@arv/org/layer';
+import { projectsPermissions } from '@arv/projects';
+import { ProjectsModuleLive } from '@arv/projects/layer';
+import { schedulingPermissions } from '@arv/scheduling';
+import {
+  CapacityImpactCheckLive,
+  ProjectClosingHookLive,
+  SchedulingModuleLive,
+} from '@arv/scheduling/layer';
 import { Layer } from 'effect';
 import type { Bindings } from './env';
 
@@ -9,7 +19,12 @@ import type { Bindings } from './env';
  * Every module's permission declarations (ADR-0004). Add a module's declarations here when it
  * lands; nothing else builds the catalog.
  */
-const PermissionCatalogLive = permissionCatalogLayer([...identityPermissions]);
+const PermissionCatalogLive = permissionCatalogLayer([
+  ...identityPermissions,
+  ...orgPermissions,
+  ...projectsPermissions,
+  ...schedulingPermissions,
+]);
 
 /**
  * Identity's configuration from the api's env (sad §7). A missing value reads as empty, which
@@ -38,6 +53,13 @@ const IdentityLive = (env: Bindings) =>
  */
 const ModulesLive = (env: Bindings) =>
   Layer.empty.pipe(
+    // org's capacity-impact and projects' closing ports, implemented by scheduling (ADR-0007).
+    // Built from scheduling's repositories, `OrgApi` and `Today`; org's and projects' use cases
+    // read them per call, so no Layer cycle. Never the modules' no-op defaults here.
+    Layer.provideMerge(Layer.merge(CapacityImpactCheckLive, ProjectClosingHookLive)),
+    Layer.provideMerge(SchedulingModuleLive), // calls identity, org, projects
+    Layer.provideMerge(ProjectsModuleLive), // calls no module
+    Layer.provideMerge(OrgModuleLive), // calls identity
     Layer.provideMerge(IdentityLive(env)), // foundation
   );
 
@@ -49,7 +71,13 @@ const ModulesLive = (env: Bindings) =>
  */
 export const makeAppLayer = (env: Bindings, actor: Actor, database: Layer.Layer<Database>) =>
   ModulesLive(env).pipe(
-    Layer.provideMerge(Layer.merge(UnitOfWorkLive, Layer.succeed(CurrentActor, actor))),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        UnitOfWorkLive,
+        Layer.succeed(CurrentActor, actor),
+        TodayLive(env.COMPANY_TIME_ZONE),
+      ),
+    ),
     Layer.provide(database),
   );
 
@@ -59,3 +87,13 @@ export type AppServices = Layer.Layer.Success<ReturnType<typeof makeAppLayer>>;
 /** Just enough to resolve the actor, before the full app Layer exists. */
 export const makeIdentityLayer = (env: Bindings, database: Layer.Layer<Database>) =>
   IdentityLive(env).pipe(Layer.provide(database));
+
+/**
+ * For the `scheduled` entry point (Cron Trigger): no request and no actor, so only what the jobs
+ * need, the scheduling facade over its repositories, `Today` and the run's one Database.
+ */
+export const makeScheduledLayer = (env: Bindings, database: Layer.Layer<Database>) =>
+  SchedulingModuleLive.pipe(
+    Layer.provide(TodayLive(env.COMPANY_TIME_ZONE)),
+    Layer.provide(database),
+  );

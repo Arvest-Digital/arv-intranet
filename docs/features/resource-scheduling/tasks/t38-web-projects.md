@@ -7,7 +7,7 @@ acs: ["AC-23", "AC-24", "AC-25", "AC-26", "AC-11"]
 files_hint: ["apps/web/app/features/projects/"]
 owner: "TBD (frontend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T38 — Build the project list, create and close-with-preview screens
@@ -27,9 +27,13 @@ Files: `apps/web/app/features/projects/`
 
 ## Definition of Done
 
-- [ ] Route/component tests: AC-24 message, close preview lists trims and removals and resubmits with `confirm: true` (AC-25), forbidden state (AC-26).
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean
+- [x] Route/component tests: AC-24 message, close preview lists trims and removals and resubmits with `confirm: true` (AC-25), forbidden state (AC-26) (`features/projects/routes/projects.test.ts`, `features/projects/components/{project-list,project-dialogs}.test.tsx`).
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (`check:modules` trips only on the git-ignored `modules/.omc/` tool folder when it exists)
 
 ## Notes
 
-- —
+- Route `/projects` (`features/projects/routes/projects.tsx`); «Projects» shows in the top nav for holders of `projects:manage-projects`, `scheduling:view-whole-board` or `scheduling:edit-allocations` (the api's list readers). Matches the V2 design's Projects list, Project create, Project close and Forbidden boards using `app/shared/ui`.
+- List: grouped by type, with type/status segmented filters and name search (client-side; the whole list is loaded). Status reads «Open», «Open · until <date>» or «Closed · <date>». The AC-11 rule is stated under the table.
+- Left out of the design because the contract has no data or endpoint for them: the «People, next 12 weeks» column and «Rename».
+- Close: date (not before today, checked in the browser and by the api) → «Review changes» sends without `confirm`; a 409 `closing_confirmation_required` shows the allocations that end on the close date and those removed, and «Close project» resends with `confirm: true`. With nothing to trim the first request closes directly.
+- Without manage-projects the list is read-only; a refused list/create/close (403) shows the forbidden screen naming «manage projects» (AC-26).

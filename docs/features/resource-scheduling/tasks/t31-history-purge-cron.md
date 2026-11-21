@@ -7,7 +7,7 @@ acs: ["AC-16"]
 files_hint: ["modules/scheduling/src/application/purge-history.ts", "apps/api/src/index.ts", "apps/api/wrangler.jsonc", "apps/api/test/integration/scheduling/"]
 owner: "TBD (backend lead)"
 estimate: "M"
-status: "todo"
+status: "done"
 ---
 
 # T31 — Add the monthly allocation-history purge and its Cron Trigger
@@ -27,9 +27,9 @@ Files: `modules/scheduling/src/application/purge-history.ts`, `apps/api/src/inde
 
 ## Definition of Done
 
-- [ ] Integration test with a fixed clock: entries older than 12 months deleted, newer kept, rerun deletes nothing (QS-5).
-- [ ] `pnpm build` succeeds with the cron trigger in `wrangler.jsonc`.
-- [ ] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
+- [x] Integration test with a fixed clock: entries older than 12 months deleted, newer kept, rerun deletes nothing (QS-5).
+- [x] `pnpm build` succeeds with the cron trigger in `wrangler.jsonc`.
+- [x] `pnpm lint && pnpm typecheck && pnpm test` clean (+ `pnpm test:integration`)
 
 ## Notes
 

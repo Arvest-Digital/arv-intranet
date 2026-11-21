@@ -13,7 +13,8 @@ test('an anonymous visit to a page goes to sign-in, keeping the page to return t
   await expect(page.getByRole('button', { name: 'Sign in with Google' })).toBeVisible();
   // The sign-in button posts the page back, so Google's return lands on it.
   await expect(page.locator('input[name="returnTo"]')).toHaveValue('/board');
-  await expect(page.getByRole('navigation', { name: 'Main' })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Main navigation' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sections' })).toHaveCount(0);
 });
 
 test('signing out shows the sign-in page, ends that session only and keeps other devices signed in (AC-20)', async ({

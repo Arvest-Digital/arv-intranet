@@ -1,4 +1,4 @@
-import { Conflict } from '@arv/contracts/shared';
+import { ConfirmationRequired, Conflict } from '@arv/contracts/shared';
 import { Permission, PermissionDenied, Unauthenticated } from '@arv/kernel';
 import { Effect, Layer, Schema } from 'effect';
 import { Hono } from 'hono';
@@ -57,6 +57,28 @@ describe('runEffect', () => {
     );
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ error: { _tag: 'Conflict', message: 'taken' } });
+  });
+
+  it('answers 409 ConfirmationRequired with the impact in details', async () => {
+    const details = { closeDate: '2026-11-30', endingAtCloseDate: [], removed: [] };
+    const res = await answer(
+      Effect.fail(
+        new ConfirmationRequired({
+          message: 'Nothing ends or is removed',
+          code: 'projects.closing_confirmation_required',
+          details,
+        }),
+      ),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: {
+        _tag: 'ConfirmationRequired',
+        code: 'projects.closing_confirmation_required',
+        message: 'Nothing ends or is removed',
+        details,
+      },
+    });
   });
 
   it('answers 500 platform.internal_error for a defect', async () => {

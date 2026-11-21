@@ -2,6 +2,7 @@ import { type AccessRole, isRetired } from '@arv/contracts/identity';
 import { MoreHorizontalIcon, TriangleAlertIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useFetcher, useNavigate } from 'react-router';
+import { PATHS } from '~/shared/paths';
 import { Badge } from '~/shared/ui/badge';
 import { Button } from '~/shared/ui/button';
 import {
@@ -17,7 +18,7 @@ import { RoleIntent } from './access-role-form';
 import { DeleteRoleDialog } from './delete-role-dialog';
 
 /** Where a role is edited. */
-export const roleEditPath = (role: Pick<AccessRole, 'id'>) => `/access/roles/${role.id}`;
+export const roleEditPath = (role: Pick<AccessRole, 'id'>) => PATHS.accessRole(role.id);
 
 /**
  * The access roles: permissions in plain words, holders, the pre-selected mark (AC-13) and a flag

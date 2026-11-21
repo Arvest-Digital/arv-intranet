@@ -1,26 +1,42 @@
 import type { Me } from '@arv/contracts/identity';
-import { isRouteErrorResponse } from 'react-router';
 
 /** The permission that shows «Access» in the navigation and opens the admin screens (AC-08). */
 export const MANAGE_ACCESS = 'identity:manage-access';
 
 export const canManageAccess = (me: Me) => me.permissions.includes(MANAGE_ACCESS);
 
+/** Shows «People» (org's employee records) in the navigation (AC-22). */
+export const canManageEmployeeRecords = (me: Me) =>
+  me.permissions.includes('org:manage-employee-records');
+
+/** Shows «Schedule»: the board needs view-whole-board or edit-allocations (AC-01, AC-03). */
+export const canViewBoard = (me: Me) =>
+  ['scheduling:view-whole-board', 'scheduling:edit-allocations'].some((permission) =>
+    me.permissions.includes(permission),
+  );
+
 /**
- * Why a page was refused, carried as the body of a thrown `data()` response so the root error
- * boundary can show the right screen: removed from the access list (401, AC-07) or missing the
- * permission a page needs (403, AC-08).
+ * Shows «Projects» in the navigation: project upkeep and the board's readers may list them
+ * (openapi `listProjects`, AC-26).
  */
-export type Refusal =
-  | { readonly reason: 'access-removed' }
-  | { readonly reason: 'missing-permission' };
+export const canReadProjects = (me: Me) =>
+  ['projects:manage-projects', 'scheduling:view-whole-board', 'scheduling:edit-allocations'].some(
+    (permission) => me.permissions.includes(permission),
+  );
 
-export const ACCESS_REMOVED: Refusal = { reason: 'access-removed' };
-export const MISSING_PERMISSION: Refusal = { reason: 'missing-permission' };
+/**
+ * Shows «Import»: the one-time import creates employee records, projects and allocations, so it
+ * needs all three permissions (AC-33). Whether it has run already is the page's to say.
+ */
+export const canImport = (me: Me) =>
+  ['scheduling:edit-allocations', 'org:manage-employee-records', 'projects:manage-projects'].every(
+    (permission) => me.permissions.includes(permission),
+  );
 
-/** The refusal an error boundary received, or null for any other error. */
-export function refusalOf(error: unknown): Refusal['reason'] | null {
-  if (!isRouteErrorResponse(error)) return null;
-  const reason = (error.data as Partial<Refusal> | null)?.reason;
-  return reason === 'access-removed' || reason === 'missing-permission' ? reason : null;
-}
+export {
+  ACCESS_REMOVED,
+  MISSING_PERMISSION,
+  missingPermissionOf,
+  type Refusal,
+  refusalOf,
+} from '~/shared/lib/refusal';

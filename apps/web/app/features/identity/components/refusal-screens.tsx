@@ -1,3 +1,4 @@
+import { LockIcon } from 'lucide-react';
 import { Link } from 'react-router';
 import { Button, buttonVariants } from '~/shared/ui/button';
 import { CardHead, PublicScreen, SignInForm } from './public-screens';
@@ -15,13 +16,33 @@ export function AccessRemovedScreen() {
 }
 
 /** AC-08: signed in, but without the permission the page needs. Shows nothing of the page. */
-export function MissingPermissionNotice() {
+export function MissingPermissionNotice({ permission }: { permission?: string }) {
+  if (!permission) {
+    return (
+      <main className="flex flex-col items-start gap-4 py-12">
+        <h1 className="text-xl font-semibold">You don't have permission to manage access.</h1>
+        <Link to="/" className={buttonVariants()}>
+          Go to home
+        </Link>
+      </main>
+    );
+  }
+  // A named permission (AC-28): the lock, which permission is missing, and who can grant it.
   return (
-    <main className="flex flex-col items-start gap-4 py-12">
-      <h1 className="text-xl font-semibold">You don't have permission to manage access.</h1>
-      <Link to="/" className={buttonVariants()}>
-        Go to home
-      </Link>
+    <main className="grid min-h-[50vh] place-items-center py-12">
+      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
+        <span
+          aria-hidden="true"
+          className="grid size-10 place-items-center rounded-lg border border-border bg-muted text-muted-foreground"
+        >
+          <LockIcon className="size-5" />
+        </span>
+        <h1 className="text-base font-semibold">You don’t have the “{permission}” permission.</h1>
+        <p className="text-muted-foreground">Ask an admin to grant it.</p>
+        <Link to="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          Go to home
+        </Link>
+      </div>
     </main>
   );
 }
