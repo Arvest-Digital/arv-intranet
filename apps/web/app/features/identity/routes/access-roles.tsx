@@ -3,6 +3,7 @@ import { data, Link } from 'react-router';
 import type { ApiFailure } from '~/shared/lib/api.server';
 import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-check.server';
 import { getSessionToken } from '~/shared/lib/session.server';
+import { PATHS } from '~/shared/paths';
 import { buttonVariants } from '~/shared/ui/button';
 import type { AccessListActionResult } from '../components/access-list-form';
 import { RoleIntent } from '../components/access-role-form';
@@ -72,7 +73,7 @@ export default function AccessRoles({ loaderData }: Route.ComponentProps) {
     <main className="flex flex-col gap-6">
       <AccessHeader
         action={
-          <Link to="/access/roles/new" className={buttonVariants()}>
+          <Link to={PATHS.accessRoleNew} className={buttonVariants()}>
             <PlusIcon aria-hidden="true" />
             New role
           </Link>

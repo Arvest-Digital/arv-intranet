@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import { TEAM_MESSAGE, type TeamActionResult } from '../team';
 import { design, kateryna, olena, platform } from '../test-data';
 import { TeamList } from './team-list';
@@ -12,7 +13,7 @@ function renderWithAction(...answers: TeamActionResult[]) {
   const forms: FormData[] = [];
   const Stub = createRoutesStub([
     {
-      path: '/people/teams',
+      path: PATHS.teams,
       Component: () => (
         <TeamList
           teams={[
@@ -28,7 +29,7 @@ function renderWithAction(...answers: TeamActionResult[]) {
       },
     },
   ]);
-  render(<Stub initialEntries={['/people/teams']} />);
+  render(<Stub initialEntries={[PATHS.teams]} />);
   return forms;
 }
 

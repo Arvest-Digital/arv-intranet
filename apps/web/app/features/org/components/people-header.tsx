@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router';
 import { cn } from '~/shared/lib/utils';
+import { PATHS } from '~/shared/paths';
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
   cn(
@@ -13,10 +14,10 @@ export function PeopleHeader() {
     <div className="flex flex-col gap-2">
       <h1 className="text-2xl font-semibold">People</h1>
       <nav aria-label="People sections" className="flex gap-4 border-b border-border">
-        <NavLink to="/people" end className={tabClass}>
+        <NavLink to={PATHS.people} end className={tabClass}>
           Employees
         </NavLink>
-        <NavLink to="/people/teams" className={tabClass}>
+        <NavLink to={PATHS.teams} className={tabClass}>
           Teams
         </NavLink>
       </nav>

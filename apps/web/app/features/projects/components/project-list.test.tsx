@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MissingPermissionNotice } from '~/features/identity/components/refusal-screens';
+import { PATHS } from '~/shared/paths';
 import { ProjectList } from './project-list';
 
 afterEach(cleanup);
@@ -29,13 +30,13 @@ const projects = [
 function renderList(canManage: boolean, onClose = vi.fn()) {
   const Stub = createRoutesStub([
     {
-      path: '/projects',
+      path: PATHS.projects,
       Component: () => (
         <ProjectList projects={projects} canManage={canManage} action={null} onClose={onClose} />
       ),
     },
   ]);
-  render(<Stub initialEntries={['/projects']} />);
+  render(<Stub initialEntries={[PATHS.projects]} />);
   return onClose;
 }
 

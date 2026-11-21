@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import { HOLIDAY_MESSAGE, type HolidayActionResult } from '../holiday';
 import { HolidayAddDialog } from './holiday-add-dialog';
 
@@ -11,7 +12,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: HolidayActionResult[]
   const forms: FormData[] = [];
   const Stub = createRoutesStub([
     {
-      path: '/holidays',
+      path: PATHS.holidays,
       Component: () => ui,
       action: async ({ request }) => {
         forms.push(await request.formData());
@@ -19,7 +20,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: HolidayActionResult[]
       },
     },
   ]);
-  render(<Stub initialEntries={['/holidays']} />);
+  render(<Stub initialEntries={[PATHS.holidays]} />);
   return forms;
 }
 

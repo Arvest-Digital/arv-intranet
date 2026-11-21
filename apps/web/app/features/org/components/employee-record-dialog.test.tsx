@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import { type EmployeeRecordActionResult, RULE_MESSAGE } from '../employee-record';
 import { kateryna, logins, olena, teams } from '../test-data';
 import { EmployeeRecordDialog } from './employee-record-dialog';
@@ -13,7 +14,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: EmployeeRecordActionR
   const forms: FormData[] = [];
   const Stub = createRoutesStub([
     {
-      path: '/people',
+      path: PATHS.people,
       Component: () => ui,
       action: async ({ request }) => {
         forms.push(await request.formData());
@@ -21,7 +22,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: EmployeeRecordActionR
       },
     },
   ]);
-  render(<Stub initialEntries={['/people']} />);
+  render(<Stub initialEntries={[PATHS.people]} />);
   return forms;
 }
 

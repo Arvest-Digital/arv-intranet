@@ -5,9 +5,9 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useMatches,
   useRouteLoaderData,
 } from 'react-router';
-import { AppNav } from '~/features/identity/components/app-nav';
 import {
   AccessRemovedScreen,
   ErrorNotice,
@@ -16,9 +16,12 @@ import {
 } from '~/features/identity/components/refusal-screens';
 import { missingPermissionOf, refusalOf } from '~/features/identity/gate';
 import { gate } from '~/features/identity/gate.server';
+import { sectionOf } from '~/shared/nav/section';
 import { SYSTEM_THEME_SCRIPT, themeClass } from '~/shared/theme/theme';
 import { getTheme } from '~/shared/theme/theme.server';
 import { useTheme, useThemeClass } from '~/shared/theme/use-theme';
+import { AppShell } from '~/shell/app-shell';
+import { getSidebar } from '~/shell/sidebar.server';
 import type { Route } from './+types/root';
 import stylesheet from './app.css?url';
 
@@ -26,11 +29,12 @@ export const links: Route.LinksFunction = () => [{ rel: 'stylesheet', href: styl
 
 /** Every page passes the gate first (ADR-0002); `me` is null only on the public sign-in pages. */
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const [theme, me] = await Promise.all([
+  const [theme, sidebar, me] = await Promise.all([
     getTheme(request),
+    getSidebar(request),
     gate(request, context.cloudflare.env.API),
   ]);
-  return { theme, me };
+  return { theme, sidebar, me };
 }
 
 /** Re-check the session on every navigation, so a removed user's next action is refused (AC-07). */
@@ -41,6 +45,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useThemeClass(theme);
   // The app shell is for a signed-in user only; public and refusal screens render bare.
   const me = useRouteLoaderData<typeof loader>('root')?.me;
+  // The deepest matched section layout picks the side navigation; none on Home or a 404.
+  const section = sectionOf(useMatches());
 
   return (
     // `system` adds `.dark` in the browser (script below), so the server class can differ.
@@ -57,12 +63,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="text-sm">
         {me ? (
-          <>
-            <AppNav me={me} />
-            <div className="mx-auto max-w-[1280px] px-8 pt-8 pb-12 max-sm:px-4 max-sm:pt-6 max-sm:pb-10">
-              {children}
-            </div>
-          </>
+          <AppShell me={me} section={section}>
+            {children}
+          </AppShell>
         ) : (
           children
         )}

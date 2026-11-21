@@ -2,6 +2,7 @@ import { data, redirect } from 'react-router';
 import type { ApiFailure } from '~/shared/lib/api.server';
 import { foreignOriginResponse, isAllowedOrigin } from '~/shared/lib/origin-check.server';
 import { getSessionToken } from '~/shared/lib/session.server';
+import { PATHS } from '~/shared/paths';
 import type { AccessListActionResult } from '../components/access-list-form';
 import { AccessRoleForm, RoleIntent } from '../components/access-role-form';
 import { formFailure } from '../form-failure';
@@ -74,7 +75,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     const marked = await gateway.setPreselectedAccessRole(wantPreselected ? saved.value.id : null);
     if (!marked.ok) return refuse(marked);
   }
-  return redirect('/access/roles');
+  return redirect(PATHS.accessRoles);
 }
 
 export default function AccessRoleEdit({ loaderData, actionData }: Route.ComponentProps) {

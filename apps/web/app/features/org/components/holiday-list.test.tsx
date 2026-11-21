@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MissingPermissionNotice } from '~/features/identity/components/refusal-screens';
+import { PATHS } from '~/shared/paths';
 import { HolidayList } from './holiday-list';
 
 afterEach(cleanup);
@@ -24,7 +25,7 @@ const holidays = [
 function renderList(canManage: boolean, list = holidays) {
   const Stub = createRoutesStub([
     {
-      path: '/holidays',
+      path: PATHS.holidays,
       Component: () => (
         <HolidayList
           holidays={list}
@@ -36,7 +37,7 @@ function renderList(canManage: boolean, list = holidays) {
       ),
     },
   ]);
-  render(<Stub initialEntries={['/holidays']} />);
+  render(<Stub initialEntries={[PATHS.holidays]} />);
 }
 
 describe('HolidayList', () => {
@@ -50,7 +51,7 @@ describe('HolidayList', () => {
       'page',
     );
     expect(within(year).getByRole('link', { name: '2027' }).getAttribute('href')).toBe(
-      '/holidays?year=2027',
+      `${PATHS.holidays}?year=2027`,
     );
     expect(screen.getByRole('button', { name: 'Add holiday' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove Christmas Day' })).toBeTruthy();

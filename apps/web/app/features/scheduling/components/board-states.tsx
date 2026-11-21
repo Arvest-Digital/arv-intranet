@@ -1,5 +1,6 @@
 import { CalendarRangeIcon, FunnelXIcon, LockIcon } from 'lucide-react';
 import { Link } from 'react-router';
+import { PATHS } from '~/shared/paths';
 import { buttonVariants } from '~/shared/ui/button';
 
 function EmptyState({
@@ -30,7 +31,7 @@ export function BoardForbidden() {
   return (
     <main className="grid min-h-[50vh] place-items-center">
       <EmptyState icon={<LockIcon />} text="You don't have permission to view the team schedule">
-        <Link to="/my-schedule" className={buttonVariants()}>
+        <Link to={PATHS.mySchedule} className={buttonVariants()}>
           Open my schedule
         </Link>
       </EmptyState>

@@ -288,8 +288,13 @@ The web app mirrors the modules as feature folders. Each feature has its own typ
 
 ```
 apps/web/app/
-├── routes.ts                         registers feature routes
+├── routes.ts                         registers feature routes, grouped into sections by layout()
 ├── routes/home.tsx                   pages that belong to no feature
+├── sections/schedule.tsx             a section: its side navigation (`section`), `handle`, <Outlet/>
+├── sections/index.ts                 SECTIONS: the switcher's order
+├── shell/                            top bar + section switcher, side navigation, its cookie
+├── shared/paths.ts                   PATHS: the one place page URLs are written
+├── shared/nav/section.ts             Section / NavItem types, visibility by `me`
 ├── features/identity/
 │   ├── routes/access-users.tsx       loader · action · UI
 │   ├── components/user-list.tsx
@@ -300,6 +305,7 @@ apps/web/app/
 
 - Loaders and actions stay thin. They call the feature's `*.server.ts` gateway, which wraps the client, decodes responses with contract schemas, and turns `ApiErrorBody` into a UI message (`ApiResult`).
 - Features don't import each other. Shared code goes in `shared/`; a page that combines several domains is composed at route level.
+- The app is split into **sections** (Schedule, Access & users). A section is a pathless `layout()` in `routes.ts` whose route module exports a `Section` (label, icon, nav items with a `visible(me)` predicate from `features/identity/gate.ts`) as its `handle`. The root `Layout` takes the deepest match's section and renders the shell: the switcher in the top bar and that section's side navigation. Pages outside a section (Home, 404) get the top bar only. Features know nothing of sections. Adding one: a file in `sections/`, an entry in `SECTIONS`, a `layout()` block in `routes.ts`, its URLs in `PATHS`.
 - Web never imports `@arv/db`, `@arv/kernel`, `@arv/platform` or a module package.
 
 ## Testing

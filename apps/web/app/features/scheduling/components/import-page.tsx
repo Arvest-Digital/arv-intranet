@@ -2,6 +2,7 @@ import { CircleAlertIcon, UploadIcon, XIcon } from 'lucide-react';
 import { useId, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { cn } from '~/shared/lib/utils';
+import { PATHS } from '~/shared/paths';
 import { Alert } from '~/shared/ui/alert';
 import { Button } from '~/shared/ui/button';
 import { IMPORT_MESSAGE, type ImportActionResult, type ImportPageData } from '../import';
@@ -15,7 +16,7 @@ import {
 } from './import-results';
 
 /** Where the page posts the file: its own route's action. */
-export const IMPORT_ACTION = '/import';
+export const IMPORT_ACTION = PATHS.import;
 
 /**
  * The one-time import (US-11, flow 13): upload the planning spreadsheet → the preview, or the

@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import { PROJECT_MESSAGE, type ProjectActionResult } from '../project';
 import { ProjectCloseDialog } from './project-close-dialog';
 import { ProjectCreateDialog } from './project-create-dialog';
@@ -13,7 +14,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: ProjectActionResult[]
   const forms: FormData[] = [];
   const Stub = createRoutesStub([
     {
-      path: '/projects',
+      path: PATHS.projects,
       Component: () => ui,
       action: async ({ request }) => {
         forms.push(await request.formData());
@@ -21,7 +22,7 @@ function renderWithAction(ui: React.ReactNode, ...answers: ProjectActionResult[]
       },
     },
   ]);
-  render(<Stub initialEntries={['/projects']} />);
+  render(<Stub initialEntries={[PATHS.projects]} />);
   return forms;
 }
 

@@ -197,6 +197,9 @@ test('the board passes the accessibility audit in light and dark (QS-7)', async 
     await page.emulateMedia({ colorScheme });
     await open(page, '/schedule');
     await expect(page.getByRole('table', { name: BOARD_TABLE })).toBeVisible();
+    // The audit covers the shell too: the section switcher and the side navigation.
+    await expect(page.getByRole('complementary', { name: 'Main navigation' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Schedule', exact: true })).toBeVisible();
     // The theme follows the OS by default: make sure this pass really audits that scheme.
     if (colorScheme === 'dark') await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);

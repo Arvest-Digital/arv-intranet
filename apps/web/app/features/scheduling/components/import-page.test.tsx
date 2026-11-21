@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import type { ImportActionResult, ImportPageData } from '../import';
 import { ImportPage } from './import-page';
 
@@ -47,12 +48,12 @@ const PREVIEW: ImportActionResult = {
 
 const CSV = 'Employee,Project\nOlena Kovalenko,Atlas CRM\n';
 
-/** Renders the page on /import, its action answering `answers` in turn. */
+/** Renders the page at its path, its action answering `answers` in turn. */
 function renderPage(data: ImportPageData, answers: ImportActionResult[] = []) {
   const forms: FormData[] = [];
   const Stub = createRoutesStub([
     {
-      path: '/import',
+      path: PATHS.import,
       Component: () => <ImportPage data={data} />,
       action: async ({ request }) => {
         forms.push(await request.formData());
@@ -60,7 +61,7 @@ function renderPage(data: ImportPageData, answers: ImportActionResult[] = []) {
       },
     },
   ]);
-  render(<Stub initialEntries={['/import']} />);
+  render(<Stub initialEntries={[PATHS.import]} />);
   return { forms };
 }
 
@@ -149,7 +150,7 @@ describe('ImportPage', () => {
     );
     expect(screen.queryByLabelText('Planning spreadsheet')).toBeNull();
     expect(screen.getByRole('link', { name: 'Open the board' }).getAttribute('href')).toBe(
-      '/schedule',
+      PATHS.board,
     );
   });
 

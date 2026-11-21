@@ -7,6 +7,7 @@ import {
   UploadIcon,
 } from 'lucide-react';
 import { Link } from 'react-router';
+import { PATHS } from '~/shared/paths';
 import { Alert } from '~/shared/ui/alert';
 import { Button, buttonVariants } from '~/shared/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '~/shared/ui/table';
@@ -228,7 +229,7 @@ export function ImportCompleted({
       ) : null}
       <p className="mt-5">
         Further changes are made on the board.{' '}
-        <Link to="/schedule" className="font-medium underline underline-offset-3">
+        <Link to={PATHS.board} className="font-medium underline underline-offset-3">
           Open the board
         </Link>
       </p>
@@ -272,7 +273,7 @@ export function ImportSuccess({ run }: { run: ImportResult }) {
         {plural(run.allocationsCreated, 'allocation', 'allocations')}. From now on, make changes on
         the board.
       </p>
-      <Link to="/schedule" className={buttonVariants()}>
+      <Link to={PATHS.board} className={buttonVariants()}>
         Open the board
       </Link>
     </CentredState>

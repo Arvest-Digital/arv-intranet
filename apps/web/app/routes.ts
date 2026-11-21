@@ -1,29 +1,37 @@
-import { index, type RouteConfig, route } from '@react-router/dev/routes';
+import { index, layout, type RouteConfig, route } from '@react-router/dev/routes';
+import { PATHS } from './shared/paths';
 
 export default [
   index('routes/home.tsx'),
   route('sign-in', 'features/identity/routes/sign-in.tsx'),
   route('sign-in/return', 'features/identity/routes/sign-in-return.tsx'),
   route('sign-out', 'features/identity/routes/sign-out.tsx'),
-  route('access/users', 'features/identity/routes/access-users.tsx'),
-  route('access/roles', 'features/identity/routes/access-roles.tsx'),
-  route('access/roles/new', 'features/identity/routes/access-role-edit.tsx', {
-    id: 'access-role-new',
-  }),
-  route('access/roles/:accessRoleId', 'features/identity/routes/access-role-edit.tsx'),
-  route('people', 'features/org/routes/employee-records.tsx'),
-  route('people/teams', 'features/org/routes/teams.tsx'),
-  route('holidays', 'features/org/routes/holidays.tsx'),
-  route('projects', 'features/projects/routes/projects.tsx'),
-  route('schedule', 'features/scheduling/routes/board.tsx'),
-  route('schedule/allocations', 'features/scheduling/routes/board-actions.ts'),
+  // A section is a pathless layout: its pages share the side navigation it describes.
+  layout('sections/schedule.tsx', [
+    route(PATHS.board, 'features/scheduling/routes/board.tsx'),
+    route(PATHS.mySchedule, 'features/scheduling/routes/my-schedule.tsx'),
+    route(PATHS.people, 'features/org/routes/employee-records.tsx'),
+    route(PATHS.teams, 'features/org/routes/teams.tsx'),
+    route(PATHS.projects, 'features/projects/routes/projects.tsx'),
+    route(PATHS.holidays, 'features/org/routes/holidays.tsx'),
+    route(PATHS.import, 'features/scheduling/routes/import.tsx'),
+  ]),
+  layout('sections/access.tsx', [
+    route(PATHS.accessUsers, 'features/identity/routes/access-users.tsx'),
+    route(PATHS.accessRoles, 'features/identity/routes/access-roles.tsx'),
+    route(PATHS.accessRoleNew, 'features/identity/routes/access-role-edit.tsx', {
+      id: 'access-role-new',
+    }),
+    route(PATHS.accessRole(':accessRoleId'), 'features/identity/routes/access-role-edit.tsx'),
+  ]),
+  // Resource routes: no page, so no section.
+  route(PATHS.allocations, 'features/scheduling/routes/board-actions.ts'),
   route(
-    'schedule/allocations/:allocationId/history',
+    PATHS.allocationHistory(':allocationId'),
     'features/scheduling/routes/allocation-history.ts',
   ),
-  route('my-schedule', 'features/scheduling/routes/my-schedule.tsx'),
-  route('import', 'features/scheduling/routes/import.tsx'),
   route('theme', 'routes/theme.ts'),
+  route('sidebar', 'routes/sidebar.ts'),
   // Dev-only UI showcase; not registered in production builds.
   ...(process.env.NODE_ENV === 'production' ? [] : [route('dev/ui', 'routes/dev.ui.tsx')]),
   // Last: unknown paths still pass the root gate before their 404.

@@ -3,6 +3,7 @@ import { ArrowRightIcon, CircleAlertIcon, InfoIcon, XIcon } from 'lucide-react';
 import { useEffect } from 'react';
 import { useFetcher } from 'react-router';
 import { cn } from '~/shared/lib/utils';
+import { PATHS } from '~/shared/paths';
 import { Alert } from '~/shared/ui/alert';
 import { Badge } from '~/shared/ui/badge';
 import { Button } from '~/shared/ui/button';
@@ -26,8 +27,7 @@ export type HistoryTarget = {
 };
 
 /** Where the panel loads an allocation's history from (a resource route). */
-export const historyHref = (allocationId: string) =>
-  `/schedule/allocations/${allocationId}/history`;
+export const historyHref = PATHS.allocationHistory;
 
 /**
  * An allocation's change history in a side sheet (US-05, flow 7): each entry with who, when, from

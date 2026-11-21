@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRoutesStub } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PATHS } from '~/shared/paths';
 import { parseBoardParams } from '../board';
 import { allocation, board, COBALT, cell, everyStateBoard, row, W47, W48 } from '../test-data';
 import type { AllocationDialogState } from './allocation-dialog';
@@ -134,7 +135,7 @@ describe('board screens', () => {
     renderAt(<BoardForbidden />);
     expect(screen.getByText("You don't have permission to view the team schedule")).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open my schedule' }).getAttribute('href')).toBe(
-      '/my-schedule',
+      PATHS.mySchedule,
     );
   });
 

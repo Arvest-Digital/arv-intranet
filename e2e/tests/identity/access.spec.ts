@@ -28,10 +28,10 @@ test('an admin adds a user with the pre-selected role, creates «Planner» and a
 
   // Add the newcomer, keeping the pre-selected «Staff» (AC-04, AC-13).
   await open(page, '/');
-  await page
-    .getByRole('navigation', { name: 'Main' })
-    .getByRole('link', { name: 'Access' })
-    .click();
+  const accessSection = page.getByRole('menuitem', { name: 'Access & users' });
+  await clickToOpen(page.getByRole('button', { name: 'Sections' }), accessSection);
+  await accessSection.click();
+  await expect(page).toHaveURL('/access/users');
   await expect(page.getByRole('heading', { name: 'Access', exact: true })).toBeVisible();
   const tabs = page.getByRole('navigation', { name: 'Access', exact: true });
 
@@ -144,10 +144,11 @@ test('a user without manage access sees no «Access» and is refused the access 
   if (!baseURL) throw new Error('missing baseURL');
   await useSession(page.context(), baseURL, member.token);
 
-  await page.goto('/');
-  const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible();
-  await expect(nav.getByRole('link', { name: 'Access' })).toHaveCount(0);
+  await open(page, '/');
+  const scheduleSection = page.getByRole('menuitem', { name: 'Schedule' });
+  await clickToOpen(page.getByRole('button', { name: 'Sections' }), scheduleSection);
+  await expect(page.getByRole('menuitem', { name: 'Access & users' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
 
   for (const path of ['/access/users', '/access/roles']) {
     await page.goto(path);

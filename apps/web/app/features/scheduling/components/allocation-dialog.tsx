@@ -11,6 +11,7 @@ import { useEffect, useId, useState } from 'react';
 import { useFetcher } from 'react-router';
 import { projectColorStyle } from '~/shared/lib/project-color';
 import { cn } from '~/shared/lib/utils';
+import { PATHS } from '~/shared/paths';
 import { Alert } from '~/shared/ui/alert';
 import { Button } from '~/shared/ui/button';
 import {
@@ -57,7 +58,7 @@ import { Avatar } from './board-grid';
 import { segClass, segItemClass } from './board-toolbar';
 
 /** Where the dialog's fetcher posts (ADR-0002: edits are route actions). */
-export const ALLOCATION_ACTION = '/schedule/allocations';
+export const ALLOCATION_ACTION = PATHS.allocations;
 
 /** A person the create dialog can allocate. */
 export type Resource = { readonly id: string; readonly fullName: string; readonly team: string };

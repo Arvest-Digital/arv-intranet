@@ -2,6 +2,7 @@ import type { AccessRole, PermissionDeclaration } from '@arv/contracts/identity'
 import { ArrowLeftIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Form, Link, useNavigation } from 'react-router';
+import { PATHS } from '~/shared/paths';
 import { Button, buttonVariants } from '~/shared/ui/button';
 import { type AccessListActionResult, CheckboxRow, Field, FormError } from './access-list-form';
 import { PermissionPicker } from './permission-picker';
@@ -45,7 +46,7 @@ export function AccessRoleForm({
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
         <Link
-          to="/access/roles"
+          to={PATHS.accessRoles}
           className="inline-flex w-fit items-center gap-1 font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:rounded-sm focus-visible:ring-3 focus-visible:ring-ring/30"
         >
           <ArrowLeftIcon aria-hidden="true" className="size-4" />
@@ -97,7 +98,7 @@ export function AccessRoleForm({
           <Button type="submit" disabled={submitting}>
             {submitting ? 'Saving…' : 'Save role'}
           </Button>
-          <Link to="/access/roles" className={buttonVariants({ variant: 'outline' })}>
+          <Link to={PATHS.accessRoles} className={buttonVariants({ variant: 'outline' })}>
             Cancel
           </Link>
         </div>
