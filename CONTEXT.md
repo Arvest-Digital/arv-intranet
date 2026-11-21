@@ -1,6 +1,6 @@
 ---
 status: Living
-updated_at: "2026-11-13"
+updated_at: "2026-11-21"
 ---
 
 # Domain Context — arv-intranet
@@ -32,6 +32,8 @@ that carry real content. ## Glossary is mandatory; the other two are optional.
 - capacity — the working hours a resource has in a period: contract hours minus public holidays (leave is not subtracted here; it is booked as an allocation to a leave project). NOT availability (capacity left over after allocations) and NOT contract hours (the fixed weekly hours in the employment contract, before public holidays are subtracted).
 - closed project — a project whose close date has passed and which accepts no new, changed or removed allocations; confirming a close date ends the project's later allocations on that date (the last bookable day) and removes those starting after it, while the project stays open until the end of that date; a closed project is never reopened. NOT a deleted project (its past allocations and their history remain).
 - contract hours — the fixed weekly working hours from a resource's employment contract, spread evenly over the resource's working days (Monday to Friday unless set otherwise). NOT capacity (contract hours before public holidays and the employment period are applied).
+- daily capacity — a resource's capacity on one date: their contract hours divided evenly over their working days, or zero on a non-working day, a public holiday or a date outside their employment period. NOT an overbooking threshold (overbooking is judged per week; a day above its daily capacity is only hinted) and NOT contract hours (weekly hours before working days and holidays are applied).
+- day view — a zoom of the schedule board that shows one to four weeks with a column per day: each resource's allocated hours against their daily capacity, plus leave days and public holidays. NOT a per-day plan (an allocation still has one fixed rate per day or week, so its hours are spread evenly over working days) and NOT a calendar of time slots within a day.
 - employee record — the intranet's shared record of an employee (name, team, contract hours, working days, employment period), kept separate from scheduling so other intranet features can reuse it. NOT a resource (the schedulable view of an employee) and NOT a user (an intranet login).
 - employment period — the dates from a resource's start date to their end date (open-ended if no end date is set); outside it the resource's capacity is zero and no new allocations can be made. NOT leave (a temporary absence inside the employment period).
 - incomplete record — an employee record missing contract hours or a start date, so the resource's capacity is unknown and they are left out of the free list. NOT a record missing a team or working days (team is optional and working days default to Monday to Friday), and NOT the stricter launch-readiness completeness KPI.

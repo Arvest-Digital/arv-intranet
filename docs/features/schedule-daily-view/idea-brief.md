@@ -168,7 +168,7 @@ Two checkpoints are part of the recommendation:
 - [ ] How is a dragged allocation that already started in the past handled (split at today or refuse)? — owner: PM, due: during /sdlc:write-prd
 - [ ] Which drag-and-drop support does the web app adopt? A new package needs approval; this is a hard-to-reverse choice for /sdlc:architecture-design, not this brief. — owner: Tech Lead, due: before stage 2
 - [ ] Is undo needed in stage 2, or is the change history enough? — owner: PM, due: post-stage-1 checkpoint
-- [ ] Glossary: add "day view" and "daily capacity" to CONTEXT.md via /sdlc:fix-term. — owner: PM, due: before /sdlc:write-prd
+- [x] Glossary: add "day view" and "daily capacity" to CONTEXT.md via /sdlc:fix-term. — done 2026-11-21
 
 ## Related
 - [CONTEXT.md](../../../CONTEXT.md) — allocation, availability, capacity, leave, overbooking, public holiday
