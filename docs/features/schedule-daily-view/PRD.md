@@ -3,7 +3,7 @@ status: Draft
 owner: "dmitro.b"
 reviewers: ["Tech Lead", "Security Lead"]
 updated_at: "2026-11-21"
-feature_size: "M"   # stage 3 added 2026-11-21 — expected L; re-run sdlc:classify-size
+feature_size: "L"
 stage: "03"
 ticket: "BRIEFS B-01 (docs/features/resource-scheduling/BRIEFS.md)"
 ---
@@ -14,7 +14,7 @@ ticket: "BRIEFS B-01 (docs/features/resource-scheduling/BRIEFS.md)"
 > **Reference module:** `modules/scheduling` — per-day figures and daily capacity (`src/domain/weekly-figures.ts`, `src/domain/capacity.ts`), the weekly-only overbooking check and its «only what the change makes worse» rule (`src/domain/overbooking.ts`), the board window limits and permission checks (`src/domain/errors.ts`, `src/domain/visibility.ts`).
 > **External context channels used:** Project docs: [`ARCHITECTURE.md`](../../../ARCHITECTURE.md), [resource-scheduling PRD](../resource-scheduling/PRD.md) and [SAD](../resource-scheduling/sad.md) (no `docs/architecture-map.md` yet).
 
-Domain terms (**resource**, **allocation**, **capacity**, **daily capacity**, **day view**, **availability**, **contract hours**, **employment period**, **project**, **closed project**, **leave**, **public holiday**, **overbooking**, **team**, **permission**, **user**) follow [`CONTEXT.md`](../../../CONTEXT.md). Stage 3 terms **working hours**, **time interval** and **time overlap** are pending `/sdlc:fix-term` (definitions in BRIEF B-01).
+Domain terms (**resource**, **allocation**, **capacity**, **daily capacity**, **day view**, **availability**, **contract hours**, **employment period**, **project**, **closed project**, **leave**, **public holiday**, **overbooking**, **team**, **permission**, **user**) follow [`CONTEXT.md`](../../../CONTEXT.md). Stage 3 terms **working hours**, **time interval** and **time overlap** are in the same glossary.
 
 ## 1. Context
 
