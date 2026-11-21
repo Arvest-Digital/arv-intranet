@@ -1,6 +1,6 @@
 # arv-intranet
 
-Intranet app on Cloudflare Workers. A React Router frontend talks to a private Hono + Effect API over a service binding, and the API talks to Postgres (Neon) through Hyperdrive.
+Intranet app for Arvest Digital, running on Cloudflare Workers. A React Router frontend talks to a private Hono + Effect API over a service binding, and the API talks to Postgres (Neon) through Hyperdrive.
 
 ```
 browser ──► web Worker ──service binding──► api Worker ──► Hyperdrive ──► Neon Postgres 18
