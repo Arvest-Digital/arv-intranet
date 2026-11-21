@@ -3,7 +3,7 @@ status: Draft
 owner: "dmitro.b"
 reviewers: ["Tech Lead", "Security Lead"]
 updated_at: "2026-11-21"
-feature_size: "M"
+feature_size: "M"   # stage 3 added 2026-11-21 — expected L; re-run sdlc:classify-size
 stage: "03"
 ticket: "BRIEFS B-01 (docs/features/resource-scheduling/BRIEFS.md)"
 ---
@@ -14,7 +14,7 @@ ticket: "BRIEFS B-01 (docs/features/resource-scheduling/BRIEFS.md)"
 > **Reference module:** `modules/scheduling` — per-day figures and daily capacity (`src/domain/weekly-figures.ts`, `src/domain/capacity.ts`), the weekly-only overbooking check and its «only what the change makes worse» rule (`src/domain/overbooking.ts`), the board window limits and permission checks (`src/domain/errors.ts`, `src/domain/visibility.ts`).
 > **External context channels used:** Project docs: [`ARCHITECTURE.md`](../../../ARCHITECTURE.md), [resource-scheduling PRD](../resource-scheduling/PRD.md) and [SAD](../resource-scheduling/sad.md) (no `docs/architecture-map.md` yet).
 
-Domain terms (**resource**, **allocation**, **capacity**, **daily capacity**, **day view**, **availability**, **contract hours**, **employment period**, **project**, **closed project**, **leave**, **public holiday**, **overbooking**, **team**, **permission**, **user**) follow [`CONTEXT.md`](../../../CONTEXT.md).
+Domain terms (**resource**, **allocation**, **capacity**, **daily capacity**, **day view**, **availability**, **contract hours**, **employment period**, **project**, **closed project**, **leave**, **public holiday**, **overbooking**, **team**, **permission**, **user**) follow [`CONTEXT.md`](../../../CONTEXT.md). Stage 3 terms **working hours**, **time interval** and **time overlap** are pending `/sdlc:fix-term` (definitions in BRIEF B-01).
 
 ## 1. Context
 
@@ -22,7 +22,7 @@ The schedule board shows weeks. The people who plan (PMs, delivery managers and 
 
 Planners asked for a day view as soon as the weekly board shipped, and the question was already open in [resource-scheduling PRD §8](../resource-scheduling/PRD.md#8-open-questions). There is no hard deadline, but the longer two planning places run in parallel, the more they diverge.
 
-We commit to **Approach C — Staged Day View, Gesture Editing** (idea-brief §13): a day view of the existing board (one to four weeks, a column per day). **Stage 1** is the read view plus select-days-to-create and click-to-edit through the existing forms. **Stage 2** adds moving and stretching an allocation by whole days by dragging, with keyboard equivalents, through the same save rules and confirmation. Stage 2 is funded only if the spreadsheet is still in use when we recount after stage 1. Allocations keep one fixed rate per day or week; editing stays whole-allocation and whole-day.
+We commit to **Approach C — Staged Day View, Gesture Editing** (idea-brief §13): a day view of the existing board (one to four weeks, a column per day). **Stage 1** is the read view plus select-days-to-create and click-to-edit through the existing forms. **Stage 2** adds moving and stretching an allocation by whole days by dragging, with keyboard equivalents, through the same save rules and confirmation. Stage 2 is funded only if the spreadsheet is still in use when we recount after stage 1. **Stage 3 — Time of day** (added 2026-11-21, part of the current iteration, not gated by the recount) adds a one-day timeline: every allocation gets a required daily time interval, the weekly rate is removed, each employee record gains a working-day start, and a time-overlap warning joins the overbooking warning ([BRIEF B-01](./BRIEF.md#b-01-one-day-view-by-hour-time-of-day)). Until stage 3 ships, allocations keep one fixed rate per day or week; from stage 3, one fixed time interval per day. Editing stays whole-allocation and whole-day.
 
 Traceability:
 - Raw idea (baseline, verbatim, confirmed 2026-11-21): «A day-column zoom of the schedule board (one to four weeks, a column per day) showing each resource's allocated hours against their daily capacity, leave days and public holidays — editable in place: first by selecting days or clicking a bar to open the existing forms, then by dragging to move or stretch an allocation by whole days, always keeping the weekly overbooking warning.»
@@ -30,6 +30,7 @@ Traceability:
 - Interview decisions (2026-11-21, medium depth): one PRD for both stages, each story tagged; visibility rules unchanged but at day precision; a started allocation cannot be moved, only its end changed; stretching keeps the rate; overbooking is judged per day as well as per week, in every place that judges it, from stage 1.
 - **KPI dropped — overridden by author** (critic F3: «share of changes started from the day view», idea-brief §7 supporting metric) — rationale: it would need new stored data, which the feature otherwise avoids; goal 3 is judged by the spreadsheet KPI (planners keeping the spreadsheet → 0).
 - **Decision override:** per-day overbooking adopted (idea-brief §5 and §14 rejected it) — rationale: the planner survey (2026-11) showed that the weekly rule hides daily overload, which planners now catch in the spreadsheet; this is the revisit trigger named in §14. The glossary entries **overbooking** and **daily capacity** were updated on 2026-11-21. The baseline's «always keeping the weekly overbooking warning» still holds: the weekly warning stays, and a per-day check is added.
+- **Decision override — stage 3, time of day (author, 2026-11-21):** adopted after this PRD was clarified; reverses «the day view adds no stored data» for stage 3 only. Decisions: time interval required on every allocation, per day, in 15-minute steps; weekly rate removed and existing weekly-rate allocations converted; working-day start on the employee record, end = start + daily capacity; time overlap warned like overbooking; outside working hours allowed silently; migration starts every existing allocation at the working-day start; leave whole days; one company time zone; visibility as the board ([BRIEF B-01](./BRIEF.md#b-01-one-day-view-by-hour-time-of-day), idea-brief §13 «Scope change»). Rationale source still to be recorded (§8): the 2026-11 survey named day-by-day planning, not time of day.
 - **KPIs dropped — author decision (clarify-prd, 2026-11-21):** «day view adoption» and «daily overload seen ahead» — rationale: not needed to judge this feature, and neither could be measured without defining new events or confirming per-user request logs; the feature is judged by the spreadsheet KPI and the latency target.
 
 ## 2. Goals
@@ -37,10 +38,12 @@ Traceability:
 - The people who plan see and change the plan day by day on the board itself, so the planning spreadsheet is retired rather than run alongside.
 - One overbooking rule holds on the board, the day view and every save warning: a day over its daily capacity is overbooked and warned about, just like a week over its capacity, so the day view never shows a problem that saving ignores. The free list is the one intended exception: it counts real free hours day by day, so one overbooked day does not hide the free hours on the other days of that week (AC-07).
 - Small day-level changes (shift by a day, extend by two days) take one gesture instead of a form round-trip, with the same warnings and rules that planners already trust (stage 2).
+- The people who plan see when in the day each resource works on what, and are warned before booking one person twice at the same time (stage 3).
 
 ## 3. Non-goals
 
-- **Different hours on individual days within one allocation** — the allocation model keeps one fixed rate per day or week; uneven plans are booked as separate allocations (idea-brief §5).
+- **Different hours or times on individual days within one allocation** — the allocation keeps one fixed rate per day or week (from stage 3: one fixed time interval per day); uneven plans are booked as separate allocations (idea-brief §5).
+- **Part-day leave, per-employee time zones, breaks inside the working day** — stage 3 keeps leave whole-day, one company time zone, and working hours as one continuous span (BRIEF B-01).
 - **Dragging an allocation onto another resource (reassignment), multi-select, bulk or batched moves, staging, scenarios and tentative bookings** — each adds a new consistency model (Approach B, parked); reassignment stays «remove and create again» (idea-brief §5, §14).
 - **Gesture editing on phones** — on phones the board's day view is view-only (no selecting days, no click-to-edit, no gestures); allocations are still changed through the forms reached from the weekly board; gestures need a pointer or keyboard (idea-brief §5).
 - **Undo of a gesture** — the change history already shows every change with before/after values; an undo action is an open question for the post-stage-1 checkpoint (§8).
@@ -81,6 +84,21 @@ Traceability:
 **As a** user with the edit-allocations permission who does not use a pointer
 **I want** to move and stretch an allocation by whole days with the keyboard, with the same preview, rules and warnings as dragging
 **So that** gesture editing is open to everyone who plans
+
+### US-08: See one day by time of day *(Stage 3)*
+**As a** user with the view-whole-board permission
+**I want** to open one day of the board on a time-of-day axis and see each resource's allocations as blocks at their times, their working hours, leave and any time overlap
+**So that** I know who works on what and when within the day
+
+### US-09: Book an allocation at a time of day *(Stage 3)*
+**As a** user with the edit-allocations permission
+**I want** to give every allocation a daily start and end time and be warned when it overlaps another allocation of the same resource
+**So that** the plan says when the work happens, not only how many hours
+
+### US-10: Keep each resource's working hours *(Stage 3)*
+**As a** user with the manage-employee-records permission
+**I want** to set when a resource's working day starts
+**So that** the timeline shows their working hours
 
 ## 5. Acceptance criteria
 
@@ -182,12 +200,62 @@ Traceability:
 ### AC-19 (US-06) — happy path
 **Given** an allocation of 20 hours per week for three full weeks, for a resource who works Monday to Friday
 **When** a user with the edit-allocations permission drags its end edge two working days into the following week
-**Then** while dragging, by working days as in AC-13, the user sees the new end date, that the following week gets 8 hours of this allocation, the resource's total hours against capacity for each affected week, and any day the change would make overbooked or worse, and after letting go the allocation keeps its rate of 20 hours per week and the new days get their share of it by working days, as when the end date is changed in the form; dragging an edge of leave adds or removes whole working days, each taking the resource's full daily capacity, and the same warning names any work on the new leave days
+**Then** while dragging, by working days as in AC-13, the user sees the new end date, that the following week gets 8 hours of this allocation, the resource's total hours against capacity for each affected week, and any day the change would make overbooked or worse, and after letting go the allocation keeps its rate of 20 hours per week and the new days get their share of it by working days, as when the end date is changed in the form; dragging an edge of leave adds or removes whole working days, each taking the resource's full daily capacity, and the same warning names any work on the new leave days. Once stage 3 ships there is no rate per week: a stretched allocation keeps its daily time interval and its hours per day (AC-23, AC-28)
 
 ### AC-20 (US-07) — happy path
 **Given** a user with the edit-allocations permission working on the day view with the keyboard only
 **When** the user moves focus to an allocation, chooses to move it or change its start or end, shifts it day by day with the arrow keys, and confirms
 **Then** the user gets the same preview of dates and weekly hours, the same rules and the same warnings as when dragging, and can cancel at any point before confirming so that nothing changes
+
+### AC-21 (US-08) — happy path
+**Given** a user with the view-whole-board permission, a resource with 40 contract hours over Monday to Friday and a working-day start of 09:00, and on next Tuesday an allocation to one project from 09:00 to 13:00 and an allocation to another project from 14:00 to 16:00
+**When** the user opens next Tuesday as a one-day timeline from the day view
+**Then** the resource's row shows their working hours 09:00–17:00, the two allocations as blocks at 09:00–13:00 and 14:00–16:00 labelled with project and hours, «6/8» as the day's figure, and free time 13:00–14:00 and 16:00–17:00; the timeline covers at least 08:00–18:00 and widens to the earliest start and latest end shown; the user can move one day earlier or later within the limits of AC-02, and the team and project filters keep applying
+
+### AC-22 (US-08) — happy path
+**Given** a resource on leave next Tuesday, and a public holiday next Wednesday
+**When** a user with the view-whole-board permission looks at those days on the timeline
+**Then** the leave fills the resource's whole working hours as one block labelled «away» (or with its leave type, for viewers allowed to see it, AC-05), the public holiday shows the resource as non-working all day, and any allocation on the leave day is drawn over it with the overbooked mark, as in AC-01
+
+### AC-23 (US-09) — happy path
+**Given** a user with the edit-allocations permission
+**When** the user creates or edits an allocation
+**Then** the form asks for dates and a daily start and end time in 15-minute steps (start before end, at most 24 hours), shows the hours per day and the total hours this gives, and no longer offers a rate per week; after saving, the allocation shows at that time on every working day it covers
+
+### AC-24 (US-09) — error
+**Given** a user with the edit-allocations permission in the allocation form
+**When** the user enters an end time not after the start time, or a time not on a 15-minute step
+**Then** the form does not save and explains that the end must be after the start and that times go in 15-minute steps
+
+### AC-25 (US-09) — domain invariant
+**Given** a resource with an allocation from 09:00 to 13:00 every working day next week
+**When** a user with the edit-allocations permission adds an allocation for the same resource on next Tuesday from 11:00 to 12:00, which keeps the day within its daily capacity
+**Then** the system warns that the resource will be booked twice on Tuesday from 11:00 to 12:00, naming both projects, saves only after the user confirms, and the timeline marks the overlap; overlaps are named only when the change creates or lengthens them, like the overbooking rule in AC-08, and they are named in the same warning as overbooked days and weeks
+
+### AC-26 (US-09) — domain invariant
+**Given** a resource with working hours 09:00–17:00
+**When** a user with the edit-allocations permission saves an allocation from 17:00 to 19:00 that overlaps nothing and keeps the day within capacity
+**Then** the system saves it without a warning, and the timeline marks the part outside working hours
+
+### AC-27 (US-10) — happy path
+**Given** a user with the manage-employee-records permission editing an employee record with 40 contract hours over Monday to Friday
+**When** the user sets the working-day start to 08:00 and saves
+**Then** the resource's working hours become 08:00–16:00 (start plus daily capacity), daily and weekly capacity do not change, no allocation moves, and a new employee record starts at 09:00 unless set otherwise
+
+### AC-28 (US-09) — cross-context
+**Given** allocations saved before stage 3: one at 4 hours per day and one at 20 hours per week, for a resource working Monday to Friday from 09:00, both on next Tuesday
+**When** stage 3 ships
+**Then** both allocations get a daily time interval starting at the resource's working-day start: 09:00–13:00 for the 4-hours-per-day one, and 09:00–13:00 for the 20-hours-per-week one (20 hours ÷ 5 working days), so they overlap on Tuesday and the timeline marks it; no confirmation is asked, the change history records the conversion as a system change with before/after values, and in a week with a public holiday or leave the converted allocation now counts its hours per day only on working days, so that week's total can be lower than before (this amends resource-scheduling AC on the allocation form, the import format and AC-19 of this PRD)
+
+### AC-29 (US-08) — authorization
+**Given** a viewer with the view-whole-board permission but none of the see-leave-reasons, manage-employee-records or edit-allocations permissions
+**When** the viewer opens a day on the timeline
+**Then** the viewer sees times of allocations and working hours of every resource they may see on the board, leave as «away» with no type or leave project, and after an employment end date no blocks and no working hours, exactly as AC-05; a user without the view-whole-board permission sees only their own timeline, as in AC-04
+
+### AC-30 (US-08) — happy path
+**Given** a user who is a resource and has no view-whole-board permission
+**When** the user opens one day of their own schedule on the timeline
+**Then** the user sees their own working hours, allocations at their times, the type of their own leave and any overlap or overbooking, cannot change them, and on a phone (390 px) sees the day as a vertical list of time blocks
 
 ## 6. Non-functional requirements
 
@@ -196,8 +264,10 @@ Traceability:
 | Latency p95, open the day view (100 resources × 4 weeks) | ≤ 1500 ms | server request-duration metric for the day-view request, production |
 | Latency p95, save a dragged or keyboard change (incl. overbooking check) | ≤ 500 ms | server request-duration metric for allocation saves, production |
 | Gesture feedback while dragging | preview of dates, weekly totals against capacity and the days made overbooked or worse updates within 300 ms of each one-day step | automated browser performance test in CI on a 100-resource × 4-week board |
+| Latency p95, open a one-day timeline (100 resources) | ≤ 1000 ms | server request-duration metric for the timeline request, production |
+| Migration correctness (stage 3) | 100% of existing allocations get a time interval; hours per day of every converted allocation match its rate rule (weekly rate ÷ working days per full week, rounded per §8); every conversion is in the history | automated migration test on a copy of production data before release, plus a count check after release |
 | Availability | 99.5% monthly (same as the board) | intranet uptime monitor, monthly SLO window |
-| Calculation correctness | 100% of daily figures and of per-day and per-week overbooking verdicts match the capacity rules (working days, holidays, part-timers, employment period, leave); figures are computed exactly, shown rounded to the nearest half hour (so rounded days need not add up to the shown week), and overbooking is judged on exact figures | automated rule-table tests in CI |
+| Calculation correctness | 100% of daily figures, of per-day and per-week overbooking verdicts and of time-overlap verdicts (stage 3) match the capacity rules (working days, holidays, part-timers, employment period, leave); figures are computed exactly, shown rounded to the nearest half hour (so rounded days need not add up to the shown week), and overbooking is judged on exact figures | automated rule-table tests in CI |
 | Concurrency | 0 lost updates when two users change the same allocation by gesture or form | automated concurrent-save test in CI (AC-17) |
 | Accessibility | every gesture has a keyboard equivalent; free, booked, overbooked, away and non-working days are distinguishable without colour; text contrast ≥ 4.5:1 | automated accessibility audit of the day view in CI, plus a keyboard-only run of AC-20 |
 | Device support | desktop-first; on phones (390 px wide) the day view of the own schedule (one week) is fully readable and the board's day view is view-only with horizontal scrolling; no gestures on phones | manual check at a 390 px viewport in the pre-release review of each stage |
@@ -205,7 +275,7 @@ Traceability:
 ## 6.1 Security / privacy
 
 - **Data classification:** confidential — named employees' daily workload and absences; sick leave is health-related.
-- **Personal data touched:** no new fields. Existing leave days, public holidays and zero-capacity days become visible at day precision instead of as weekly counts.
+- **Personal data touched:** stages 1–2: no new fields; existing leave days, public holidays and zero-capacity days become visible at day precision instead of as weekly counts. Stage 3: two new fields — the working-day start on the employee record and the daily time interval on each allocation; whole-board viewers see when in the day each person works.
 - **AuthZ/AuthN impact:** no new permissions. The day view follows the board's rules: view-whole-board (or edit-allocations, which includes it) to see the whole board by day; edit-allocations to open forms from the day view, drag or use the keyboard to change; see-leave-reasons for leave types; manage-employee-records or edit-allocations to see an employment end date. Permissions are checked at every save, not at sign-in.
 - **Abuse cases:**
   - Sick-leave patterns at day precision (for example, always away on Mondays): viewers without the see-leave-reasons permission see only «away», never the type or the leave project; the resource themselves sees their own type. Residual risk accepted: whole-board viewers can see on which days someone is away, which the weekly «away, N days» already partly reveals.
@@ -213,6 +283,7 @@ Traceability:
   - Browsing colleagues by day without the view-whole-board permission: only the user's own day view is shown; other resources are neither listed nor counted.
   - Bulk tampering by gesture: each drag or keyboard change is one attributed change in history and counts toward the existing limit of 120 allocation changes per minute per user.
   - Stale permission during a long session: each drop or keyboard confirmation is checked at that moment (AC-18).
+  - Working-pattern profiling (stage 3): working hours and times of allocations reveal when someone works (e.g. always starts late). Residual risk accepted: same audience as the board, no new permission (BRIEF B-01 decision 11); flagged for security review.
 - **Security review:** Required — health-related absence data is shown at day precision, and per-day overbooking changes what every board viewer sees.
 
 ## 7. Metrics / KPIs
@@ -225,3 +296,8 @@ Traceability:
 - [ ] Is an undo action needed in stage 2, or is the change history enough? Default now: history only. — owner: PM, due: post-stage-1 checkpoint
 - [ ] Which drag-and-drop support does the web app adopt? A new package needs approval; this is a hard-to-reverse choice. Default now: decided in architecture, with the decision recorded only once stage 2 is funded. — owner: Tech Lead, due: before stage 2 starts
 - [ ] How are planners told that some weeks will show as overbooked after stage 1 ships with no change to the plan (AC-07)? Default now: a release note to the ~5 planners plus a one-time list of the newly overbooked days. — owner: PM, due: before stage 1 ships
+- [ ] What evidence supports the time-of-day scope (stage 3)? The 2026-11 survey named day-by-day planning. Default now: author decision recorded in §1; source to be added. — owner: PM, due: before stage 3 starts
+- [ ] How is a converted weekly rate rounded when hours per day are not a multiple of 15 minutes (e.g. 10 hours per week over 3 days)? Default now: nearest 15 minutes, with the changed allocations listed to planners. — owner: PM, due: before stage 3 starts
+- [ ] How are planners told about overlaps created by the migration (every existing allocation starts at the working-day start, AC-28) and about lower totals in holiday weeks? Default now: release note plus a one-time list of overlapping days per resource. — owner: PM, due: before stage 3 ships
+- [ ] Is dragging blocks on the timeline (15-minute steps) part of stage 3, or does it follow stage 2's funding? Default now: follows stage 2; stage 3 changes times through the form. — owner: PM, due: before stage 3 starts
+- [ ] How does the allocation import accept times once the weekly rate is removed? Default now: import takes a start and end time per allocation; rows with a weekly rate are refused with an explanation. — owner: PM + Tech Lead, due: before stage 3 starts

@@ -35,7 +35,8 @@ The schedule board is weekly. Planners can see that a resource has 24 of 40 hour
 Planners are asking for a day view and still keep the planning spreadsheet alongside the newly shipped board. The question is already open in [PRD §8](../resource-scheduling/PRD.md#8-open-questions) (owner PM, due 6 weeks after launch). There is no hard deadline, but the longer two planning places run in parallel, the more they diverge.
 
 ## 5. Out of scope
-- Different hours on individual days within one allocation. The allocation model stays a fixed rate per day or week.
+- Different hours on individual days within one allocation. The allocation model stays a fixed rate per day or week (from stage 3: one fixed time interval per day — see §13 «Scope change»).
+- Part-day leave and per-employee time zones (stage 3 keeps leave whole-day and one company time zone).
 - Dragging an allocation onto another person (reassignment). Done today by deleting and creating again.
 - Multi-select, bulk or batched moves, and a staging tray.
 - Scenarios, what-if branches, tentative bookings.
@@ -152,6 +153,8 @@ Two checkpoints are part of the recommendation:
 1. **Before stage 1:** a short survey of the ~5 planners on why the spreadsheet survives, and a baseline count of who keeps one. If the main reason is uneven per-day hours (§10 top risk), revisit the scope before building.
 2. **After stage 1:** recount spreadsheet users. Fund stage 2 (drag to move and stretch) only if the spreadsheet is still in use.
 
+**Scope change (2026-11-21, after the PRD draft) — decision override by the author:** a **stage 3, time of day**, is added to this feature in the current iteration: a one-day timeline where every allocation has a required daily time interval (15-minute steps), the weekly rate is removed (existing weekly-rate allocations converted to hours per day), each employee record gains a working-day start, and a time-overlap warning joins the overbooking warning. Leave stays whole days. Rationale and the eleven decisions: [BRIEF B-01](./BRIEF.md#b-01-one-day-view-by-hour-time-of-day). This reverses «no new stored data» (§12 Tech) and the out-of-scope line on per-day hours only as far as stage 3 needs. Effort grows from M towards L; re-run `/sdlc:classify-size`.
+
 **Locked-in pointer** for write-prd: a day-column zoom (1–4 weeks) on the existing board. Overbooking stays weekly, and a day over its daily capacity gets a clearly worded hint, never an overbooked mark. Stage 1 is the read view plus select-to-create and click-to-edit through the existing forms. Stage 2 adds whole-day move and stretch through the existing save path and confirmation, with keyboard equivalents.
 
 ## 14. Parked & rejected approaches
@@ -159,6 +162,7 @@ Two checkpoints are part of the recommendation:
 |---|---|:---:|---|---|
 | A | Read-Only Day Zoom | parked (absorbed) | Contained in C's stage 1; on its own it leaves the editing friction | Stage 2 is cancelled at the post-stage-1 checkpoint, so C effectively becomes A |
 | B | Live-Consequence Planning Canvas | parked | L effort for ~5 users; new batch consistency model; two calculators | After C ships, planners still keep the spreadsheet because of multi-person rebalancing or the lack of undo |
+| - | Time-of-day view (one-day timeline) | adopted as stage 3 (2026-11-21) | Author decision after the PRD draft; see §13 «Scope change» and BRIEF B-01 | — |
 | - | Per-day overbooking rule | rejected (for now) | Reopens several existing acceptance criteria, the import preview and the project-close preview, with likely alarm fatigue | Planners repeatedly report daily overload the weekly rule hides |
 
 ## 15. Open questions
