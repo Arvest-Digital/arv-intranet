@@ -179,49 +179,99 @@ Each tactical decision in later sections should be traceable to one of these str
 
 ## 5. Building block view
 
-<!-- 🎯 Навіщо: ВНУТРІШНЯ ДЕКОМПОЗИЦІЯ — модулі, контейнери, БД. Статична топологія:   -->
-<!--           хто з ким може говорити. Без §5 §6 (сценарії) не має словника учасників. -->
-<!-- 📋 Що писати: 1 абзац про стиль (шари/гексагональна/clean/на подіях) +            -->
-<!--           дерево папок + Mermaid C4Container.                                       -->
-<!-- 📌 ОДИН Container на кожну оголошену target_surface (frontmatter): fullstack        -->
-<!--           [backend-service, web-frontend] = backend-API container + web/SPA container; -->
-<!--           [backend-service, mobile-app] = API + mobile app. Container(web, …) нижче — -->
-<!--           лише приклад однієї поверхні; додай/заміни під оголошене у §4. → _shared/surfaces.md -->
-<!-- 📌 Приклад: «web-app, content-api, media-worker, postgres, s3, cdn».                -->
+The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001) with no divergence. It adds **no module, no module edge and no deployable**; it extends `scheduling` and `org`, their contracts and the web's `scheduling` and `org` feature folders. Every new rule is a pure function in `scheduling/domain`, as [resource-scheduling ADR-0005](../../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md) requires. Every new read and command is an Effect use case in `scheduling/application`, reached through Hono routes in `scheduling/http`. The day view, the timeline, their own-schedule equivalents and the gesture outcome table are **dedicated reads** beside the unchanged weekly board read ([ADR-0005](./adr/0005-serve-day-view-and-timeline-through-dedicated-reads.md)). The module's presenter applies the visibility policy before any DTO is built. `scheduling` gets the working-day start from `org` only through `OrgApi`'s employment terms, never from `org`'s tables. The host-wired ports of [resource-scheduling ADR-0007](../../resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) keep their shape; only the rule behind them becomes per-day.
 
-<One paragraph: layered / hexagonal / clean / event-driven. Why.>
-
-**Internal decomposition:**
+**Internal decomposition** (new or changed parts only; S1/S2/S3 = the stage that brings it):
 
 ```
-<e.g. internal/modules/goals/>
-├── domain/       <entities + sentinel errors>
-├── app/          <use cases / services>
-├── infra/        <repository + outbox impl>
-├── ports/        <HTTP handlers, DTOs, error mapping>
-└── module.go     <self-wiring>
+modules/scheduling/src/
+├── domain/
+│   ├── daily-figures.ts      S1  per resource-day cell (allocated vs daily capacity, away, non-working,
+│   │                             overbooked) and allocation bars spanning days; reuses capacity.ts
+│   ├── overbooking.ts        S1  judged per day AND per week; «made worse» per day and per week (AC-08);
+│   │                             a week with an overbooked day is overbooked; changeImpact names days
+│   ├── free-list.ts          S1  free hours summed day by day (AC-07)
+│   ├── working-hours.ts      S3  working-day start + daily capacity → working hours (AC-27, AC-27b)
+│   ├── time-overlap.ts       S3  overlaps between non-leave intervals per day; «made worse» (AC-25)
+│   ├── allocation.ts         S3  segment carries a time interval (minutes from midnight) instead of a rate
+│   ├── gesture-outcomes.ts   S2  every reachable move / edge position → dates, weekly totals, impact or
+│   │                             refusal reason (ADR-0004)
+│   └── visibility.ts         S1/S3  unchanged rules, applied to day cells, times and working hours
+├── application/
+│   ├── day-view.ts           S1  read: window ≤ 4 weeks, by resource (project grouping is done in the web)
+│   ├── timeline.ts           S3  read: one day, by resource
+│   ├── my-schedule.ts        S1/S3  own schedule gains the day zoom and own timeline
+│   ├── gesture-outcomes.ts   S2  read: outcome table for one allocation and gesture kind
+│   ├── allocations/*         S1/S3  per-day impact in every save; time interval in create/change (AC-23)
+│   ├── capacity-impact-check.ts, project-closing-hook.ts   S1  per-day impact (AC-07)
+│   └── import-*              S3  rows carry start/end time; rows with a weekly rate are refused (PRD §8)
+├── infrastructure/schema.ts  S3  allocation_segments: starts_at_minute, ends_at_minute; rate columns
+│                                 removed (ADR-0002, ADR-0003)
+└── http/routes.ts, presenter.ts  new read routes; impact details gain days and overlaps
+
+modules/org/src/
+├── domain/                   S3  EmployeeRecord.workingDayStart (15-minute step; start + daily capacity ≤ 24:00)
+├── application/org-api.ts    S3  employment terms carry the working-day start
+└── infrastructure/schema.ts  S3  employee_records.working_day_start_minute (default 540)
+
+packages/contracts/src/
+├── scheduling/               S1  day-view DTO, impact list + overbookedDays; S2 outcome table;
+│                             S3  timeline DTO, time interval on allocations, timeOverlaps; weekly rate removed
+└── org/                      S3  working-day start on the employee record DTOs
+
+apps/web/app/features/
+├── scheduling/
+│   ├── routes/board.tsx      S1  zoom=day&weeks=1..4 (ADR-0001)
+│   ├── routes/timeline.tsx   S3  date=, grouped by resource
+│   ├── routes/my-schedule.tsx S1/S3  day zoom and own timeline (phone: vertical list, AC-30)
+│   ├── components/day-*      S1  day grid, day cell, allocation bar, read-only details popover
+│   ├── components/timeline-* S3  time axis, blocks, working hours, overlap marks
+│   ├── components/allocation-dialog.tsx  S3  start / end time in 15-minute steps, no weekly rate
+│   └── components/gesture-*  S2  pointer and keyboard gesture island over the day grid
+└── org/                      S3  working-day start field on the employee record form
 ```
 
 **C4 Container (L2):**
 
 ```mermaid
 C4Container
-    title <system> — Containers
+    title Schedule day view — Containers
 
-    Person(user, "<User>")
+    Person(planner, "User with edit-allocations", "Plans by day and time")
+    Person(viewer, "User with view-whole-board", "Reads day view and timeline")
+    Person(resource, "Resource", "Own schedule by day and time")
+    Person(maintainer, "User with manage-employee-records", "Working-day start")
 
-    Container_Boundary(boundary, "<Our System>") {
-        Container(web, "<Web/API container>", "<technology>", "<purpose>")
-        Container(svc, "<Service container>", "<technology>", "<purpose>")
-        ContainerDb(db, "<DB>", "<technology>", "<purpose>")
+    Container_Boundary(cf, "arv-intranet on Cloudflare") {
+        Container(web, "arv-web", "Worker, React Router 7 SSR", "Board with day zoom, timeline, own schedule, allocation dialogs with times, gesture island")
+        Container(host, "arv-api host", "Worker, Hono 4 + Effect 3", "Authenticates the actor, composition root, wires org and projects ports to scheduling")
+        Container(identity, "identity module", "Effect module", "Sessions, access roles, the request's actor")
+        Container(org, "org module", "Effect module", "Employee records incl. working-day start, teams, public holidays")
+        Container(projects, "projects module", "Effect module", "Projects and their open or closed state")
+        Container(sched, "scheduling module", "Effect module", "Allocations with time intervals, per-day and per-week overbooking, overlaps, day view, timeline, gesture outcomes")
+        Container(hd, "Hyperdrive", "Cloudflare Hyperdrive", "Connection pool, query caching off")
     }
 
-    System_Ext(ext, "<External>", "<purpose>")
+    ContainerDb(pg, "Postgres 18", "Neon", "Schemas identity, org, projects, scheduling")
+    System_Ext(google, "Google sign-in", "Company-domain OIDC")
 
-    Rel(user, web, "<interaction>", "<protocol>")
-    Rel(web, svc, "<service calls>")
-    Rel(svc, db, "<reads/writes>", "<driver>")
-    Rel(svc, ext, "<emits>", "<protocol>")
+    Rel(planner, web, "Plans and edits by day and time", "HTTPS")
+    Rel(viewer, web, "Reads day view and timeline", "HTTPS")
+    Rel(resource, web, "Reads own schedule", "HTTPS")
+    Rel(maintainer, web, "Edits working-day start", "HTTPS")
+    Rel(web, google, "Sign-in redirect", "OIDC")
+    Rel(web, host, "Typed hc client per feature", "service binding API")
+    Rel(host, identity, "Resolves the actor and permissions")
+    Rel(host, org, "Routes requests")
+    Rel(host, sched, "Routes requests")
+    Rel(sched, org, "Employment terms incl. working-day start, holidays", "facade")
+    Rel(sched, projects, "Project type and open state", "facade")
+    Rel(sched, identity, "User names for last changed by", "facade")
+    Rel(org, sched, "CapacityImpactCheck port, per-day impact", "host-wired")
+    Rel(projects, sched, "ProjectClosingHook port, per-day impact", "host-wired")
+    Rel(org, hd, "SQL via the query helper", "pg")
+    Rel(sched, hd, "SQL via the query helper", "pg")
+    Rel(hd, pg, "Pooled connections", "Postgres wire")
 ```
 
 ## 6. Runtime view
