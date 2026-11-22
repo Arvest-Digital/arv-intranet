@@ -449,22 +449,21 @@ flowchart LR
 
 ## 8. Crosscutting concepts
 
-<!-- 🎯 Навіщо: НАСКРІЗНІ ПАТЕРНИ, які перетинають кілька модулів: логування, помилки,    -->
-<!--           авторизація, ID strategy, outbox, кеш. ⭐ Друга найгустіша секція.          -->
-<!--           Якщо патерн всередині одного модуля — він НЕ сюди. Якщо це конвенція        -->
-<!--           проєкту в цілому — у CLAUDE.md.                                              -->
-<!-- 📋 Що писати: таблиця концепт / конвенція / де визначено. Один рядок на концепт.      -->
-<!-- 📌 Приклад: «UUID v7 (час+випадковий, сортується) у app-layer» — як default з CLAUDE.md. -->
+The feature **inherits every convention** of [resource-scheduling SAD §8](../resource-scheduling/sad.md#8-crosscutting-concepts): authentication and authorization through the per-request actor; error handling with `NotFound` / `Conflict` / `ConfirmationRequired` / `Invalid` / `Refused`; UUIDv7 IDs; untrusted text rendered as plain text; no new locale handling; no outbox or events. The rows below are what this feature **adds or changes**.
 
 | Concept | Convention | Where defined |
 |---|---|---|
-| Logging | <e.g. structured slog, fields `module=<name>`> | <CLAUDE.md §X or here> |
-| Authentication | <e.g. JWT via session middleware> | <CLAUDE.md §X> |
-| Error handling | <e.g. domain sentinel → ports/errors.go → apperr JSON> | <CLAUDE.md §X> |
-| ID strategy | <e.g. UUID v7 in app layer> | <CLAUDE.md §X> |
-| Internationalisation | <e.g. N/A, English only> | — |
-| Observability | <e.g. OpenTelemetry on HTTP boundaries> | — |
-| Outbox / events | <module-specific patterns, if any> | <here> |
+| Logging | One structured JSON line per api request, written by host middleware: route id (Hono route pattern), status, duration in ms. **No personal data**: no names, dates, query strings, leave types or times. It replaces `hono/logger`, and defects are still logged with their `Cause` by `runEffect`. | §7; `apps/api/src/index.ts` |
+| Authorization | No new permissions (PRD §6.1). The day view and the timeline need `scheduling:view-whole-board` (or `scheduling:edit-allocations`, which includes it); otherwise only the actor's own schedule is served. Opening forms, gestures and gesture outcome tables need `scheduling:edit-allocations`. The working-day start needs `org:manage-employee-records`. Permissions are checked in application use cases at every save, including each drop (AC-18). | resource-scheduling ADR-0004; identity ADR-0005 |
+| Visibility / redaction | The existing domain visibility policy is applied before any DTO is built, to every new view: day cells, allocation bars, the read-only details popover (AC-11), grouping by project (AC-01b), the own schedule, the timeline and the gesture outcome table. Leave type and leave project become «away» unless the viewer holds `scheduling:see-leave-reasons` or is the resource. After an employment end date, viewers without `org:manage-employee-records` or `scheduling:edit-allocations` get zero daily capacity and no allocations, no overbooking, no end mark, **no time blocks and no working hours** (AC-05, AC-29). | PRD §6.1; resource-scheduling §8 |
+| Overbooking and overlap rule | One pure rule set in `scheduling/domain`: a day is overbooked when its allocated hours exceed its daily capacity, and a week when its hours exceed its capacity or it contains an overbooked day. A change makes a day worse when that day's hours over grow, and a week worse when its hours over grow or it gains an overbooked day (AC-08). From stage 3, a change makes overlaps worse on a day that gains an overlap or whose overlapping time grows (AC-25). Leave never takes part in an overlap; work on a leave day is caught by overbooking only. Judged on exact ticks. | §4 choice 2; resource-scheduling ADR-0005 |
+| Warn-then-confirm | Unchanged mechanism: re-send with `confirm: true`, and the server recomputes. The `AllocationImpact` details grow **additively**: `overbookedDays[]` (date, hours over), `overbookedWeeks[]` (now naming their overbooked days) and, from stage 3, `timeOverlaps[]` (date, from–to, both projects). The same list is used by allocation and leave saves from forms and gestures, contract-hours / working-days edits (`CapacityImpactCheck`), adding a holiday, closing a project and the import. | resource-scheduling ADR-0010 |
+| Hour and time arithmetic | Hours stay integer minutes, computed in 1/420-minute ticks. A time interval is a pair of integer **minutes from midnight** (0–1440, multiples of 15). Hours per day are its length. Working hours are the working-day start plus the daily capacity, computed exactly and shown exactly even off a 15-minute step (AC-27b). Figures are shown rounded to the nearest half hour; times are shown exactly. | [ADR-0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md); resource-scheduling ADR-0009 |
+| Dates and time zone | Business dates stay `date` values. Times of day are **wall-clock** times in the one company time zone (`COMPANY_TIME_ZONE`), the same zone «today» and public holidays use. On a daylight-saving change day an interval's length is still its wall-clock difference. A day view week is an ISO week, Monday to Sunday. | BRIEF B-01 #10; resource-scheduling §8 |
+| Concurrency | Unchanged: an optimistic `version` on allocations and on employee records, which also covers the working-day start. A stale save, including a drop, fails with `Conflict` plus the current values and who changed them. Open views and gesture outcome tables are **not** updated live; they refresh after the user's next save, refusal or reload (AC-17). | resource-scheduling ADR-0008 |
+| Accessibility | Every day state (free, booked, overbooked, away, non-working) and every timeline state (overlap, outside working hours) carries a text label and a `lucide-react` icon, never colour alone. Theme tokens keep text contrast ≥ 4.5:1. Every gesture has a keyboard equivalent with the same preview and an escape that cancels (AC-20). The existing `@axe-core/playwright` audit runs on the day view and the timeline. | PRD §6 |
+| Device support | Desktop-first. On phones (390 px) the board's day view and timeline are view-only with horizontal scrolling and no gesture island. The own schedule shows one week, and the own timeline is a vertical list (AC-30). | PRD §3, §6 |
+| Rate limiting | **Not implemented** (inherited from resource-scheduling). PRD §6.1 says gestures count toward «the existing limit of 120 allocation changes per minute per user», but no such limit exists. Each gesture is one attributed history entry, and the Security Lead decides on a limit at the mandatory security review (§11; PRD divergence). | PRD §6.1 (diverges) |
 
 ## 9. Architecture decisions
 
