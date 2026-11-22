@@ -397,24 +397,55 @@ sequenceDiagram
 
 ## 7. Deployment view
 
-<!-- 🎯 Навіщо: ТОПОЛОГІЯ, яку DevOps має знати без читання Helm-чартів — скільки реплік,  -->
-<!--           де живе фоновий обробник, ПРИ ЯКИХ ЧИСЛАХ масштабуємось.                     -->
-<!-- 📋 Що писати: 2-3 речення про топологію + метрики + алерти + конкретні числа-пороги.   -->
-<!-- 📌 Приклад: «500 IC → партиціонування за кварталом» (не «при зростанні подумаємо»).    -->
-<!-- 🎯 Можна N/A для XS/S функцій, що переюзають існуюче розгортання без змін.            -->
+The feature ships inside the two existing Cloudflare Workers, which are serverless and scaled by Cloudflare per request. It adds **no Worker, binding, Cron Trigger or Hyperdrive config**: `arv-web` gains routes and components in `features/scheduling` and `features/org`, and `arv-api` gains reads and rules in `scheduling` and `org`. The monthly history purge (`0 3 1 * *`) is unchanged.
 
-<Topology in 2-3 sentences. Where it runs (k8s / VM / serverless), replicas, scaling thresholds.>
+- **Stage 1** has **no database migration**: per-day figures are computed from existing inputs.
+- **Stage 3** has **one drizzle-generated migration** ([ADR-0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md), [ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md)):
+  - `scheduling.allocation_segments` gains `starts_at_minute` and `ends_at_minute` and loses `rate_minutes` and the `day`/`week` rate periods (leave keeps `full-day`);
+  - `org.employee_records` gains `working_day_start_minute` with default 540.
+
+Because the stage 3 migration drops columns, it is **not additive**. Rolling the api back past it needs a schema rollback, which is acceptable only because scheduling holds no production data yet (ADR-0003).
+
+**Stage 3 release sequence** (every environment, previews included):
+1. Delete test allocations: non-leave allocations, their segments and history.
+2. Apply the migration through `@arv/migrations` (`pnpm db:migrate`).
+3. Deploy `arv-api`, then `arv-web`.
+4. Re-seed demo data with time intervals where needed.
+
+**Precondition:** stage 3 reaches production before any real allocation exists there (§11).
+
+```mermaid
+flowchart LR
+  browser([Browser]) --> web
+  subgraph cf["Cloudflare"]
+    web["arv-web Worker<br/>board zoom=day · timeline · own schedule<br/>gesture island (stage 2)"]
+    subgraph api["arv-api Worker"]
+      fetch["fetch handler<br/>authenticate → actor<br/>request log line (route id, status, ms)"]
+      mods["modules<br/>identity · org · projects · scheduling"]
+      fetch --> mods
+    end
+    hd[("Hyperdrive<br/>caching off")]
+  end
+  pg[("Neon Postgres 18<br/>scheduling.allocation_segments + time interval<br/>org.employee_records + working-day start")]
+  web -- "service binding API" --> fetch
+  mods --> hd --> pg
+```
 
 **Monitoring:**
-- <Metrics — e.g. Prometheus `<metric_name>`>
-- <Alerts — e.g. "outbox lag > 10 min → page on-call">
-- <Tracing — e.g. OpenTelemetry HTTP spans>
+- **Request duration** — the api host gets a middleware that writes **one structured JSON log line per request**: the route id (the Hono route pattern, e.g. `GET /scheduling/day-view`), the status and the duration in ms. It contains **no personal data**: no names, dates, query strings or leave types. Workers Observability (already enabled) computes p95 per route id against PRD §6:
+  - day view ≤ 1500 ms;
+  - allocation save, including gesture saves, ≤ 500 ms;
+  - one-day timeline ≤ 1000 ms.
+
+  The PRD §7 KPI «Day view latency p95» is read from it weekly. The line replaces `hono/logger` and also closes the same gap left by resource-scheduling (§11).
+- **Alerts** (architect's estimates, not PRD numbers): p95 above its PRD target for 1 hour on the day-view, timeline or allocation-save route; 5xx share above 1% over 15 minutes.
+- **Availability** — 99.5% monthly, measured by the intranet uptime monitor (PRD §6).
+- **Gesture feedback** (stage 2) — not a production metric. It is the automated browser performance test in CI that PRD §6 names (§10).
 
 **Scaling thresholds:**
-- <e.g. 500 IC × 5 goals × 26 checkpoints/Q = 65k rows/year — comfortable in one table>
-- <e.g. partitioning by quarter at >500k rows/year>
-
-<!-- For XS/S that doesn't change deployment: <!-- N/A: feature reuses existing deployment unit -->. -->
+- Day view at the PRD scale: 100 resources × 4 weeks = 2,800 resource-days per request, a third of the weekly board's 100 × 12 weeks = 8,400 (resource-scheduling §7).
+- Timeline: 100 resource-days per request. Gesture outcome table: one resource and a few dozen positions per gesture.
+- All of these stay well inside the compute-on-read budget of resource-scheduling ADR-0005. Revisit when resources exceed ~1,000, or when CPU time per day-view request approaches 50% of the Workers CPU limit. CPU time per request is recorded in the pre-release load test at 100 resources × 4 weeks.
 
 ## 8. Crosscutting concepts
 
