@@ -537,25 +537,32 @@ Each top goal from §1 is expanded into a full scenario. Numbers are quoted verb
 
 ## 11. Risks and technical debt
 
-<!-- 🎯 Навіщо: ⭐ збирає ВСЕ, що може зламатись — і не лише технічне. Без §11 ризики   -->
-<!--           обговорюються на стендапах і губляться; борг лишається у голові того,    -->
-<!--           хто його прийняв.                                                          -->
-<!-- 📋 Що писати: таблиця ризик/борг — серйозність — мітигація — власник. Технічний    -->
-<!--           борг окремою секцією.                                                      -->
-<!-- 📌 Приклад: «EM не пушить — member не оновлює дані | High | …». Перший ризик —      -->
-<!--           часто продуктовий, не технічний. Це нормально.                            -->
-
-<!-- Severity column literals: Low / Medium / High for regular risks; "Open question" for rows
-     created by Step-7 `Save as Open Question` resolutions (see references/socratic-loop.md). -->
+<!-- Severity column literals: Low / Medium / High for regular risks; "Open question" for open decisions (owner + due mandatory). -->
 
 | Risk / debt | Severity | Mitigation | Owner |
 |---|---|---|---|
-| <e.g. Outbox lag may reach hours during downstream outage> | Medium | <Alert >10 min, on-call playbook, retry backoff> | <DevOps> |
-| <e.g. No event schema versioning in v1> | Medium | <ADR-NNNN planned for v2, graceful handling of unknown fields> | <Backend> |
-| Open architectural decision: <decision-headline> | Open question | Resolve before <stage trigger or YYYY-MM-DD>; <inline rationale from Step-7 Save-as-OQ> | <owner> |
+| Open architectural decision (PRD §8): which drag-and-drop support does the web adopt for stage 2? A new package needs approval and is hard to reverse | Open question | Resolve before stage 2 starts; PRD default: decided in architecture, recorded only once stage 2 is funded. It only produces positions and steps; previews and rules come from the outcome table (ADR-0004). Pick a version that passes pnpm's minimum release age | Tech Lead |
+| Open question (PRD §8): is an undo action needed in stage 2, or is the change history enough? | Open question | Resolve at the post-stage-1 checkpoint; default: history only. An undo would be one more ordinary save of the previous dates with `version`, with no architecture change | PM |
+| Open question (PRD §8): how are planners told that some weeks show as overbooked after per-day overbooking ships with no change to the plan (AC-07)? | Open question | Resolve before stage 1 ships; default: release note plus a one-time list of newly overbooked days. Likely moot if scheduling's first production launch includes stages 1 and 3 together (ADR-0003), because no earlier plan would exist | PM |
+| Open question (PRD §8): what evidence supports the time-of-day scope (stage 3)? | Open question | Resolve before stage 3 starts; default: author decision recorded in PRD §1 | PM |
+| Open question (PRD §8): is dragging blocks on the timeline (15-minute steps) part of stage 3, or does it follow stage 2's funding? | Open question | Resolve before stage 3 starts; default: follows stage 2, and stage 3 changes times through the form. If adopted, the outcome table of ADR-0004 extends to 15-minute positions on one day | PM |
+| Open question (PRD §8): how does the allocation import accept times once the weekly rate is removed? | Open question | Resolve before stage 3 starts; default: one start and end time per row, and rows with a weekly rate are refused with an explanation (§5 import) | PM + Tech Lead |
+| **ADR-0003 precondition broken:** real allocations reach production before stage 3 is deployed there, so the no-conversion migration would lose real plans | High | Scheduling's production launch waits for stage 3, or the fallback conversion (ADR-0003 option 2: expand → convert → contract) is built before stage 3 ships. The stage 3 release runbook counts non-test allocations in production before migrating and stops if any exist (§7) | Tech Lead |
+| KPI timing: the spreadsheet recount «2 weeks after stage 1 ships» (PRD §7) assumes stage 1 in production; with no production launch before stage 3 (ADR-0003), the recount and the stage 2 funding checkpoint move to 2 weeks after the first production launch (stages 1 + 3) | Medium | PM re-dates the recount in the roadmap; no architecture change | PM |
+| Redaction regressions: a new read (day view, own day view, timeline, own timeline, details popover, gesture outcomes) leaks a leave type, leave project, employment end date, or times or working hours after it (QG-2) | High | Visibility policy in the domain, applied before DTOs (§8); QG-2 response-body test matrix over every new read × permission combination; security review before stage 1 and stage 3 | Tech Lead |
+| Per-day overbooking changes what every view and warning shows and amends resource-scheduling AC-01, AC-04, AC-10, AC-15, AC-19c, AC-27. A port left on its no-op default (resource-scheduling ADR-0007) would silently skip day-level warnings on employee-record, holiday or project-close edits | Medium | One rule set (§4 choice 2) with rule-table tests (QG-1); api integration tests through the real composition root for the capacity-impact and project-closing paths with day-level expectations; resource-scheduling e2e board spec updated | Tech Lead |
+| Stage 3 removes the weekly rate: a **non-additive** change to the allocation contract, the allocation form, the import format and the stored segments | Medium | Acceptable only before production (ADR-0003); web and api released together in the §7 sequence; contract tests updated in the same PR | Tech Lead |
+| Rate limiting not implemented although PRD §6.1 cites «the existing limit of 120 allocation changes per minute per user»; gestures make bulk changes easier | Medium | Each gesture is one attributed history entry; Security Lead confirms or reverses the absence at the mandatory security review (§8; PRD divergence, decision override) | Security Lead |
+| Accepted residual privacy risks (PRD §6.1): on which days someone is away; the exact first day of zero capacity after an unannounced departure; working-pattern profiling from times and working hours | Medium | Same audience as the board, no new permission; flagged for the security review; redaction rules of QG-2 hold | Security Lead |
+| Stale gesture outcome table: another user's save between gesture start and drop makes the preview wrong | Low | The drop's `version` check refuses with current values (AC-17); the table is fetched per gesture, never cached across gestures | Tech Lead |
+| The 300 ms gesture performance test is timing-sensitive and may flake in CI | Low | Measure on the seeded 100 × 4 board with the outcome table preloaded, assert per step, retry once; failures are investigated, not muted | Tech Lead |
+| Brownfield drift: no `docs/architecture-map.md`; this SAD read `ARCHITECTURE.md`, the resource-scheduling SAD and a scan at `27e2b52` | Low | Run `/sdlc:map-architecture`; update `ARCHITECTURE.md` (the per-request log line, the impact list) in the same PR as the code | Tech Lead |
 
 **Accepted debt (acceptable in v1, plan to fix later):**
-- <e.g. Goal entity is not versioned (immutable) — OK for v1, may need audit versioning in v2>
+- No rate limiting on allocation changes (PRD §6.1 divergence, inherited from resource-scheduling).
+- No live updates: open day views and timelines show other users' changes only after the next save, refusal or reload (AC-17).
+- The structured per-request log line (§7) arrives with this feature; until then resource-scheduling's latency targets had no production metric.
+- PRD §8's two conversion questions (rounding converted rates; telling planners about migration overlaps) are closed by ADR-0003 rather than answered; they return if the ADR-0003 precondition breaks.
 
 ## 12. Glossary
 
