@@ -24,16 +24,16 @@ target_surfaces: [backend-service, web-frontend]  # decided in §4 (extends reso
 
 - **Stage 1** — the read view, plus selecting days or clicking a bar to open the existing forms.
 - **Stage 2** — moving and stretching an allocation by whole days, by dragging or with the keyboard. It is funded only if the planning spreadsheet is still in use at the recount 2 weeks after stage 1.
-- **Stage 3 — time of day** (part of the current iteration, not gated by the recount). Every allocation except leave gets a required daily **time interval**, and the weekly rate is removed and converted. Each employee record gains a working-day start, a **time overlap** warning joins the overbooking warning, and a one-day **timeline** is added.
+- **Stage 3 — time of day** (part of the current iteration, not gated by the recount). Every allocation except leave gets a required daily **time interval**, and the weekly rate is removed. Each employee record gains a working-day start, a **time overlap** warning joins the overbooking warning, and a one-day **timeline** is added.
 
-The feature serves the ~5 users with the edit-allocations permission, who plan, and the ~30 resources who read their own schedule. Stages 1–2 add no stored data, because per-day figures are already computed from existing inputs. Stage 3 adds two stored fields and converts every existing allocation, past ones included.
+The feature serves the ~5 users with the edit-allocations permission, who plan, and the ~30 resources who read their own schedule. Stages 1–2 add no stored data, because per-day figures are already computed from existing inputs. Stage 3 adds two stored fields. No allocation is converted: stage 3 reaches production before any real allocation exists, and test allocations are deleted ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md)).
 
 **Top quality goals (1-liners; full scenarios in §10):**
 
 1. **QG-1 Calculation correctness at day precision** — 100% of daily figures, per-day and per-week overbooking verdicts and (stage 3) time-overlap verdicts match the capacity rules, computed exactly and judged on exact figures. One rule set serves the board, the day view, the free list and every warning (PRD §6).
 2. **QG-2 Confidentiality at day precision** — leave type, leave project, employment end date and anything after it never reach a viewer without the matching permission. That includes stage 3's times of allocations and working hours, in every view: day view, grouping by project, read-only details, own schedule and timeline (PRD §6.1).
 3. **QG-3 Responsiveness at target scale** — day view p95 ≤ 1500 ms for 100 resources × 4 weeks, gesture save p95 ≤ 500 ms, gesture preview within 300 ms of each one-day step, and one-day timeline p95 ≤ 1000 ms for 100 resources (PRD §6).
-4. **QG-4 Stage 3 conversion correctness** — 100% of existing allocations get a time interval whose hours per day match their rate rule, and every conversion is recorded in the history (PRD §6, AC-28). This is the feature's only irreversible step: it rewrites past figures too.
+4. **QG-4 Stage 3 data correctness** — after the stage 3 release, 100% of non-leave allocations carry a valid time interval and none carries a rate. This replaces the PRD's «Migration correctness», because nothing is converted (ADR-0003; full scenario in §10).
 
 **Stakeholders.**
 
@@ -44,10 +44,14 @@ The feature serves the ~5 users with the edit-allocations permission, who plan, 
 | Resources (~30 scheduled employees with an intranet login) | Read their own schedule by day and on the timeline, including their own leave type | No |
 | Users with the manage-employee-records permission | Set each resource's working-day start (stage 3, US-10) | No |
 | PM (PRD owner — dmitro.b) | Goals and the spreadsheet KPI hold; consulted on §10 quality goals and §11 severities; owns the stage 2 funding checkpoint | Yes (§10) |
-| Tech Lead | SAD approval, ADRs, module graph, the stage 3 conversion | Yes |
+| Tech Lead | SAD approval, ADRs, module graph, the stage 3 migration and its precondition (ADR-0003) | Yes |
 | Security Lead | Mandatory security review: health-related absence at day precision, per-day overbooking, working-pattern profiling (PRD §6.1) | Yes |
 
-<!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise. -->
+**Decision overrides.**
+
+- Decision override: no conversion of existing allocations at stage 3. PRD AC-28, the NFR «Migration correctness» and the stage 3 override's «existing weekly-rate allocations converted» (PRD §1) do not apply. Rationale (author, 2026-11-22): «Проєкт ще не на проді, наразі створені аллокації лише тестові, я можу видалити їх при розробці, і нам не доведеться їх мігрувати». Valid only while stage 3 reaches production before any real allocation does ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md); precondition risk in §11).
+- Decision override: PRD §8's two conversion questions (rounding a converted weekly rate; telling planners about migration overlaps and lower holiday-week totals) are closed by ADR-0003 rather than answered. Rationale: nothing is converted. They return if the ADR-0003 precondition breaks.
+- Decision override: no rate limit on allocation changes, although PRD §6.1 says gestures count toward «the existing limit of 120 allocation changes per minute per user». Rationale: that limit was removed from the resource-scheduling MVP and does not exist. Each change is attributed in history, and the Security Lead confirms or reverses this at the mandatory security review (§8, §11).
 
 ## 2. Constraints
 
@@ -64,12 +68,13 @@ The feature serves the ~5 users with the edit-allocations permission, who plan, 
   - 0008 — an allocation is one aggregate of effective-dated segments with a `version`.
   - 0009 — integer minutes are stored and integer 1/420-minute ticks are computed.
   - 0010 — warn-then-confirm by re-sending with `confirm: true`.
+- **Override — stage 3 migration and contract (pre-production only):** the stage 3 migration drops the rate columns in one step instead of expand → contract (`.claude/rules/backend/db.md`), and the allocation contract loses the weekly rate non-additively (ARCHITECTURE.md «changes are additive only»). This is allowed only because scheduling holds no production data yet ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md), §11). If the precondition breaks, the normal rules apply. A rollback is a new forward migration, never a schema rollback.
 - **No new package without approval** (CLAUDE.md). `apps/web` has no drag-and-drop or gesture package today; choosing one is PRD §8's open question (§11).
 
 **Organisational.**
 - No hard deadline (PRD §1). Effort budget and team composition are not quantified.
 - **Build order: stage 1 → stage 3 → stage 2.** Stage 3 is part of the current iteration and is built while the stage 1 recount runs. Stage 2 is built last, and only if the recount 2 weeks after stage 1 funds it (at least one planner still keeps the spreadsheet, PRD §7). As a result, stage 2 gestures are designed only for daily time intervals and time overlaps, never for a weekly rate. The weekly-rate wording of AC-19 applies only if this order changes.
-- Stage 3 rewrites every existing allocation and changes past figures (AC-28). Its release needs the PM's planner communication in place (PRD §8 open questions, §11).
+- Stage 3 converts nothing: it must reach production before any real allocation exists there, and test allocations are deleted before its migration ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md); precondition risk in §11).
 
 **Conventions.**
 - [`CLAUDE.md`](../../../CLAUDE.md), [`ARCHITECTURE.md`](../../../ARCHITECTURE.md) and `.claude/rules/*` (backend, frontend, infra). Layer imports are enforced by Biome `noRestrictedImports`.
@@ -129,7 +134,7 @@ C4Context
 
 ## 4. Solution strategy
 
-**Target surface(s) (the first decision — what's being built):** `[backend-service, web-frontend]`. This is the same pair as [resource-scheduling ADR-0001](../../resource-scheduling/adr/0001-build-backend-service-and-web-frontend-surfaces.md); the feature **extends** both existing containers and adds no new one, so it gets no new ADR (blast-radius gate 1 of 3: multi-module only).
+**Target surface(s) (the first decision — what's being built):** `[backend-service, web-frontend]`. This is the same pair as [resource-scheduling ADR-0001](../resource-scheduling/adr/0001-build-backend-service-and-web-frontend-surfaces.md); the feature **extends** both existing containers and adds no new one, so it gets no new ADR (blast-radius gate 1 of 3: multi-module only).
 
 - **backend-service** — the private `arv-api` Worker:
   - `scheduling` gains the day-view and timeline reads, per-day overbooking, the time-overlap check, the time interval on allocations and (stage 2) the gesture outcome table;
@@ -150,7 +155,7 @@ C4Context
    - Screens reuse `apps/web/app/shared/ui` (shadcn over Base UI) and the `app.css` theme tokens: no new design system and no new component library. A new primitive is justified only where none fits (a draggable bar, a time axis).
    - Serves QG-3 (bounded payload) and keeps the api private.
 
-2. **One per-day rule set behind every figure and warning** (extends [resource-scheduling ADR-0005](../../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md); no new ADR, because PRD goal 2 leaves no alternative). `scheduling/domain` judges overbooking per day **and** per week in one function: a day is over its daily capacity, and a week is over its capacity or contains an overbooked day. «Made worse» is per day and per week (AC-08), and from stage 3 the domain adds time overlaps with the same rule (AC-25). The free list counts free hours day by day (AC-07). The same functions serve:
+2. **One per-day rule set behind every figure and warning** (extends [resource-scheduling ADR-0005](../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md); no new ADR, because PRD goal 2 leaves no alternative). `scheduling/domain` judges overbooking per day **and** per week in one function: a day is over its daily capacity, and a week is over its capacity or contains an overbooked day. «Made worse» is per day and per week (AC-08), and from stage 3 the domain adds time overlaps with the same rule (AC-25). The free list counts free hours day by day (AC-07). The same functions serve:
    - the weekly board and the own schedule;
    - the day view and the timeline;
    - the free list;
@@ -179,7 +184,7 @@ Each tactical decision in later sections should be traceable to one of these str
 
 ## 5. Building block view
 
-The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001) with no divergence. It adds **no module, no module edge and no deployable**; it extends `scheduling` and `org`, their contracts and the web's `scheduling` and `org` feature folders. Every new rule is a pure function in `scheduling/domain`, as [resource-scheduling ADR-0005](../../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md) requires. Every new read and command is an Effect use case in `scheduling/application`, reached through Hono routes in `scheduling/http`. The day view, the timeline, their own-schedule equivalents and the gesture outcome table are **dedicated reads** beside the unchanged weekly board read ([ADR-0005](./adr/0005-serve-day-view-and-timeline-through-dedicated-reads.md)). The module's presenter applies the visibility policy before any DTO is built. `scheduling` gets the working-day start from `org` only through `OrgApi`'s employment terms, never from `org`'s tables. The host-wired ports of [resource-scheduling ADR-0007](../../resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) keep their shape; only the rule behind them becomes per-day.
+The feature follows the repo's **modular monolith with hexagonal modules** (repo ADR 0001) with no divergence. It adds **no module, no module edge and no deployable**; it extends `scheduling` and `org`, their contracts and the web's `scheduling` and `org` feature folders. Every new rule is a pure function in `scheduling/domain`, as [resource-scheduling ADR-0005](../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md) requires. Every new read and command is an Effect use case in `scheduling/application`, reached through Hono routes in `scheduling/http`. The day view, the timeline, their own-schedule equivalents and the gesture outcome table are **dedicated reads** beside the unchanged weekly board read ([ADR-0005](./adr/0005-serve-day-view-and-timeline-through-dedicated-reads.md)). The module's presenter applies the visibility policy before any DTO is built. `scheduling` gets the working-day start from `org` only through `OrgApi`'s employment terms, never from `org`'s tables. The host-wired ports of [resource-scheduling ADR-0007](../resource-scheduling/adr/0007-invert-capacity-and-close-checks-through-host-wired-ports.md) keep their shape; only the rule behind them becomes per-day.
 
 **Internal decomposition** (new or changed parts only; S1/S2/S3 = the stage that brings it):
 
@@ -404,13 +409,15 @@ The feature ships inside the two existing Cloudflare Workers, which are serverle
   - `scheduling.allocation_segments` gains `starts_at_minute` and `ends_at_minute` and loses `rate_minutes` and the `day`/`week` rate periods (leave keeps `full-day`);
   - `org.employee_records` gains `working_day_start_minute` with default 540.
 
-Because the stage 3 migration drops columns, it is **not additive**. Rolling the api back past it needs a schema rollback, which is acceptable only because scheduling holds no production data yet (ADR-0003).
+Because the stage 3 migration drops columns, it is **not additive** (§2 override). Rolling back past it is done with a new forward migration, as `.claude/rules/backend/db.md` requires, never with a schema rollback. This is acceptable only because scheduling holds no production data yet (ADR-0003).
 
 **Stage 3 release sequence** (every environment, previews included):
+0. **Guard** — count allocations in the environment that are not test data. In production a non-zero count **stops the release**, and the ADR-0003 fallback (expand → convert → contract) is built first (§11).
 1. Delete test allocations: non-leave allocations, their segments and history.
 2. Apply the migration through `@arv/migrations` (`pnpm db:migrate`).
 3. Deploy `arv-api`, then `arv-web`.
-4. Re-seed demo data with time intervals where needed.
+4. **QG-4 count check** — 0 non-leave segments without a time interval and 0 segments carrying a rate (§10).
+5. Re-seed demo data with time intervals where needed.
 
 **Precondition:** stage 3 reaches production before any real allocation exists there (§11).
 

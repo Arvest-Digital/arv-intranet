@@ -33,11 +33,10 @@ The PRD (AC-28, NFR «Migration correctness», PRD §8 rounding and notification
    - An idempotent conversion use case in `scheduling` reads working days and the working-day start through `OrgApi`, writes `converted` history entries and has a dry-run report for planners.
    - A release script runs it before and after the new code deploys.
    - A contracting migration then drops the rate columns.
-3. **One SQL migration that converts in place** — an UPDATE of the segments plus INSERTs into history in SQL, reading `org.employee_records`.
 
 ## Decision outcome
 
-**Chosen:** Option 1. With no production data, the conversion would rewrite only test rows. All of its machinery would be built and then thrown away: the use case, the history kind, the release script, the dry-run report and the two-step migration. Option 2 is the fallback if real allocations reach production first. Option 3 breaks the no-cross-schema rule and duplicates the domain rules in SQL.
+**Chosen:** Option 1. With no production data, the conversion would rewrite only test rows. All of its machinery would be built and then thrown away: the use case, the history kind, the release script, the dry-run report and the two-step migration. Option 2 is the fallback if real allocations reach production first.
 
 ## Consequences
 
