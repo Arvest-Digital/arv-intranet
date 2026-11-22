@@ -276,35 +276,124 @@ C4Container
 
 ## 6. Runtime view
 
-<!-- 🎯 Навіщо: ПОТІК У RUNTIME для 1-2 критичних сценаріїв. Хто з ким коли і у якому     -->
-<!--           порядку говорить. Без §6 §5 — лише купа коробок без життя.                  -->
-<!-- 📋 Що писати: Mermaid sequenceDiagram. Учасники — імена з §5 (не вигадуй нові!).      -->
-<!--           Повідомлення семантичні («складає чорновик»), БЕЗ HTTP-методів/шляхів —     -->
-<!--           ендпоінт-рівневі sequence-діаграми зʼявляться у stage 06 (api-forge).        -->
-<!-- ⏳ RESERVED FOR SEQUENCES: architecture-design сіє лише primary flow(s) тут.          -->
-<!--           complete-sequence-diagrams (stage 06) ДОПОВНЮЄ §6 кожним критичним flow /    -->
-<!--           кожним §5 AC — без обмеження. Не намагайся покрити все тут.                  -->
-<!-- 📌 Приклад: «methodist → web-app: складає чорновик → web-app → content-api: зберегти». -->
+architecture-design seeds the three riskiest flows here; `/sdlc:complete-sequence-diagrams` then covers every PRD §5 acceptance criterion. Participants are the §5 containers. Messages are semantic: endpoint paths and status codes arrive with `api-forge`.
 
-**Critical flow 1: <flow name>**
+**Critical flow 1: Open the day view with per-viewer redaction** (US-01, US-04; AC-01–AC-05, AC-12; ADR-0001, ADR-0005)
 
 ```mermaid
 sequenceDiagram
-    actor User
-    participant API
-    participant Service
-    participant DB
-    User->>API: <request>
-    API->>Service: <call>
-    Service->>DB: <write tx>
-    DB-->>Service: ok
-    Service-->>API: result
-    API-->>User: 201
+    actor V as Viewer
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling
+    participant O as org
+    participant DB as Postgres
+    V->>W: Open board with zoom day, from, weeks, filters
+    W->>H: Day-view read for the window and filters
+    H->>H: Authenticate session, build actor with permissions
+    H->>S: Day view for actor, window, filters
+    alt Window longer than 4 weeks or outside 12 months back or 52 weeks ahead
+        S-->>H: Window out of range
+        H-->>W: Invalid with the allowed range
+        W-->>V: No day view, explains 1 to 4 weeks within the limits
+    else Actor holds neither view-whole-board nor edit-allocations
+        S-->>H: Refused, not allowed to see the whole board
+        H-->>W: Forbidden
+        W-->>V: Offers own schedule by day, or says there is no schedule to show
+    else Allowed
+        S->>O: Employment terms and holidays for resources in scope
+        O->>DB: Read employee records and holidays
+        DB-->>O: Rows
+        O-->>S: Contract hours, working days, employment period, holidays
+        S->>DB: Allocations overlapping the window
+        DB-->>S: Allocations with segments
+        S->>S: Per-day figures, per-day and per-week overbooking, bars
+        S->>S: Redact leave type and anything after employment end per viewer
+        S-->>H: Day-view rows
+        H-->>W: Day-view DTO
+        W-->>V: Day columns with figures, bars, away and non-working days
+    end
 ```
 
-<!-- For XS/S: 1 flow above is enough. For M+: add 2-4 more (e.g. failure-mode flow, async flow). -->
+**Critical flow 2: Save an allocation that overbooks a day and overlaps another** (US-02, US-03, US-09; AC-06, AC-08, AC-10, AC-23, AC-25; resource-scheduling ADR-0010)
 
-**Critical flow 2: <e.g. async event propagation>** — <if applicable, otherwise N/A>.
+```mermaid
+sequenceDiagram
+    actor P as Planner
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling
+    participant O as org
+    participant DB as Postgres
+    P->>W: Save allocation form with dates and daily time interval
+    W->>H: Create allocation, not confirmed
+    H->>S: Create allocation for actor
+    S->>S: Require edit-allocations
+    S->>O: Employment terms incl. working-day start, holidays
+    O-->>S: Terms and holidays
+    S->>DB: Allocations of the resource around the dates
+    DB-->>S: Existing allocations
+    S->>S: Impact per day and per week, time overlaps, only what the change makes worse
+    alt Makes a day or week overbooked or worse, or an overlap worse
+        S-->>H: Confirmation required with overbooked days, weeks and overlaps
+        H-->>W: ConfirmationRequired with the impact list
+        W-->>P: Warning naming days, weeks, times and both projects
+        P->>W: Confirm
+        W->>H: Same request, confirmed
+        H->>S: Create allocation, confirmed
+        S->>S: Recompute impact on fresh data
+    end
+    S->>DB: Insert allocation, segment and history in one unit of work
+    DB-->>S: Committed
+    S-->>H: Saved allocation
+    H-->>W: Created
+    W-->>P: Day view reloads with the allocation and its marks
+```
+
+**Critical flow 3: Move an allocation by gesture** (stage 2; US-05–US-07; AC-13–AC-18, AC-20; ADR-0004)
+
+```mermaid
+sequenceDiagram
+    actor P as Planner
+    participant W as arv-web
+    participant H as arv-api host
+    participant S as scheduling
+    participant DB as Postgres
+    P->>W: Start moving an allocation by pointer or keyboard
+    W->>H: Gesture outcomes for this allocation and gesture kind
+    H->>S: Outcome table for actor
+    S->>DB: Allocation, resource allocations and terms in the window
+    DB-->>S: Rows
+    S->>S: For every reachable position compute dates, weekly totals, impact or refusal
+    S-->>H: Outcome table
+    H-->>W: Outcome table DTO
+    loop Each one-day step
+        W->>W: Look up the position and show dates, totals, days and overlaps made worse
+    end
+    P->>W: Drop or confirm with the keyboard
+    W->>H: Change allocation dates with version, not confirmed
+    H->>S: Change allocation for actor
+    S->>S: Require edit-allocations at this moment
+    alt Permission removed, started allocation, outside employment or closed project
+        S-->>H: Refused with the reason
+        H-->>W: Forbidden or Invalid
+        W-->>P: Allocation goes back and the reason is shown
+    else Version changed meanwhile
+        S-->>H: Conflict with current values and who changed it
+        H-->>W: Conflict
+        W-->>P: Allocation shown where the other user left it
+    else Makes days, weeks or overlaps worse
+        S-->>H: Confirmation required with the impact
+        H-->>W: ConfirmationRequired
+        W-->>P: Same warning as the form, then confirm or put back
+    else Nothing made worse
+        S->>DB: New segment and history in one unit of work
+        DB-->>S: Committed
+        S-->>H: Saved
+        H-->>W: Saved
+        W-->>P: Allocation stays at the new days
+    end
+```
 
 ## 7. Deployment view
 
