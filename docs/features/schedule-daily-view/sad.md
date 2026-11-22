@@ -6,7 +6,7 @@ updated_at: "2026-11-22"
 feature_size: L
 stage: "04-05"
 ticket: "BRIEFS B-01 (docs/features/resource-scheduling/BRIEFS.md)"
-target_surfaces: []  # filled in §4 — subset of: backend-service | web-frontend | mobile-app | desktop-app | cli | worker | library-sdk. Read (never re-derived) by api-forge/complete-sequence-diagrams/break-tasks/plan-tests/review-feature → _shared/surfaces.md
+target_surfaces: [backend-service, web-frontend]  # decided in §4 (extends resource-scheduling ADR-0001) — subset of: backend-service | web-frontend | mobile-app | desktop-app | cli | worker | library-sdk. Read (never re-derived) by api-forge/complete-sequence-diagrams/break-tasks/plan-tests/review-feature → _shared/surfaces.md
 ---
 
 # Software Architecture Document — schedule-daily-view
@@ -129,28 +129,51 @@ C4Context
 
 ## 4. Solution strategy
 
-<!-- 🎯 Навіщо: 3-4 СТРАТЕГІЧНІ СТОВПИ, з яких потім ростуть усі ADR. Без §4 кожен ADR    -->
-<!--           виглядає випадковим — нема зонтика. ⭐ Найгустіша секція — тут ADR-gate    -->
-<!--           спрацьовує майже завжди (рішення незворотні + мульти-модульні).            -->
-<!-- 📋 Що писати: спершу Target surface(s), потім 3-4 стратегічні вибори.                -->
-<!--           На кожен — заголовок + 2-3 речення rationale.                              -->
-<!-- 📌 ПЕРШЕ рішення §4 — Target surface(s): ЩО САМЕ будуємо. Записується у frontmatter   -->
-<!--           target_surfaces: [...] і гейтить §5 (один контейнер на поверхню) + усі       -->
-<!--           наступні стадії. Деривиться з PRD §1 «для кого» + §4 ролей. → _shared/surfaces.md -->
-<!-- 📌 Приклад: «Зберігати урок як таблицю блоків» — стовп, з якого виросло ADR-0001.    -->
+**Target surface(s) (the first decision — what's being built):** `[backend-service, web-frontend]`. This is the same pair as [resource-scheduling ADR-0001](../../resource-scheduling/adr/0001-build-backend-service-and-web-frontend-surfaces.md); the feature **extends** both existing containers and adds no new one, so it gets no new ADR (blast-radius gate 1 of 3: multi-module only).
 
-**Target surface(s) (the first decision — what's being built):** `<e.g. [backend-service, web-frontend]>`
-<!-- Mirror this list into the frontmatter `target_surfaces`. For each declared UI surface          -->
-<!-- (web-frontend / mobile-app / desktop-app) add a UI-architecture choice below (web → SSR/SPA/   -->
-<!-- hybrid; mobile → native/cross-platform). Multi-surface is usually an ADR (multi-module +       -->
-<!-- irreversible). The UI reuses the repo's existing design system / components / tokens from       -->
-<!-- architecture-map.md §Frontend — it does not design greenfield. → _shared/surfaces.md           -->
+- **backend-service** — the private `arv-api` Worker:
+  - `scheduling` gains the day-view and timeline reads, per-day overbooking, the time-overlap check, the time interval on allocations and (stage 2) the gesture outcome table;
+  - `org` gains the working-day start;
+  - `@arv/contracts/scheduling` and `@arv/contracts/org` grow additively, except where stage 3 removes the weekly rate.
+- **web-frontend** — the public `arv-web` Worker's `features/scheduling` (and `features/org` for the working-day start) consumes that contract and authors none.
 
 **Top strategic choices (the seeds for ADRs):**
 
-1. **<e.g. Module isolation through events>** — <2-3 sentences rationale referencing Quality Goals and constraints>.
-2. **<e.g. Single-store persistence (Postgres)>** — <2-3 sentences>.
-3. **<e.g. UI-architecture: SPA consuming the backend API>** — <per declared UI surface; 2-3 sentences>.
+1. **UI-architecture: the day view and the timeline are server-rendered zooms of the board URL** ([ADR-0001](./adr/0001-render-day-view-and-timeline-as-ssr-zooms-of-the-board-url.md)).
+   - The day view is the board route with `zoom=day`, `from` and `weeks=1..4`, keeping `team`, `project` and `view=people|project`.
+   - The timeline is its own route with `date=` and the same filters.
+   - The own schedule takes the same params.
+   - Each view is one loader call to one bounded api read: ≤ 4 weeks of days, or one day.
+   - Switching zoom is a navigation that keeps the first week and the filters (AC-01).
+   - Forms open from the day view through the existing allocation and leave dialogs and route actions.
+   - Stage 2 gestures are a client island on the rendered page, absent on phones (PRD §3).
+   - Screens reuse `apps/web/app/shared/ui` (shadcn over Base UI) and the `app.css` theme tokens: no new design system and no new component library. A new primitive is justified only where none fits (a draggable bar, a time axis).
+   - Serves QG-3 (bounded payload) and keeps the api private.
+
+2. **One per-day rule set behind every figure and warning** (extends [resource-scheduling ADR-0005](../../resource-scheduling/adr/0005-compute-capacity-and-availability-on-read.md); no new ADR, because PRD goal 2 leaves no alternative). `scheduling/domain` judges overbooking per day **and** per week in one function: a day is over its daily capacity, and a week is over its capacity or contains an overbooked day. «Made worse» is per day and per week (AC-08), and from stage 3 the domain adds time overlaps with the same rule (AC-25). The free list counts free hours day by day (AC-07). The same functions serve:
+   - the weekly board and the own schedule;
+   - the day view and the timeline;
+   - the free list;
+   - every save warning: allocation and leave forms, gestures;
+   - org's `CapacityImpactCheck` (employee record and holiday edits);
+   - projects' `ProjectClosingHook`.
+
+   Nothing is stored. Figures are computed on read in integer ticks and shown rounded to the half hour. Serves QG-1.
+
+3. **Store the daily time interval as minutes from midnight on allocation segments and drop the rate** ([ADR-0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md)).
+   - `scheduling.allocation_segments` gets `starts_at_minute` / `ends_at_minute`: 0–1440, multiples of 15, NULL only for leave.
+   - `rate_minutes` and `rate_period` `day`/`week` are removed, so hours per day equal the interval's length.
+   - `org.employee_records` gets `working_day_start_minute`, default 540 = 09:00. Working hours end at start + daily capacity, computed and never stored.
+   - A change of interval on a started allocation is a new effective-dated segment from today (AC-23, resource-scheduling ADR-0008).
+   - `scheduling` reads the working-day start through `OrgApi`'s employment terms. No new module edge.
+
+4. **No conversion of existing allocations at stage 3** ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md)). Scheduling is not in production yet and every existing allocation is test data. Stage 3 reaches production before any real allocation does, so its drizzle-generated migration replaces the rate with the interval directly, and test allocations are deleted first. AC-28 and the NFR «Migration correctness» therefore do not apply (§1 decision override, §11 precondition risk). If real allocations reach production first, the fallback is expand → convert → contract (ADR-0003 option 2).
+
+5. **Stage 2 gestures preview from a server-computed outcome table, fetched once per gesture** ([ADR-0004](./adr/0004-precompute-gesture-outcomes-once-per-gesture-on-the-server.md)).
+   - At gesture start (pointer or keyboard), the web asks `scheduling` for every reachable position in the visible window: the resulting dates, weekly totals, the days and weeks made worse, the overlaps created or lengthened, or the reason a position is refused.
+   - Each one-day step is a local lookup, which meets the 300 ms target.
+   - The drop is the ordinary save with `version` and `confirm` (resource-scheduling ADR-0010), recomputed on fresh data and checked for permission at that moment (AC-17, AC-18).
+   - The drag-and-drop support itself (a new package needs approval) is PRD §8's open question, decided before stage 2 starts (§11).
 
 Each tactical decision in later sections should be traceable to one of these strategic seeds. Tactical decisions that *contradict* a strategic choice are red flags — surface them in §11 Risks.
 
