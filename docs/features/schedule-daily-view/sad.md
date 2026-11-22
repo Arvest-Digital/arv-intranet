@@ -20,29 +20,34 @@ target_surfaces: []  # filled in §4 — subset of: backend-service | web-fronte
 
 ## 1. Introduction and goals
 
-<!-- 🎯 Навіщо: стабільна памʼять про «що + три головні якості + хто зацікавлений».     -->
-<!--           Через рік ніхто не згадає на словах, ЯКІ ТРИ ЯКОСТІ для системи критичні. -->
-<!-- 📋 Що писати: 1 абзац intent + 3 рядки топ-3 якості + таблиця stakeholders.        -->
-<!-- 📌 Приклад: «QG-1: швидкість редагування блоку p95 ≤500 мс»                         -->
+**Intent.** We turn the schedule board into a **day view** of one to four weeks with one column per day. It shows each resource's allocated hours against their daily capacity, their allocations as bars across the days they cover, and leave days and public holidays (PRD §1, Approach C — Staged Day View, Gesture Editing). One overbooking rule, judged per day as well as per week, holds on the weekly board, the day view, the free list and every save warning (PRD §2). The feature ships in three stages:
 
-**Intent.** <One paragraph from PRD §Goals — what we're building and for whom.>
+- **Stage 1** — the read view, plus selecting days or clicking a bar to open the existing forms.
+- **Stage 2** — moving and stretching an allocation by whole days, by dragging or with the keyboard. It is funded only if the planning spreadsheet is still in use at the recount 2 weeks after stage 1.
+- **Stage 3 — time of day** (part of the current iteration, not gated by the recount). Every allocation except leave gets a required daily **time interval**, and the weekly rate is removed and converted. Each employee record gains a working-day start, a **time overlap** warning joins the overbooking warning, and a one-day **timeline** is added.
 
-**Top-3 quality goals (1-liners; full scenarios in §10):**
+The feature serves the ~5 users with the edit-allocations permission, who plan, and the ~30 resources who read their own schedule. Stages 1–2 add no stored data, because per-day figures are already computed from existing inputs. Stage 3 adds two stored fields and converts every existing allocation, past ones included.
 
-1. <e.g. "Availability under partial failure of downstream module">
-2. <e.g. "Performance for EM dashboard under team-scale growth">
-3. <e.g. "Recoverability of checkpoints with <30 min RTO">
+**Top quality goals (1-liners; full scenarios in §10):**
+
+1. **QG-1 Calculation correctness at day precision** — 100% of daily figures, per-day and per-week overbooking verdicts and (stage 3) time-overlap verdicts match the capacity rules, computed exactly and judged on exact figures. One rule set serves the board, the day view, the free list and every warning (PRD §6).
+2. **QG-2 Confidentiality at day precision** — leave type, leave project, employment end date and anything after it never reach a viewer without the matching permission. That includes stage 3's times of allocations and working hours, in every view: day view, grouping by project, read-only details, own schedule and timeline (PRD §6.1).
+3. **QG-3 Responsiveness at target scale** — day view p95 ≤ 1500 ms for 100 resources × 4 weeks, gesture save p95 ≤ 500 ms, gesture preview within 300 ms of each one-day step, and one-day timeline p95 ≤ 1000 ms for 100 resources (PRD §6).
+4. **QG-4 Stage 3 conversion correctness** — 100% of existing allocations get a time interval whose hours per day match their rate rule, and every conversion is recorded in the history (PRD §6, AC-28). This is the feature's only irreversible step: it rewrites past figures too.
 
 **Stakeholders.**
 
 | Role | Interest | Sign-off owner? |
 |---|---|---|
-| <e.g. IC> | <feature usage> | No |
-| <e.g. EM> | <dashboard reads> | No |
-| <e.g. Tech Lead> | <SAD approval> | Yes |
+| Users with the edit-allocations permission (PMs, delivery managers, team leads — the people who plan) | Plan day by day on the board itself and retire the planning spreadsheet; gestures with the same warnings they trust | No |
+| Users with the view-whole-board permission | Read the whole board by day and (stage 3) by time of day | No |
+| Resources (~30 scheduled employees with an intranet login) | Read their own schedule by day and on the timeline, including their own leave type | No |
+| Users with the manage-employee-records permission | Set each resource's working-day start (stage 3, US-10) | No |
+| PM (PRD owner — dmitro.b) | Goals and the spreadsheet KPI hold; consulted on §10 quality goals and §11 severities; owns the stage 2 funding checkpoint | Yes (§10) |
+| Tech Lead | SAD approval, ADRs, module graph, the stage 3 conversion | Yes |
+| Security Lead | Mandatory security review: health-related absence at day precision, per-day overbooking, working-pattern profiling (PRD §6.1) | Yes |
 
-<!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise.       -->
-<!-- Each: «Decision override: <headline> — rationale: <reason>» so downstream skills see the choice.  -->
+<!-- Decision overrides (¶4) — populated by the Step-7 critic resolution loop, empty otherwise. -->
 
 ## 2. Constraints
 
