@@ -400,6 +400,366 @@ sequenceDiagram
     end
 ```
 
+The flows below are added by `/sdlc:complete-sequence-diagrams`. They use generic participants: «user», «ui», «service», «data-store». A flow that spans two building blocks names the second «service» by its role, not by a module. Every write carries a persist note for `generate-data-model`.
+
+### Flow 4: Change the day-view window and grouping
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: a user with view-whole-board is on the day view
+    alt Pick 1 to 4 weeks or step the window earlier or later
+        U->>UI: Choose the window length or step earlier or later
+        UI->>UI: Keep the window within 12 months back and 52 weeks ahead
+        UI->>S: Day-view read for the new window with the same filters
+        S->>D: Read terms, holidays and allocations overlapping the window
+        D-->>S: Rows
+        S->>S: Per-day figures and bars, visibility applied per viewer
+        S-->>UI: Day-view rows
+        UI-->>U: That many weeks shown, a further step is not offered at a limit
+    else Switch grouping from resource to project
+        U->>UI: Group by project
+        UI->>UI: Regroup the loaded rows by project, leave left out of project totals
+        UI-->>U: Same days, filters and figures by project, leave under one away group unless the viewer may see reasons
+    end
+    Note over U,UI: Postcondition: window and grouping live in the board address, nothing is persisted
+```
+
+### Flow 5: An employee-record or holiday change warns per day
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant R as #60;service#62; records and holidays
+    participant S as #60;service#62; allocations
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: the user may edit employee records or the holiday list, and allocations exist
+    U->>UI: Save a change to contract hours, working days, employment period or holidays
+    UI->>R: Change request, not confirmed
+    R->>S: Capacity impact of the proposed terms
+    S->>D: Allocations of the affected resources
+    D-->>S: Allocations with segments
+    S->>S: Per-day and per-week overbooking under old and new terms, keep only what gets worse
+    S-->>R: Impact list with overbooked days and weeks
+    alt A day or week becomes overbooked or worse
+        R-->>UI: Confirmation required with the days and weeks
+        UI-->>U: Warning naming each resource, day and week
+        U->>UI: Confirm
+        UI->>R: Same change, confirmed
+        R->>S: Capacity impact on fresh data
+        S-->>R: Impact list
+    end
+    R->>D: Write the record or holiday change
+    Note over R,D: persists employee record or public holiday
+    D-->>R: Committed
+    R-->>UI: Saved
+    UI-->>U: Saved, the board and day view show the new overbooked days
+    Note over U,UI: Postcondition: board, day view, own schedule and every warning use one per-day and per-week rule
+```
+
+### Flow 6: The free list counts free hours by day
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: a viewer allowed to see the free list
+    U->>UI: Open the free list for a range of weeks and filters
+    UI->>S: Free-list read
+    S->>D: Terms, holidays and allocations in the range
+    D-->>S: Rows
+    loop Each resource week
+        S->>S: Sum over working days of daily capacity minus allocated hours where above zero
+        alt Week total exceeds its weekly capacity
+            S->>S: Count the week as zero free hours
+        end
+    end
+    S->>S: Apply visibility per viewer
+    S-->>UI: Free hours per resource and week
+    UI-->>U: Free list, a week overbooked on one day still shows the free hours of its other days
+    Note over U,UI: Postcondition: read only, nothing is persisted
+```
+
+### Flow 7: Start a change from the day view
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: the user is on the day view
+    alt User holds edit-allocations
+        alt Select one continuous range of days in one resource row
+            U->>UI: Select days and choose add allocation or add leave
+            UI-->>U: The existing form opens with that resource and those dates
+        else Click an allocation bar
+            U->>UI: Click the bar
+            UI-->>U: The existing edit form opens with its current values
+        end
+        U->>UI: Save the form
+        UI->>S: Create or change the allocation, not confirmed
+        S->>S: Usual save rules, past not rewritten, closed project, employment period
+        alt Past dates, outside employment or closed project
+            S-->>UI: Invalid with the usual explanation
+            UI-->>U: The form stays open with the explanation
+        else Accepted, confirming first if anything gets worse as in Critical flow 2
+            S->>D: Write allocation, segment and history in one unit of work
+            Note over S,D: persists allocation, allocation segment, history entry
+            D-->>S: Committed
+            S-->>UI: Saved allocation
+            UI-->>U: Day view reloads with the allocation on those days
+        end
+    else User holds view-whole-board only
+        U->>UI: Click a bar, select days or try to drag
+        UI-->>U: A bar click shows read-only details, selecting and dragging do nothing
+    end
+    Note over U,UI: Postcondition: the plan changes only through the existing forms and their rules
+```
+
+### Flow 8: Open my own schedule by day
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: a signed-in user without view-whole-board
+    U->>UI: Open the own schedule with day zoom and 1 to 4 weeks
+    UI->>S: Own day-view read for the window
+    alt The user is not a resource
+        S-->>UI: No employee record linked to the user
+        UI-->>U: Says there is no schedule to show
+    else Window longer than 4 weeks or outside the limits
+        S-->>UI: Window out of range
+        UI-->>U: Explains 1 to 4 weeks within 12 months back and 52 weeks ahead
+    else The user is a resource
+        S->>D: Own terms, holidays and allocations in the window
+        D-->>S: Rows
+        S->>S: Per-day figures, overbooked days, overlaps, own leave type kept
+        S-->>UI: Own day-view rows
+        UI-->>U: Own days read only, two weeks by default and one on a phone
+    end
+    Note over U,UI: Postcondition: read only, nothing is persisted
+```
+
+### Flow 9: Stretch or shorten an allocation by an edge
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: stage 2 shipped, a user with edit-allocations on the day view
+    U->>UI: Grab the start or end edge, or choose change start or end with the keyboard
+    UI->>S: Gesture outcomes for this allocation and edge
+    S->>D: Allocation, resource allocations and terms in the window
+    D-->>S: Rows
+    S->>S: For every reachable edge position compute dates, weekly totals, impact or refusal
+    S-->>UI: Outcome table
+    loop Each working-day step by pointer or arrow key
+        UI->>UI: Look up the position, show new date, weekly totals, days and overlaps made worse
+    end
+    alt The user cancels before letting go or confirming
+        UI-->>U: Allocation stays as it was, nothing is sent
+    else Start edge of a started allocation, or any edge before today
+        UI-->>U: Past plans are not rewritten, the allocation goes back
+    else Allowed position
+        U->>UI: Let go or confirm with the keyboard
+        UI->>S: Change allocation dates with version, not confirmed
+        S->>S: Require edit-allocations, recheck on fresh data
+        alt Refused, changed meanwhile, or something made worse
+            S-->>UI: Refusal, conflict or confirmation required as in Critical flow 3
+            UI-->>U: Same handling as a move
+        else Nothing made worse
+            S->>D: New segment from today or from the new start, and history, in one unit of work
+            Note over S,D: persists allocation segment and history entry
+            D-->>S: Committed
+            S-->>UI: Saved
+            UI-->>U: New dates shown, same daily time interval and hours per day
+        end
+    end
+    Note over U,UI: Postcondition: a stretched allocation keeps its interval, leave gains or loses whole working days
+```
+
+### Flow 10: Open one day on the timeline
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: stage 3 shipped, a signed-in user
+    U->>UI: Open one day as a timeline from the day view or the own schedule
+    UI->>S: Timeline read for the date and filters
+    alt Date outside 12 months back or 52 weeks ahead
+        S-->>UI: Date out of range
+        UI-->>U: No timeline, same explanation as the day view
+    else The user lacks view-whole-board
+        S->>D: Own terms with working-day start, holidays and allocations that day
+        D-->>S: Rows
+        S->>S: Own blocks, working hours, overlaps, overbooking, own leave type kept
+        S-->>UI: Own timeline
+        UI-->>U: Own day read only, a vertical list of time blocks on a phone
+    else The user holds view-whole-board
+        S->>D: Terms with working-day start, holidays and allocations that day for resources in scope
+        D-->>S: Rows
+        S->>S: Blocks at their times, working hours, free time, overlaps, parts outside working hours
+        S->>S: Leave fills working hours as away, a holiday is non-working, work on leave gets the overbooked mark
+        S->>S: Redact leave type and anything after employment end per viewer
+        S-->>UI: Timeline rows grouped by resource
+        UI-->>U: Time axis of at least 08:00 to 18:00 widened to fit, step one day earlier or later
+    end
+    Note over U,UI: Postcondition: read only, nothing is persisted
+```
+
+### Flow 11: Book an allocation at a time of day
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: stage 3 shipped, a user with edit-allocations in the allocation form
+    U->>UI: Enter dates and a daily start and end time
+    UI->>UI: Show hours per day and total hours, no weekly rate offered
+    alt End not after start, or a time off a 15-minute step
+        UI-->>U: Not saved, the end must be after the start and times go in 15-minute steps
+    else Valid interval
+        UI->>S: Create or change the allocation with the interval, not confirmed
+        S->>S: Check the interval again, 15-minute steps, at most 24 hours
+        S->>D: Resource terms with working-day start and allocations around the dates
+        D-->>S: Rows
+        S->>S: Per-day and per-week impact and time overlaps, keep only what gets worse
+        alt Something made worse
+            S-->>UI: Confirmation required as in Critical flow 2
+            UI-->>U: Warning naming days, weeks, overlap times and both projects
+            U->>UI: Confirm
+            UI->>S: Same request, confirmed
+        end
+        alt The allocation has already started
+            S->>D: End the current segment yesterday, new segment from today with the new interval, history
+        else Not started
+            S->>D: Write the segment with the interval, and history
+        end
+        Note over S,D: persists allocation segment with start and end minute, history entry
+        D-->>S: Committed
+        S-->>UI: Saved
+        UI-->>U: Shown at that time on each working day, any part outside working hours marked
+    end
+    Note over U,UI: Postcondition: past days keep the old interval, the leave form asks for no times
+```
+
+### Flow 12: Set a resource's working-day start
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as #60;user#62;
+    participant UI as #60;ui#62;
+    participant S as #60;service#62;
+    participant D as #60;data-store#62;
+
+    Note over U,UI: Precondition: stage 3 shipped, a user with manage-employee-records edits an employee record
+    U->>UI: Set the working-day start and save
+    UI->>S: Change the employee record with the working-day start
+    S->>S: Require manage-employee-records
+    S->>S: Check the 15-minute step and that start plus daily capacity ends by 24:00
+    alt Off a 15-minute step, or ending after 24:00
+        S-->>UI: Invalid with the reason
+        UI-->>U: Not saved, the day starts on a 15-minute step and must end by 24:00
+    else Valid
+        S->>D: Write the working-day start on the employee record
+        Note over S,D: persists employee record working-day start, 09:00 for a new record
+        D-->>S: Committed
+        S-->>UI: Saved
+        UI-->>U: Working hours shown as start plus daily capacity, exactly even off a 15-minute step
+    end
+    Note over U,UI: Postcondition: capacity unchanged, no allocation moves, the timeline uses the new working hours
+```
+
+### Coverage: US/AC → flows
+
+Critical flows 1–3 are the architecture-design seed, with bold titles in place of `###` headings. They are cited by their titles.
+
+| ID | Realized by (§6 heading) | How | Note |
+|---|---|---|---|
+| US-01 | `Critical flow 1: Open the day view with per-viewer redaction`, `Flow 4: Change the day-view window and grouping` | flow |  |
+| US-02 | `Critical flow 2: Save an allocation that overbooks a day and overlaps another`, `Flow 5: An employee-record or holiday change warns per day`, `Flow 6: The free list counts free hours by day` | flow |  |
+| US-03 | `Flow 7: Start a change from the day view`, `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | flow |  |
+| US-04 | `Flow 8: Open my own schedule by day`, `Critical flow 1: Open the day view with per-viewer redaction` | flow |  |
+| US-05 | `Critical flow 3: Move an allocation by gesture` | flow |  |
+| US-06 | `Flow 9: Stretch or shorten an allocation by an edge` | flow |  |
+| US-07 | `Critical flow 3: Move an allocation by gesture`, `Flow 9: Stretch or shorten an allocation by an edge` | flow | pointer or keyboard in both gesture flows |
+| US-08 | `Flow 10: Open one day on the timeline` | flow |  |
+| US-09 | `Flow 11: Book an allocation at a time of day`, `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | flow |  |
+| US-10 | `Flow 12: Set a resource's working-day start` | flow |  |
+| AC-01 | `Critical flow 1: Open the day view with per-viewer redaction` | flow |  |
+| AC-01b | `Flow 4: Change the day-view window and grouping` | branch | `else Switch grouping from resource to project` |
+| AC-02 | `Flow 4: Change the day-view window and grouping` | branch | `alt Pick 1 to 4 weeks or step the window earlier or later` |
+| AC-03 | `Critical flow 1: Open the day view with per-viewer redaction` | branch | `alt Window longer than 4 weeks or outside 12 months back or 52 weeks ahead` |
+| AC-04 | `Critical flow 1: Open the day view with per-viewer redaction`, `Flow 8: Open my own schedule by day` | branch | `else Actor holds neither view-whole-board nor edit-allocations` · `alt The user is not a resource` |
+| AC-05 | `Critical flow 1: Open the day view with per-viewer redaction` | flow | redaction step in the allowed path |
+| AC-06 | `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | branch | `alt Makes a day or week overbooked or worse, or an overlap worse` |
+| AC-07 | `Flow 5: An employee-record or holiday change warns per day`, `Flow 6: The free list counts free hours by day` | flow |  |
+| AC-08 | `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | flow | path that skips the confirmation `alt`: nothing made worse, saved directly |
+| AC-09 | `Flow 7: Start a change from the day view` | branch | `alt Select one continuous range of days in one resource row` |
+| AC-10 | `Flow 7: Start a change from the day view`, `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | branch | `else Click an allocation bar` |
+| AC-11 | `Flow 7: Start a change from the day view` | branch | `else User holds view-whole-board only` |
+| AC-12 | `Flow 8: Open my own schedule by day` | branch | `else The user is a resource` |
+| AC-13 | `Critical flow 3: Move an allocation by gesture` | flow |  |
+| AC-14 | `Critical flow 3: Move an allocation by gesture`, `Flow 9: Stretch or shorten an allocation by an edge` | branch | `alt Permission removed, started allocation, outside employment or closed project` · `else Start edge of a started allocation, or any edge before today` |
+| AC-15 | `Critical flow 3: Move an allocation by gesture` | branch | `else Makes days, weeks or overlaps worse` |
+| AC-16 | `Critical flow 3: Move an allocation by gesture` | branch | `alt Permission removed, started allocation, outside employment or closed project` |
+| AC-17 | `Critical flow 3: Move an allocation by gesture` | branch | `else Version changed meanwhile` |
+| AC-18 | `Critical flow 3: Move an allocation by gesture` | branch | `alt Permission removed, started allocation, outside employment or closed project` |
+| AC-19 | `Flow 9: Stretch or shorten an allocation by an edge` | flow | interval wording applies, stage 3 is built before stage 2 (§2) |
+| AC-20 | `Critical flow 3: Move an allocation by gesture`, `Flow 9: Stretch or shorten an allocation by an edge` | branch | keyboard start step · `alt The user cancels before letting go or confirming` |
+| AC-21 | `Flow 10: Open one day on the timeline` | branch | `else The user holds view-whole-board` |
+| AC-22 | `Flow 10: Open one day on the timeline` | branch | `else The user holds view-whole-board` (leave, holiday, work-on-leave step) |
+| AC-23 | `Flow 11: Book an allocation at a time of day`, `Critical flow 2: Save an allocation that overbooks a day and overlaps another` | flow |  |
+| AC-24 | `Flow 11: Book an allocation at a time of day` | branch | `alt End not after start, or a time off a 15-minute step` |
+| AC-25 | `Critical flow 2: Save an allocation that overbooks a day and overlaps another`, `Flow 11: Book an allocation at a time of day` | branch | `alt Makes a day or week overbooked or worse, or an overlap worse` · `alt Something made worse` |
+| AC-26 | `Flow 11: Book an allocation at a time of day`, `Flow 10: Open one day on the timeline` | flow | no-warning path, part outside working hours marked |
+| AC-27 | `Flow 12: Set a resource's working-day start` | branch | `else Valid` |
+| AC-27b | `Flow 12: Set a resource's working-day start` | branch | `alt Off a 15-minute step, or ending after 24:00` |
+| AC-28 | — | N/A | not a runtime flow: cancelled by the §1 decision override and ADR-0003 (no conversion, test allocations deleted), returns only if the ADR-0003 precondition breaks |
+| AC-29 | `Flow 10: Open one day on the timeline` | branch | `else The user holds view-whole-board` (redaction step) · `else The user lacks view-whole-board` |
+| AC-30 | `Flow 10: Open one day on the timeline` | branch | `else The user lacks view-whole-board` |
+
+Coverage: 10/10 user stories · 32/32 ACs — 1 non-runtime N/A.
+
+**Flags:**
+- Critical flows 1–3 (the architecture-design seed) use concrete participants (arv-web, arv-api host, scheduling, org, Postgres) and bold titles instead of `###` headings. Left untouched, because this skill is additive. Normalize by hand if wanted.
+- Flow 5 uses two «service» participants (records and holidays, allocations) for the host-wired capacity-impact port of resource-scheduling ADR-0007. It adds no participant beyond §5.
+- Flow 4's project grouping is done in the web over already-redacted rows (§5 «project grouping is done in the web»). No new read and no ADR needed.
+
 ## 7. Deployment view
 
 The feature ships inside the two existing Cloudflare Workers, which are serverless and scaled by Cloudflare per request. It adds **no Worker, binding, Cron Trigger or Hyperdrive config**: `arv-web` gains routes and components in `features/scheduling` and `features/org`, and `arv-api` gains reads and rules in `scheduling` and `org`. The monthly history purge (`0 3 1 * *`) is unchanged.
