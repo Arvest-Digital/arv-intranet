@@ -88,34 +88,43 @@ The feature serves the ~5 users with the edit-allocations permission, who plan, 
 
 ## 3. Context and scope
 
-<!-- 🎯 Навіщо: малює КОРДОН СИСТЕМИ — хто з нею говорить ззовні, де закінчується зона довіри. -->
-<!--           Без §3 §5 і §8 (авторизація) розпливаються — неясно, що «всередині», а що «зовні». -->
-<!-- 📋 Що писати: 2-3 речення бізнес-контексту + таблиця зовнішніх систем + Mermaid C4Context. -->
-<!-- 📌 Приклад: «зовнішні — нема (свідома відмова від third-party у v1)» — це теж рішення.   -->
-<!-- Кордон довіри (trust boundary) — лінія, за якою ти не довіряєш даним без перевірки.       -->
+<!-- brownfield: no docs/architecture-map.md yet. Current architecture read from the authored ARCHITECTURE.md, repo ADR 0001, the resource-scheduling SAD + ADR-0001…0010, and an sdlc:explorer scan of modules/scheduling, modules/org, packages/contracts/src/scheduling, apps/web/app/features/scheduling, apps/api and e2e/ (2026-11-22, HEAD 27e2b52). Run /sdlc:map-architecture to persist a map. -->
 
-<Business context in 2-3 sentences. What the system does for whom.>
+The weekly schedule board (resource-scheduling) shipped. The ~5 people who plan still keep the planning spreadsheet next to it, mainly to see the plan **day by day** (PRD §1, survey 2026-11). The day view brings that day-level picture onto the board, together with per-day overbooking, editing from the day and (stage 3) the time of day, so that the spreadsheet can be retired. The system boundary is unchanged: everything runs inside arv-intranet, which already owns allocations, capacity, employee records, projects and public holidays. The feature adds **no new external system**. The trust boundary stays the public web Worker. Selected days, dropped positions, keyboard moves and typed times are untrusted until the private api validates them, and every save is authorised at that moment.
 
 **External systems (in / out):**
 
 | Actor or system | Type | Interaction |
 |---|---|---|
-| <e.g. IC> | Person | Creates goals, adds checkpoints |
-| <e.g. notification-service> | System (internal) | Receives cron registration |
-| <e.g. Identity Provider> | System (external) | Provides JWT tokens |
+| User with the edit-allocations permission (who plans; includes view-whole-board) | Person | Reads the day view and timeline; selects days or clicks a bar to open the allocation and leave forms; (stage 2) moves and stretches allocations by dragging or keyboard; (stage 3) gives allocations a daily time interval |
+| User with the view-whole-board permission | Person | Reads the day view (by resource or by project) and the timeline; sees allocation details read-only |
+| Resource (with an intranet login linked to their employee record) | Person | Reads their own schedule by day and on their own timeline, including their own leave type |
+| User with the manage-employee-records permission | Person | (Stage 3) sets a resource's working-day start on the employee record |
+| Google (company-domain sign-in) | System (external) | Authenticates the browser session (identity ADR-0003); unchanged by this feature |
+| Planning spreadsheet | Data source (external file) | Kept by planners next to the board today; **retired** by this feature (PRD §7 KPI), with no integration |
 
 **C4 Context (L1):**
 
 ```mermaid
 C4Context
-    title <system> — System Context
+    title Schedule day view — System Context
 
-    Person(user, "<User>", "<role + intent>")
-    System(system, "<Our System>", "<one-sentence description>")
-    System_Ext(ext, "<External system>", "<one-sentence description>")
+    Person(planner, "User with edit-allocations", "Plans day by day: reads, edits from the day view, drags (stage 2), sets times (stage 3)")
+    Person(viewer, "User with view-whole-board", "Reads the whole board by day and on the timeline, read-only")
+    Person(resource, "Resource", "Employee with an intranet login: reads own schedule by day and own timeline")
+    Person(maintainer, "User with manage-employee-records", "Sets a resource's working-day start (stage 3)")
 
-    Rel(user, system, "<interaction>", "<protocol>")
-    Rel(system, ext, "<interaction>", "<protocol>")
+    System(intranet, "arv-intranet: schedule board", "Weekly board, day view and one-day timeline over allocations, leave, capacity, employee records, projects, holidays")
+
+    System_Ext(google, "Google sign-in", "Company-domain OpenID Connect, unchanged")
+    System_Ext(sheet, "Planning spreadsheet", "Kept beside the board today, retired by this feature")
+
+    Rel(planner, intranet, "Plans and edits by day and time", "HTTPS")
+    Rel(viewer, intranet, "Reads day view and timeline", "HTTPS")
+    Rel(resource, intranet, "Reads own day view and timeline", "HTTPS")
+    Rel(maintainer, intranet, "Edits working-day start", "HTTPS")
+    Rel(intranet, google, "Authenticates the session", "OIDC")
+    Rel(planner, sheet, "Stops using it once the day view replaces it", "file")
 ```
 
 ## 4. Solution strategy
