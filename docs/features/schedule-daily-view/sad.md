@@ -467,17 +467,21 @@ The feature **inherits every convention** of [resource-scheduling SAD §8](../re
 
 ## 9. Architecture decisions
 
-<!-- 🎯 Навіщо: ЗВОРОТНИЙ ІНДЕКС на папку adr/. `ls adr/` дає файли, §9 дає семантику —    -->
-<!--           чому вони існують, до якого зрізу SAD привʼязані, у якому статусі.           -->
-<!-- 📋 Що писати: таблиця з 4 колонками. Один рядок на ADR. Mixed status — це OK.         -->
-<!-- 📌 Приклад: «0001 | Зберігати урок як таблицю блоків | Accepted | §4».                -->
-
 | # | Title | Status | Section |
 |---|---|---|---|
-| <NNNN> | <imperative — e.g. "Use sliding window for rate limiting"> | Accepted | §<N> |
-| <NNNN> | <imperative — e.g. "Co-locate outbox worker in API process"> | Accepted | §<N> |
+| [0001](./adr/0001-render-day-view-and-timeline-as-ssr-zooms-of-the-board-url.md) | Render the day view and the timeline server-side as zooms of the board URL | Accepted | §4 |
+| [0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md) | Store the daily time interval as minutes from midnight on allocation segments and drop the rate | Accepted | §4 |
+| [0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md) | Replace the rate with the time interval without converting allocations, because none exist in production yet | Accepted | §4 |
+| [0004](./adr/0004-precompute-gesture-outcomes-once-per-gesture-on-the-server.md) | Precompute a gesture's outcomes once per gesture on the server | Accepted | §4 |
+| [0005](./adr/0005-serve-day-view-and-timeline-through-dedicated-reads.md) | Serve the day view and the timeline through dedicated reads beside the board | Accepted | §5 |
 
-ADR files live under `docs/features/<slug>/adr/NNNN-<title>.md`.
+ADR files live under `docs/features/schedule-daily-view/adr/NNNN-<title>.md`.
+
+Decisions this feature builds on and keeps in force:
+- [resource-scheduling ADRs](../resource-scheduling/adr/): 0001 surfaces, 0002 SSR board with the window in the URL, 0004 permissions on the actor, 0005 compute on read, 0007 host-wired ports, 0008 effective-dated segments, 0009 minutes and ticks, 0010 confirm by re-sending.
+- Repo [ADR 0001](../../adr/0001-modular-monolith.md).
+
+Five ADRs is below the 10–15 typical for an L feature. That is deliberate: the feature extends an existing architecture rather than founding one, and the per-day rule, the surfaces and the crosscutting conventions inherit existing ADRs instead of re-deciding them.
 
 ## 10. Quality requirements
 
