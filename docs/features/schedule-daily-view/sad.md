@@ -68,7 +68,7 @@ The feature serves the ~5 users with the edit-allocations permission, who plan, 
   - 0008 — an allocation is one aggregate of effective-dated segments with a `version`.
   - 0009 — integer minutes are stored and integer 1/420-minute ticks are computed.
   - 0010 — warn-then-confirm by re-sending with `confirm: true`.
-- **Override — stage 3 migration and contract (pre-production only):** the stage 3 migration drops the rate columns in one step instead of expand → contract (`.claude/rules/backend/db.md`), and the allocation contract loses the weekly rate non-additively (ARCHITECTURE.md «changes are additive only»). This is allowed only because scheduling holds no production data yet ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md), §11). If the precondition breaks, the normal rules apply. A rollback is a new forward migration, never a schema rollback.
+- **Override — stage 3 migration and contract (pre-production only):** the stage 3 migration drops the rate columns in one step instead of expand → contract, and adds `org.employee_records.working_day_start_minute` NOT NULL in one step (a one-shot `DEFAULT 540` backfill, dropped in the same migration) instead of nullable → backfill → NOT NULL (`.claude/rules/backend/db.md`; org part added by the author on 2026-11-22, [data-model](./data-model.md)), and the allocation contract loses the weekly rate non-additively (ARCHITECTURE.md «changes are additive only»). This is allowed only because scheduling holds no production data yet ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md), §11). If the precondition breaks, the normal rules apply. A rollback is a new forward migration, never a schema rollback.
 - **No new package without approval** (CLAUDE.md). `apps/web` has no drag-and-drop or gesture package today; choosing one is PRD §8's open question (§11).
 
 **Organisational.**
@@ -167,8 +167,8 @@ C4Context
 
 3. **Store the daily time interval as minutes from midnight on allocation segments and drop the rate** ([ADR-0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md)).
    - `scheduling.allocation_segments` gets `starts_at_minute` / `ends_at_minute`: 0–1440, multiples of 15, NULL only for leave.
-   - `rate_minutes` and `rate_period` `day`/`week` are removed, so hours per day equal the interval's length.
-   - `org.employee_records` gets `working_day_start_minute`, default 540 = 09:00. Working hours end at start + daily capacity, computed and never stored.
+   - `rate_minutes` and `rate_period` are removed, so hours per day equal the interval's length. A segment is leave exactly when its interval is NULL; the domain keeps calling that kind `full-day` ([data-model](./data-model.md), 2026-11-22).
+   - `org.employee_records` gets `working_day_start_minute`, NOT NULL with no DB default: existing rows are backfilled to 540 = 09:00 by the migration, and a new record gets 09:00 from the org domain. Working hours end at start + daily capacity, computed and never stored.
    - A change of interval on a started allocation is a new effective-dated segment from today (AC-23, resource-scheduling ADR-0008).
    - `scheduling` reads the working-day start through `OrgApi`'s employment terms. No new module edge.
 
@@ -217,7 +217,7 @@ modules/scheduling/src/
 modules/org/src/
 ├── domain/                   S3  EmployeeRecord.workingDayStart (15-minute step; start + daily capacity ≤ 24:00)
 ├── application/org-api.ts    S3  employment terms carry the working-day start
-└── infrastructure/schema.ts  S3  employee_records.working_day_start_minute (default 540)
+└── infrastructure/schema.ts  S3  employee_records.working_day_start_minute (09:00 set in domain)
 
 packages/contracts/src/
 ├── scheduling/               S1  day-view DTO, impact list + overbookedDays; S2 outcome table;
@@ -766,8 +766,8 @@ The feature ships inside the two existing Cloudflare Workers, which are serverle
 
 - **Stage 1** has **no database migration**: per-day figures are computed from existing inputs.
 - **Stage 3** has **one drizzle-generated migration** ([ADR-0002](./adr/0002-store-daily-time-interval-as-minutes-on-segments-and-drop-the-rate.md), [ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md)):
-  - `scheduling.allocation_segments` gains `starts_at_minute` and `ends_at_minute` and loses `rate_minutes` and the `day`/`week` rate periods (leave keeps `full-day`);
-  - `org.employee_records` gains `working_day_start_minute` with default 540.
+  - `scheduling.allocation_segments` gains `starts_at_minute` and `ends_at_minute` and loses `rate_minutes` and `rate_period` (leave = NULL interval);
+  - `org.employee_records` gains `working_day_start_minute` NOT NULL, existing rows backfilled to 540, no DB default kept ([data-model](./data-model.md)).
 
 Because the stage 3 migration drops columns, it is **not additive** (§2 override). Rolling back past it is done with a new forward migration, as `.claude/rules/backend/db.md` requires, never with a schema rollback. This is acceptable only because scheduling holds no production data yet (ADR-0003).
 
