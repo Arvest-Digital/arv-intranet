@@ -485,29 +485,55 @@ Five ADRs is below the 10–15 typical for an L feature. That is deliberate: the
 
 ## 10. Quality requirements
 
-<!-- 🎯 Навіщо: ДЕРЕВО ЯКОСТЕЙ (Quality Tree) — беремо мету з §1 і розкладаємо на          -->
-<!--           конкретні листя: тести, метрики, конфіги, drill-и. ⭐ Без §10 §1 — це       -->
-<!--           маніфест. З §10 кожна декларація мапиться на щось, ЩО МОЖНА ДОВЕСТИ.        -->
-<!-- 📋 Що писати: на кожну якість з §1 — When / Then / How verify. Числа з PRD §6 NFR     -->
-<!--           ДОСЛІВНО (не округлюй p95 ≤250мс до ≤300мс — це F6-помилка критика).        -->
-<!-- 📌 Приклад: «p95 ≤500 мс на UPDATE блоку, перевіримо k6 load test 100 req/s».        -->
+Each top goal from §1 is expanded into a full scenario. Numbers are quoted verbatim from PRD §6. Approved by the PM (PRD owner) on 2026-11-22.
 
-Each top-3 goal from §1 expanded into a full scenario:
+**QG-1. Calculation correctness at day precision**
+- **When:** any daily figure, per-day or per-week overbooking verdict, or (stage 3) time-overlap verdict is computed for a day-view cell, a weekly board cell, the own schedule, the free list, the timeline, a gesture outcome or a save warning. This covers partial weeks, public holidays, part-time working days, leave days and employment periods that start or end mid-week.
+- **Then:** «100% of daily figures, of per-day and per-week overbooking verdicts and of time-overlap verdicts (stage 3) match the capacity rules (working days, holidays, part-timers, employment period, leave); figures are computed exactly, shown rounded to the nearest half hour (so rounded days need not add up to the shown week), and overbooking is judged on exact figures» (PRD §6).
+- **How verify:** «automated rule-table tests in CI» (PRD §6) — table-driven tests in `modules/scheduling/src/domain/*.test.ts` (`daily-figures`, `overbooking`, `free-list`, `time-overlap`, `working-hours`, `gesture-outcomes`) and `modules/org/src/domain/*.test.ts`, run by `pnpm test` on every PR. At least the PRD examples are rows:
+  - AC-06: Wednesday over by 8 h, and the week 40/40 overbooked because of Wednesday;
+  - AC-07: 8, 8, 16, 8, 0 → Wednesday overbooked and 8 free hours;
+  - AC-08: no confirmation when nothing gets worse;
+  - AC-13: moving by working days skips holidays;
+  - AC-21: «6/8», free 13:00–14:00 and 16:00–17:00;
+  - AC-25: 09:00–13:00 + 11:00–12:00 → overlap 11:00–12:00, warned only when made worse;
+  - AC-26: outside working hours, no warning;
+  - AC-27: 08:00 start → 08:00–16:00;
+  - AC-27b: 09:00 + 6 h 24 min → ends at 15:24.
 
-**QG-1. <quality attribute>**
-- **When:** <trigger condition>
-- **Then:** <expected behavior with numbers from PRD NFR>
-- **How verify:** <test / chaos drill / load test / observability>
+**QG-2. Confidentiality at day precision**
+- **When:** a viewer without `scheduling:see-leave-reasons` opens the day view (by resource or by project), an allocation's read-only details, or the timeline; or a viewer holding neither `org:manage-employee-records` nor `scheduling:edit-allocations` looks at a resource whose employment period ends inside the window.
+- **Then:**
+  - «viewers without the see-leave-reasons permission see only «away», never the type or the leave project; the resource themselves sees their own type» (PRD §6.1);
+  - «viewers without the manage-employee-records or edit-allocations permission see zero daily capacity after the end date with no allocations, no overbooking and no end mark» (PRD §6.1), and on the timeline «after an employment end date no blocks and no working hours» (AC-29).
 
-**QG-2. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+  Measured as: 0 api responses contain a leave type, leave-project name, employment end date, or an allocation, time block or working hours after that date, for a viewer not entitled to them.
+- **How verify:** api integration tests in `apps/api/test/integration/scheduling/` (workerd + `arv_test`). They call every new read (day view, own day view, timeline, own timeline, gesture outcomes) for each permission combination and assert on the **response body**, not the UI. The mandatory security review (PRD §6.1) signs off the test matrix before stage 1 and before stage 3.
 
-**QG-3. <quality attribute>**
-- **When:** <trigger>
-- **Then:** <expected>
-- **How verify:** <how>
+**QG-3. Responsiveness at target scale**
+- **When:** production traffic at «100 resources × 4 weeks» for the day view and «100 resources» for the timeline (PRD §6); a gesture on «a 100-resource × 4-week board» (PRD §6).
+- **Then:**
+  - «Latency p95, open the day view (100 resources × 4 weeks)» «≤ 1500 ms»;
+  - «Latency p95, save a dragged or keyboard change (incl. overbooking check)» «≤ 500 ms»;
+  - «Latency p95, open a one-day timeline (100 resources)» «≤ 1000 ms»;
+  - gesture feedback: the preview «updates within 300 ms of each one-day step» (PRD §6).
+- **How verify:**
+  - «server request-duration metric for the day-view request, production», «… for allocation saves, production» and «… for the timeline request, production» (PRD §6). These are the structured per-request log line queried by route id in Workers Observability (§7), and also the weekly read of the PRD §7 KPI.
+  - For gestures, an «automated browser performance test in CI on a 100-resource × 4-week board» (PRD §6): a Playwright test in `e2e/tests/scheduling/` that seeds the board, starts a keyboard move, and asserts the preview's updated text is visible within 300 ms of each arrow-key step.
+
+**QG-4. Stage 3 data correctness: no allocation without a time interval**
+- **When:** the stage 3 migration has been applied in an environment, and from then on on every save or import.
+- **Then:** 100% of non-leave allocation segments have a valid time interval (start < end, 15-minute steps, ending by 24:00), no segment carries a rate, and leave segments have none. The PRD's «Migration correctness» target does not apply, because no allocation is converted ([ADR-0003](./adr/0003-replace-the-rate-without-converting-pre-production-allocations.md)).
+- **How verify:**
+  - domain validation of the interval (AC-24), covered by rule-table tests and an api integration test that saves and imports invalid intervals (any column-level constraint is left to `/sdlc:generate-data-model`);
+  - a count check after release: 0 non-leave segments without an interval, run in each environment as part of the §7 release sequence.
+
+**Additional quality scenarios (from PRD §6):**
+
+- **QS-5 Concurrency** — *When* two users with edit-allocations change the same allocation, by gesture or by form, one after the other; *Then* «0 lost updates»: the first change is kept, and the second is refused with the current values and who changed them (AC-17); *How verify:* «automated concurrent-save test in CI (AC-17)», an api integration test that saves twice with the same `version` through the gesture save path and asserts one success and one `Conflict`.
+- **QS-6 Availability** — *When* measured over a calendar month; *Then* «99.5% monthly (same as the board)»; *How verify:* «intranet uptime monitor, monthly SLO window».
+- **QS-7 Accessibility** — *When* the day view or the timeline renders any state, or a user moves or stretches an allocation without a pointer; *Then* «every gesture has a keyboard equivalent; free, booked, overbooked, away and non-working days are distinguishable without colour; text contrast ≥ 4.5:1»; *How verify:* «automated accessibility audit of the day view in CI, plus a keyboard-only run of AC-20». That is `expectNoAxeViolations` in the day-view and timeline e2e specs, plus a keyboard-only Playwright spec of AC-20.
+- **QS-8 Device support** — *When* the day view, own schedule or timeline is opened at a 390 px viewport; *Then* «the day view of the own schedule (one week) is fully readable and the board's day view is view-only with horizontal scrolling; the board's one-day timeline is likewise view-only with horizontal scrolling, and the own timeline is a vertical list (AC-30); no gestures on phones»; *How verify:* «manual check at a 390 px viewport in the pre-release review of each stage».
 
 ## 11. Risks and technical debt
 
