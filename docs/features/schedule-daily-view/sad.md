@@ -566,14 +566,37 @@ Each top goal from §1 is expanded into a full scenario. Numbers are quoted verb
 
 ## 12. Glossary
 
-<!-- 🎯 Навіщо: ⭐ СЛОВНИК ДОМЕНУ, який припиняє суперечки через рік («checkpoint —      -->
-<!--           weekly чи biweekly? Quarter — календарний чи фіскальний?»).                -->
-<!-- 📋 Що писати: таблиця термін / значення. Бізнес-терміни + технічні вперемішку.       -->
-<!--           Один термін може мати дві мови у заголовку: «Goal (Обʼєктив)».              -->
-<!-- 📌 Приклад: «Lesson | урок усередині курсу, що складається з блоків (text, video)». -->
+Domain terms are canonical in [`CONTEXT.md`](../../../CONTEXT.md). The definitions below are short reminders, and CONTEXT wins on any difference. Terms marked † were introduced by this SAD and are not in CONTEXT yet. They are implementation vocabulary, except «made worse», which is a candidate for `/sdlc:fix-term`.
 
 | Term | Meaning |
 |---|---|
-| <e.g. Goal> | <quarterly intent in statement form> |
-| <e.g. KR> | <Key Result — measurable target linked to a Goal> |
-| <e.g. Checkpoint> | <bi-weekly progress update on a KR> |
+| Allocation | A planned assignment of a resource to a project for a date range at one fixed time interval per day (from stage 3), except leave, which has none. It is modelled as one aggregate of effective-dated segments (resource-scheduling ADR-0008). Not logged time, not project membership. |
+| Allocation segment † | One effective-dated part of an allocation. From stage 3 it carries a time interval instead of a rate, so a change «from today» starts a new segment and past segments never change. |
+| Availability | Capacity minus allocated hours over a period. The free list counts it day by day, so one overbooked day does not hide free hours on other days (AC-07). |
+| Capacity | The working hours a resource has in a period: contract hours minus public holidays, zero outside the employment period. Leave is not subtracted. |
+| Closed project | A project whose close date has passed; it accepts no new, changed or removed allocations. |
+| Contract hours | The fixed weekly hours from a resource's contract, spread evenly over their working days. |
+| Daily capacity | A resource's capacity on one date: contract hours ÷ working days, or zero on a non-working day, a public holiday or outside the employment period. A day above it is overbooked. |
+| Day view | A zoom of the schedule board showing one to four weeks with a column per day. Served as `zoom=day` on the board URL (ADR-0001) through its own read (ADR-0005). Not the timeline. |
+| Employee record | The shared record of an employee in the `org` module. From stage 3 it also holds the working-day start. |
+| Employment period | From a resource's start date to their end date; outside it capacity is zero. |
+| Gesture island † | The client-side code on the server-rendered day view that turns pointer or keyboard input into whole-day moves and edge stretches (stage 2). It is absent on phones. |
+| Gesture outcome table † | The server-computed list of every reachable position of one allocation during one gesture, each with its dates, weekly totals, the days, weeks and overlaps it makes worse, or its refusal reason (ADR-0004). |
+| Impact list † | The details of a `ConfirmationRequired` response: overbooked days, overbooked weeks (naming their days) and, from stage 3, time overlaps, each limited to what the change makes worse (§8). |
+| Leave | An absence booked in whole working days as an allocation to a leave-type project. It has no time interval: on the timeline it fills the resource's working hours, and it is never part of a time overlap. Viewers without see-leave-reasons see «away», except the resource themselves. |
+| Made worse † | The rule that a warning names only what a change worsens. A day is made worse when its hours over daily capacity grow. A week is made worse when its hours over capacity grow or it gains an overbooked day. Overlaps are made worse on a day that gains an overlap or whose overlapping time grows (AC-08, AC-25). |
+| Minutes from midnight † | The stored form of a time of day: an integer 0–1440 in 15-minute steps (ADR-0002). 540 is 09:00 and 1440 is 24:00. |
+| Overbooking | A week whose allocated hours exceed its capacity, or a day whose allocated hours exceed its daily capacity. A week containing an overbooked day is itself overbooked. |
+| Permission | A named right to perform one action, granted through access roles. This feature adds none. |
+| Project | Anything a resource's hours can be booked against, including leave. |
+| Public holiday | A company-wide non-working date on the single holiday list. |
+| Resource | An employee whose working hours can be allocated to projects. Not a user. |
+| Route id † | The Hono route pattern recorded in the per-request log line (§7), used to compute p95 per view. |
+| Team | A named group of resources under one team lead, used to filter the board. |
+| Tick † | The internal unit of hour arithmetic, 1/420 of a minute (resource-scheduling ADR-0009). |
+| Time interval | The daily start and end time of an allocation other than leave, in 15-minute steps, at most 24 hours, the same on every working day it covers. Its length is the allocation's hours per day. |
+| Time overlap | A stretch of one day when two allocations of the same resource both fall. It is allowed after confirmation and marked on the timeline, the day view and the own day view. Not overbooking. |
+| Timeline | A one-day view of the schedule board on a time-of-day axis, always grouped by resource, opened from the day view. |
+| User | A person on the access list who signs in with a company-domain Google account. |
+| Working hours | One continuous span from a resource's working-day start (09:00 unless set otherwise) to that start plus their daily capacity. Booking outside it is allowed and only marked on the timeline. |
+
