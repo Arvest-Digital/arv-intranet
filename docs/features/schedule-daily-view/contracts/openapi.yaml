@@ -1,0 +1,1949 @@
+# Derived by sdlc api-forge (scenario A) from:
+#   fields + constraints  ← data-model.md (stage 3 columns) + the base resource-scheduling data-model;
+#                           computed view fields trace to scheduling/domain (weekly-figures.ts DayFigures)
+#   error responses       ← sad.md §6 alt-branches (critical flows 1–3, flows 4–12; gaps in api-sync-report.md)
+#   endpoint list + shape ← PRD.md §4 US-01…US-10 / §5 AC-01…AC-30
+# Repo conventions (.claude/rules/openapi.md → "arv-intranet deviations"): module-prefixed
+# unversioned paths, camelCase keys, envelope {error: {_tag, code, message, details?}}.
+#
+# SCOPE — a DELTA contract. It holds the operations this feature ADDS and the ones whose request or
+# response shape it CHANGES. Every other operation stays as written in
+# ../../resource-scheduling/contracts/openapi.yaml. Schema names here are the same names that
+# contract uses; where both define a schema, this file's version supersedes it from the stage named in
+# `x-stage` (S1 = day view, S2 = gestures, S3 = time of day).
+openapi: 3.1.0
+
+info:
+  title: Schedule daily view API
+  version: 0.1.0
+  description: |
+    The schedule board shows weeks. The ~5 people who plan can see that a resource has 24 of 40 hours
+    booked in a week, but not which days are free, who is away when, or what sits on Monday versus
+    Friday, so every one of them still keeps the planning spreadsheet next to the board (PRD §1). This
+    API backs the **day view** of the board (one to four weeks, a column per day), the resource's own
+    schedule by day, one **overbooking rule judged per day and per week** behind every figure and save
+    warning, the stage 2 **gesture outcome table** for moving and stretching an allocation by whole
+    days, and the stage 3 **time of day**: a daily time interval on every allocation except leave,
+    a working-day start on the employee record, a time-overlap warning and a one-day **timeline**.
+
+    It extends two modules of the private `arv-api` Worker: `scheduling` (day view, timeline,
+    gesture outcomes, per-day impact, time interval) and `org` (working-day start, per-day capacity
+    impact). It adds no module and no new error code.
+
+    **Units.** Hours travel as integer or exact **minutes** (resource-scheduling ADR-0009); computed
+    figures may carry a fraction and are rounded to the nearest half hour only for display. Times of
+    day are **minutes from midnight** in the one company time zone, `0`–`1440`, where `1440` = 24:00
+    (ADR-0002). A stored interval is on a 15-minute step; a computed working-day end may fall off it
+    (AC-27b).
+
+    **Warn-then-confirm (resource-scheduling ADR-0010).** Unchanged mechanism. The impact in
+    `details` grows additively: `overbookedDays`, weeks naming their overbooked days, and (S3)
+    `timeOverlaps`. Only what the change makes worse is named (AC-08, AC-25).
+
+    **Redaction (SAD §8).** The existing visibility policy applies to every new view before the
+    response is built: leave type becomes «away» (`project: null`, `away: true`) unless the viewer
+    holds `scheduling:see-leave-reasons` or is the resource; after an employment end date, viewers
+    without `org:manage-employee-records` or `scheduling:edit-allocations` get zero daily capacity,
+    no allocations, no overbooking, no end mark, no time blocks and no working hours (AC-05, AC-29).
+
+servers:
+  - url: https://api.internal
+    description: Private api Worker, reached only through the `API` service binding from arv-web
+  - url: http://localhost:8787
+    description: Local (wrangler dev, auxiliary worker)
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: scheduling
+    description: Day view, timeline, gesture outcomes, allocations with a time interval (`@arv/scheduling`)
+  - name: org
+    description: Working-day start and per-day capacity impact (`@arv/org`)
+
+paths:
+  # ───────────────────────────── scheduling: day view (US-01, US-04) — NEW ─────────────────────────────
+  /scheduling/day-view:
+    get:
+      tags: [scheduling]
+      x-stage: S1 (S3 adds `timeOverlap` on day cells and the interval on segments)
+      summary: Day view of the board for one to four weeks
+      description: |
+        US-01; AC-01, AC-02, AC-03, AC-04, AC-05 (critical flow 1, flow 4; ADR-0001, ADR-0005).
+        Requires `scheduling:view-whole-board` or `scheduling:edit-allocations`. One row per resource
+        whose employment period overlaps the window, one cell per day and one figure per ISO week.
+        The window starts on the Monday of `from`'s ISO week, may start up to 12 months back and end
+        up to 52 weeks ahead. Grouping by project (AC-01b) is a regrouping of these rows in the web;
+        there is no project-grouped read. A `weeks` outside 1–4 or a window outside the limits answers
+        `scheduling.window_out_of_range` (AC-03), not `platform.validation_failed`.
+      operationId: getDayView
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/DayWindowWeeks"
+        - $ref: "#/components/parameters/TeamFilter"
+        - $ref: "#/components/parameters/ProjectFilter"
+      responses:
+        "200":
+          description: The day-view window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DayView" }
+              examples:
+                dayView: { $ref: "#/components/examples/DayView" }
+        "400":
+          description: "`scheduling.window_out_of_range` (AC-03) or `platform.validation_failed` (malformed date or id)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/DayWindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations (AC-04); the web then offers the viewer's own day view
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/my-schedule/day-view:
+    get:
+      tags: [scheduling]
+      x-stage: S1 (S3 adds `timeOverlap` on day cells and the interval on segments)
+      summary: The signed-in resource's own schedule by day
+      description: |
+        US-04; AC-04, AC-07, AC-12 (flow 8). Any signed-in user whose login is linked to an employee
+        record. Read only; the resource always sees their own leave type and overbooked days. Two
+        weeks by default (the web asks for one on a phone). Same window limits as the day view.
+      operationId: getMyDayView
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/DayWindowWeeks"
+      responses:
+        "200":
+          description: Own days against daily capacity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyDayView" }
+              examples:
+                mine: { $ref: "#/components/examples/MyDayView" }
+        "400":
+          description: "`scheduling.window_out_of_range` or `platform.validation_failed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/DayWindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: "`scheduling.not_a_resource` — no employee record is linked to the login (AC-04)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notResource: { $ref: "#/components/examples/NotAResource" }
+
+  # ───────────────────────────── scheduling: timeline (US-08) — NEW, stage 3 ─────────────────────────────
+  /scheduling/timeline:
+    get:
+      tags: [scheduling]
+      x-stage: S3
+      summary: One day of the board on a time-of-day axis
+      description: |
+        US-08; AC-21, AC-22, AC-25, AC-26, AC-29 (flow 10; ADR-0005). Requires
+        `scheduling:view-whole-board` or `scheduling:edit-allocations`. Always grouped by resource.
+        `date` must lie within 12 months back and 52 weeks ahead (AC-21 → AC-02, AC-03). The axis
+        (at least 08:00–18:00, widened to the earliest start and latest end shown) is drawn by the
+        web from the blocks and working hours; the server sends no axis.
+      operationId: getTimeline
+      parameters:
+        - $ref: "#/components/parameters/TimelineDate"
+        - $ref: "#/components/parameters/TeamFilter"
+        - $ref: "#/components/parameters/ProjectFilter"
+      responses:
+        "200":
+          description: The one-day timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Timeline" }
+              examples:
+                timeline: { $ref: "#/components/examples/Timeline" }
+        "400":
+          description: "`scheduling.window_out_of_range` (date outside the limits) or `platform.validation_failed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/DayWindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations (AC-29 → AC-04); the web then offers the own timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/my-schedule/timeline:
+    get:
+      tags: [scheduling]
+      x-stage: S3
+      summary: One day of the signed-in resource's own schedule on a time-of-day axis
+      description: |
+        US-08; AC-29, AC-30 (flow 10, branch «the user lacks view-whole-board»). Any signed-in user
+        whose login is linked to an employee record. Read only; own leave type, overlaps and
+        overbooking are shown. The phone's vertical list is a rendering of the same row.
+      operationId: getMyTimeline
+      parameters:
+        - $ref: "#/components/parameters/TimelineDate"
+      responses:
+        "200":
+          description: Own day on the time axis
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyTimeline" }
+              examples:
+                mine: { $ref: "#/components/examples/MyTimeline" }
+        "400":
+          description: "`scheduling.window_out_of_range` or `platform.validation_failed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/DayWindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          # sequence gap: flow 10 has no «not a resource» branch (flow 8 has it) — api-sync-report D-2
+          description: "`scheduling.not_a_resource` — no employee record is linked to the login"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notResource: { $ref: "#/components/examples/NotAResource" }
+
+  # ───────────────────────────── scheduling: gesture outcomes (US-05–US-07) — NEW, stage 2 ─────────────────────────────
+  /scheduling/allocations/{allocationId}/gesture-outcomes:
+    parameters:
+      - $ref: "#/components/parameters/AllocationId"
+    get:
+      tags: [scheduling]
+      x-stage: S2
+      summary: Every reachable position of one gesture on one allocation
+      description: |
+        US-05, US-06, US-07; AC-13, AC-14, AC-15, AC-16, AC-19, AC-20 (critical flow 3, flow 9;
+        ADR-0004). Requires `scheduling:edit-allocations`. Fetched once when a pointer or keyboard
+        gesture starts. For every position reachable inside the visible window, by whole working days
+        of the resource (weekends, public holidays and non-working days skipped), the server returns
+        the resulting dates, the resource's week figures, what the change would make worse, or why it
+        would be refused. Read only: nothing is saved. The drop is the ordinary `updateAllocation`
+        with `version` and `confirm`, recomputed on fresh data (AC-17, AC-18). The table is not
+        refreshed live; a stale table is caught by the drop's `version` check.
+      operationId: getGestureOutcomes
+      parameters:
+        - in: query
+          name: kind
+          required: true
+          description: Move the whole allocation, or drag its start or end edge
+          schema: { $ref: "#/components/schemas/GestureKind" }
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/DayWindowWeeks"
+      responses:
+        "200":
+          description: The outcome table
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GestureOutcomeTable" }
+              examples:
+                move: { $ref: "#/components/examples/GestureOutcomeTable" }
+        "400":
+          description: "`scheduling.window_out_of_range` or `platform.validation_failed` (unknown `kind`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/DayWindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          # sequence gap: critical flow 3 checks the permission only at the drop — api-sync-report D-1
+          description: Lacks edit-allocations (AC-11, AC-18)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          # sequence gap: critical flow 3 has no «allocation gone» branch — api-sync-report D-1
+          description: "`scheduling.allocation_not_found` — removed meanwhile, or not visible to the viewer"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+
+  # ───────────────────────────── scheduling: CHANGED operations ─────────────────────────────
+  /scheduling/board:
+    get:
+      tags: [scheduling]
+      x-stage: S1 (response only)
+      summary: Schedule board for a week window — weeks now name their overbooked days
+      description: |
+        CHANGED by AC-06, AC-07. Unchanged request, permissions and errors (see the resource-scheduling
+        contract). A week is overbooked when its hours exceed its capacity **or** it contains an
+        overbooked day; `BoardCell.overbookedDays` names those days, so a «40/40» week can be
+        overbooked.
+      operationId: getBoard
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/BoardWindowWeeks"
+        - $ref: "#/components/parameters/TeamFilter"
+        - $ref: "#/components/parameters/ProjectFilter"
+      responses:
+        "200":
+          description: The board window
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Board" }
+              examples:
+                board: { $ref: "#/components/examples/Board" }
+        "400":
+          description: "`platform.validation_failed` or `scheduling.window_out_of_range`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/WindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+
+  /scheduling/my-schedule:
+    get:
+      tags: [scheduling]
+      x-stage: S1 (response only)
+      summary: Own weekly schedule — weeks now name their overbooked days
+      description: CHANGED by AC-07. Unchanged request and errors; `cells[].overbookedDays` added.
+      operationId: getMySchedule
+      parameters:
+        - $ref: "#/components/parameters/WindowFrom"
+        - $ref: "#/components/parameters/BoardWindowWeeks"
+      responses:
+        "200":
+          description: Own weeks against capacity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MySchedule" }
+        "400":
+          description: "`platform.validation_failed` or `scheduling.window_out_of_range`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                outOfRange: { $ref: "#/components/examples/WindowOutOfRange" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "404":
+          description: "`scheduling.not_a_resource`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notResource: { $ref: "#/components/examples/NotAResource" }
+
+  /scheduling/allocations:
+    post:
+      tags: [scheduling]
+      x-stage: S1 (impact per day) · S3 (time interval replaces the rate — breaking)
+      summary: Create a work allocation with a daily time interval
+      description: |
+        CHANGED by AC-06, AC-08, AC-09, AC-23, AC-24, AC-25, AC-26 (critical flow 2, flows 7, 11).
+        Requires `scheduling:edit-allocations`, checked on this request. From S3 the body carries a
+        daily `startsAtMinute`/`endsAtMinute` and no rate (ADR-0002); hours per day are the interval's
+        length on every working day the allocation covers. An interval outside working hours is
+        accepted silently (AC-26). A save that makes a day or week overbooked or worse, or a time
+        overlap worse, answers `scheduling.overbooking_confirmation_required` with the impact until
+        re-sent with `confirm: true`; nothing made worse saves directly (AC-08). Interval rules the
+        schema cannot express (end after start; 15-minute step) answer `scheduling.invalid_allocation`
+        with `details.rules` (AC-24). Other rules unchanged: past not rewritten, closed project,
+        employment period.
+      operationId: createAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AllocationCreate" }
+            examples:
+              create: { $ref: "#/components/examples/AllocationCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                allocation: { $ref: "#/components/examples/Allocation" }
+        "400":
+          description: |
+            `platform.validation_failed`, `scheduling.invalid_allocation` (AC-24),
+            `scheduling.past_not_rewritable`, `scheduling.outside_employment_period` (AC-09)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                badInterval: { $ref: "#/components/examples/InvalidInterval" }
+                past: { $ref: "#/components/examples/PastNotRewritable" }
+                outside: { $ref: "#/components/examples/OutsideEmploymentPeriod" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.employee_record_not_found` or `scheduling.project_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/SchedulingProjectNotFound" }
+        "409":
+          description: "`scheduling.overbooking_confirmation_required` (AC-06, AC-25) or `scheduling.project_closed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                overbookedDay: { $ref: "#/components/examples/DayOverbookingConfirmationRequired" }
+                overlap: { $ref: "#/components/examples/OverlapConfirmationRequired" }
+                closed: { $ref: "#/components/examples/SchedulingProjectClosed" }
+
+  /scheduling/allocations/{allocationId}:
+    parameters:
+      - $ref: "#/components/parameters/AllocationId"
+    get:
+      tags: [scheduling]
+      x-stage: S3 (response only)
+      summary: Get an allocation — segments carry a time interval
+      description: |
+        CHANGED by AC-23. Unchanged permissions and errors; `segments[]` carry the daily interval
+        instead of a rate (ADR-0002). The read-only details popover (AC-11) and the edit form (AC-10)
+        read it.
+      operationId: getAllocation
+      responses:
+        "200":
+          description: The allocation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                allocation: { $ref: "#/components/examples/Allocation" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Neither view-whole-board nor edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenViewWholeBoard" }
+        "404":
+          description: "`scheduling.allocation_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+    patch:
+      tags: [scheduling]
+      x-stage: S1 (impact per day) · S2 (gesture drop) · S3 (time interval replaces the rate — breaking)
+      summary: Change an allocation from today — also the drop of a gesture
+      description: |
+        CHANGED by AC-08, AC-10, AC-13–AC-19, AC-23, AC-25 (critical flows 2–3, flows 7, 9, 11).
+        Requires `scheduling:edit-allocations`, checked at this moment — including each drop or
+        keyboard confirmation (AC-18). A gesture drop sends `startsOn`/`endsOn` (move: both; edge: one)
+        with the `version` the outcome table was computed against. A started allocation cannot move or
+        change its start; its end may move to today or later (AC-14). A changed interval on a started
+        allocation applies from today, past days keeping the old one (AC-23). Stretching keeps the
+        interval and hours per day (AC-19); leave gains or loses whole working days. A stale `version`
+        answers `scheduling.version_conflict` with the current values and who changed them (AC-17).
+      operationId: updateAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AllocationChange" }
+            examples:
+              drop: { $ref: "#/components/examples/AllocationDrop" }
+              interval: { $ref: "#/components/examples/AllocationIntervalChange" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+              examples:
+                allocation: { $ref: "#/components/examples/Allocation" }
+        "400":
+          description: |
+            `platform.validation_failed`, `scheduling.invalid_allocation` (AC-24),
+            `scheduling.past_not_rewritable` (AC-14), `scheduling.outside_employment_period` (AC-16)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                past: { $ref: "#/components/examples/PastNotRewritable" }
+                outside: { $ref: "#/components/examples/OutsideEmploymentPeriod" }
+                badInterval: { $ref: "#/components/examples/InvalidInterval" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks edit-allocations at this moment (AC-18)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "404":
+          description: "`scheduling.allocation_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/AllocationNotFound" }
+        "409":
+          description: |
+            `scheduling.version_conflict` (AC-17), `scheduling.overbooking_confirmation_required`
+            (AC-15, AC-25) or `scheduling.project_closed` (AC-16)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                stale: { $ref: "#/components/examples/AllocationVersionConflict" }
+                overbookedDay: { $ref: "#/components/examples/DayOverbookingConfirmationRequired" }
+                closed: { $ref: "#/components/examples/SchedulingProjectClosed" }
+
+  /scheduling/leave:
+    post:
+      tags: [scheduling]
+      x-stage: S1 (impact per day)
+      summary: Book leave — the warning names overbooked days
+      description: |
+        CHANGED by AC-07, AC-13 (leave onto work days). Unchanged body: leave has **no** time
+        interval (AC-22, AC-23) and takes no part in the overlap check (AC-25). The confirmation
+        impact gains `overbookedDays`; `timeOverlaps` is always empty for leave.
+      operationId: bookLeave
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LeaveBooking" }
+            examples:
+              leave:
+                value: { employeeId: 01933b8e-0000-7000-8000-000000000301, projectId: 01933b8e-0000-7000-8000-000000000502, startsOn: "2026-12-03", endsOn: "2026-12-03" }
+      responses:
+        "201":
+          description: Booked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Allocation" }
+        "400":
+          description: "`platform.validation_failed`, `scheduling.not_a_leave_project`, `scheduling.past_not_rewritable`, `scheduling.outside_employment_period`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                past: { $ref: "#/components/examples/PastNotRewritable" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks edit-allocations
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenEditAllocations" }
+        "409":
+          description: "`scheduling.overbooking_confirmation_required` (work on the leave days) or `scheduling.project_closed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                workOnLeave: { $ref: "#/components/examples/LeaveConfirmationRequired" }
+
+  # ───────────────────────────── org: CHANGED operations (US-10, AC-07) ─────────────────────────────
+  /org/employee-records:
+    post:
+      tags: [org]
+      x-stage: S3
+      summary: Create an employee record — with a working-day start
+      description: |
+        CHANGED by AC-27. Unchanged permission (`org:manage-employee-records`) and errors otherwise.
+        `workingDayStartMinute` defaults to 540 (09:00) in the org domain (the column has no DB
+        default). A start off a 15-minute step, or one whose working hours would end after 24:00,
+        answers `org.invalid_employee_record` (AC-27b).
+      operationId: createEmployeeRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmployeeRecordCreate" }
+            examples:
+              create:
+                value: { fullName: Test User 1, contractMinutes: 2400, workingDays: [1, 2, 3, 4, 5], employmentStart: "2026-01-05", workingDayStartMinute: 480 }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecord" }
+              examples:
+                record: { $ref: "#/components/examples/EmployeeRecord" }
+        "400":
+          description: "`platform.validation_failed` or `org.invalid_employee_record` (AC-27b)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                badStart: { $ref: "#/components/examples/InvalidWorkingDayStart" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks manage-employee-records
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageEmployeeRecords" }
+
+  /org/employee-records/{employeeRecordId}:
+    parameters:
+      - $ref: "#/components/parameters/EmployeeRecordId"
+    patch:
+      tags: [org]
+      x-stage: S1 (impact per day) · S3 (working-day start)
+      summary: Change an employee record — working-day start; the capacity warning names days
+      description: |
+        CHANGED by AC-07, AC-27, AC-27b (flows 5, 12). Requires `org:manage-employee-records`.
+        Setting `workingDayStartMinute` changes the working hours only: capacity is unchanged and no
+        allocation moves (AC-27). A start off a 15-minute step, or one whose working hours (start +
+        daily capacity, also after a contract-hours or working-days change) would end after 24:00,
+        answers `org.invalid_employee_record` (AC-27b). A contract-hours, working-days or
+        employment-period change that makes a day or week overbooked or worse answers
+        `org.capacity_confirmation_required` with the days and weeks until re-sent with
+        `confirm: true` (AC-07).
+      operationId: updateEmployeeRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EmployeeRecordChange" }
+            examples:
+              workingDayStart:
+                value: { version: 3, workingDayStartMinute: 480 }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmployeeRecord" }
+              examples:
+                record: { $ref: "#/components/examples/EmployeeRecord" }
+        "400":
+          description: "`platform.validation_failed` or `org.invalid_employee_record` (AC-27b)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                badStart: { $ref: "#/components/examples/InvalidWorkingDayStart" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks manage-employee-records
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageEmployeeRecords" }
+        "404":
+          description: "`org.employee_record_not_found`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                notFound: { $ref: "#/components/examples/EmployeeRecordNotFound" }
+        "409":
+          description: "`org.version_conflict` or `org.capacity_confirmation_required` (AC-07)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                capacity: { $ref: "#/components/examples/CapacityConfirmationRequired" }
+
+  /org/public-holidays:
+    post:
+      tags: [org]
+      x-stage: S1 (impact per day)
+      summary: Add a public holiday — the capacity warning names days
+      description: |
+        CHANGED by AC-07 (flow 5). Unchanged body, permission (`org:manage-holiday-list`) and errors;
+        the confirmation impact gains the overbooked days.
+      operationId: createPublicHoliday
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicHolidayCreate" }
+            examples:
+              holiday:
+                value: { holidayDate: "2026-12-07", name: Test Holiday }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicHoliday" }
+        "400":
+          description: "`platform.validation_failed`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                invalid: { $ref: "#/components/examples/ValidationFailed" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Lacks manage-holiday-list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                forbidden: { $ref: "#/components/examples/ForbiddenManageHolidayList" }
+        "409":
+          description: "`org.duplicate_holiday_date` or `org.capacity_confirmation_required` (AC-07)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiErrorBody" }
+              examples:
+                capacity: { $ref: "#/components/examples/CapacityConfirmationRequired" }
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Placeholder for the authenticated actor (repo ADR 0001); permissions resolve per request.
+
+  parameters:
+    WindowFrom:
+      in: query
+      name: from
+      description: Any date in the first week of the window; the window starts on that ISO week's Monday. Defaults to the current week.
+      schema: { type: string, format: date }
+      example: "2026-11-30"
+    DayWindowWeeks:
+      in: query
+      name: weeks
+      description: Number of weeks of day columns (AC-02). Outside 1–4 → `scheduling.window_out_of_range` (AC-03).
+      schema: { type: integer, minimum: 1, maximum: 4, default: 2 }
+    BoardWindowWeeks:
+      in: query
+      name: weeks
+      description: Number of week columns (unchanged, resource-scheduling AC-01)
+      schema: { type: integer, minimum: 1, maximum: 12, default: 12 }
+    TimelineDate:
+      in: query
+      name: date
+      required: true
+      description: The one day shown (AC-21); within 12 months back and 52 weeks ahead
+      schema: { type: string, format: date }
+      example: "2026-12-01"
+    TeamFilter:
+      in: query
+      name: teamId
+      description: Narrow to resources in this team (resource-scheduling AC-02; kept by AC-01, AC-21)
+      schema: { type: string, format: uuid }
+    ProjectFilter:
+      in: query
+      name: projectId
+      description: Narrow to resources with an allocation to this project in the window
+      schema: { type: string, format: uuid }
+    AllocationId:
+      in: path
+      name: allocationId
+      required: true
+      schema: { type: string, format: uuid }
+    EmployeeRecordId:
+      in: path
+      name: employeeRecordId
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: No authenticated actor (`platform.unauthenticated`)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiErrorBody" }
+          examples:
+            unauthenticated: { $ref: "#/components/examples/Unauthenticated" }
+
+  schemas:
+    # ── Error envelope (unchanged; codes used by this contract only — all already in the registry) ──
+    ApiErrorBody:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error: { $ref: "#/components/schemas/ApiError" }
+    ApiError:
+      type: object
+      required: [_tag, code, message]
+      additionalProperties: false
+      properties:
+        _tag:
+          type: string
+          enum: [ValidationError, Unauthenticated, Forbidden, NotFound, Conflict, ConfirmationRequired, InternalError]
+        code:
+          type: string
+          pattern: "^[a-z_]+\\.[a-z_]+$"
+          enum:
+            - platform.validation_failed
+            - platform.unauthenticated
+            - platform.internal_error
+            - org.missing_permission
+            - org.invalid_employee_record
+            - org.employee_record_not_found
+            - org.version_conflict
+            - org.capacity_confirmation_required
+            - org.duplicate_holiday_date
+            - scheduling.missing_permission
+            - scheduling.invalid_allocation
+            - scheduling.outside_employment_period
+            - scheduling.past_not_rewritable
+            - scheduling.not_a_leave_project
+            - scheduling.window_out_of_range
+            - scheduling.project_closed
+            - scheduling.overbooking_confirmation_required
+            - scheduling.version_conflict
+            - scheduling.allocation_not_found
+            - scheduling.employee_record_not_found
+            - scheduling.project_not_found
+            - scheduling.not_a_resource
+        message:
+          type: string
+          description: Human-readable, safe to show; never contains personal data the viewer may not see
+        details:
+          description: Structured context; its shape follows `code`
+          anyOf:
+            - $ref: "#/components/schemas/ValidationIssues"
+            - $ref: "#/components/schemas/RuleViolations"
+            - $ref: "#/components/schemas/MissingPermissions"
+            - $ref: "#/components/schemas/AllocationConflictDetails"
+            - $ref: "#/components/schemas/AllocationImpact"
+            - $ref: "#/components/schemas/CapacityImpact"
+    ValidationIssues:
+      type: object
+      required: [issues]
+      additionalProperties: false
+      properties:
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            additionalProperties: false
+            properties:
+              path: { type: string }
+              message: { type: string }
+    RuleViolations:
+      description: |
+        Domain rules the input breaks. New values in this feature: `interval_end_not_after_start`,
+        `interval_off_quarter_hour`, `interval_on_leave` (scheduling, AC-24, data-model invariants),
+        `working_day_start_off_quarter_hour`, `working_day_ends_after_midnight` (org, AC-27b).
+      type: object
+      required: [rules]
+      additionalProperties: false
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - end_before_start
+              - hours_over_24_per_day
+              - starts_before_today
+              - ends_before_today
+              - outside_employment_period
+              - past_project_close_date
+              - not_a_leave_project
+              - window_out_of_range
+              - interval_end_not_after_start
+              - interval_off_quarter_hour
+              - interval_on_leave
+              - working_day_start_off_quarter_hour
+              - working_day_ends_after_midnight
+        lastBookableDate:
+          type: [string, "null"]
+          format: date
+          description: The last date the resource (or the project) can be allocated (AC-16)
+    MissingPermissions:
+      type: object
+      required: [missingPermissions]
+      additionalProperties: false
+      properties:
+        missingPermissions:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Permission" }
+    AllocationConflictDetails:
+      description: "`scheduling.version_conflict` (AC-17) — current values and who changed them"
+      type: object
+      required: [current]
+      additionalProperties: false
+      properties:
+        current: { $ref: "#/components/schemas/Allocation" }
+
+    # ── Impact lists (warn-then-confirm), grown additively ──
+    AllocationImpact:
+      x-stage: S1 (`overbookedDays`, `overbookedWeeks[].overbookedDays`) · S3 (`timeOverlaps`)
+      description: |
+        `scheduling.overbooking_confirmation_required` (AC-06, AC-08, AC-15, AC-25). Names only what
+        the change makes worse: a day whose hours over grow; a week whose hours over grow or that
+        gains an overbooked day; a day that gains an overlap or whose overlapping time grows. Also the
+        `impact` of each gesture position (empty arrays = nothing made worse).
+      type: object
+      required: [overbookedDays, overbookedWeeks, workOnLeaveDays, timeOverlaps]
+      additionalProperties: false
+      properties:
+        overbookedDays:
+          type: array
+          items: { $ref: "#/components/schemas/DayOver" }
+        overbookedWeeks:
+          type: array
+          items: { $ref: "#/components/schemas/WeekOver" }
+        workOnLeaveDays:
+          type: array
+          items: { $ref: "#/components/schemas/WorkOnLeaveDays" }
+        timeOverlaps:
+          description: Always empty for leave (AC-22, AC-25)
+          type: array
+          items: { $ref: "#/components/schemas/TimeOverlap" }
+    DayOver:
+      description: A day over its daily capacity, exact minutes (AC-06)
+      type: object
+      required: [date, capacityMinutes, allocatedMinutes, overMinutes]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        capacityMinutes: { $ref: "#/components/schemas/Minutes" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+    WeekOver:
+      description: |
+        A week the change makes worse (AC-06). `overMinutes` is 0 when the week is named only for a
+        newly overbooked day (its total within capacity, e.g. «40/40»).
+      type: object
+      required: [weekStart, capacityMinutes, allocatedMinutes, overMinutes, overbookedDays]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date }
+        capacityMinutes: { $ref: "#/components/schemas/Minutes" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+        overbookedDays:
+          type: array
+          items: { type: string, format: date }
+    WorkOnLeaveDays:
+      type: object
+      required: [allocationId, project, days]
+      additionalProperties: false
+      properties:
+        allocationId:
+          type: [string, "null"]
+          format: uuid
+          description: null for the allocation being created
+        project: { $ref: "#/components/schemas/ProjectRef" }
+        days:
+          type: array
+          items: { type: string, format: date }
+    TimeOverlap:
+      x-stage: S3
+      description: Two non-leave allocations of one resource booked at the same time on a day (AC-25)
+      type: object
+      required: [date, startMinute, endMinute, allocations]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        startMinute: { $ref: "#/components/schemas/MinuteOfDay" }
+        endMinute: { $ref: "#/components/schemas/MinuteOfDay" }
+        allocations:
+          description: Both sides, naming both projects
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: "#/components/schemas/OverlapSide" }
+    OverlapSide:
+      type: object
+      required: [allocationId, project]
+      additionalProperties: false
+      properties:
+        allocationId:
+          type: [string, "null"]
+          format: uuid
+          description: null for the allocation being created
+        project: { $ref: "#/components/schemas/ProjectRef" }
+    CapacityImpact:
+      x-stage: S1 (`overbookedDays`)
+      description: "`org.capacity_confirmation_required` (AC-07, flow 5) — every resource day and week made overbooked or worse"
+      type: object
+      required: [overbookedDays, overbookedWeeks]
+      additionalProperties: false
+      properties:
+        overbookedDays:
+          type: array
+          items: { $ref: "#/components/schemas/ResourceDayOver" }
+        overbookedWeeks:
+          type: array
+          items: { $ref: "#/components/schemas/ResourceWeekOver" }
+    ResourceDayOver:
+      type: object
+      required: [employee, date, overMinutes]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        date: { type: string, format: date }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+    ResourceWeekOver:
+      type: object
+      required: [employee, weekStart, overMinutes, overbookedDays]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        weekStart: { type: string, format: date }
+        overMinutes: { $ref: "#/components/schemas/Minutes" }
+        overbookedDays:
+          type: array
+          items: { type: string, format: date }
+
+    # ── Primitives and refs (unchanged from resource-scheduling, plus MinuteOfDay) ──
+    Permission:
+      type: string
+      enum:
+        - "org:manage-employee-records"
+        - "org:manage-holiday-list"
+        - "projects:manage-projects"
+        - "scheduling:view-whole-board"
+        - "scheduling:edit-allocations"
+        - "scheduling:see-leave-reasons"
+    Minutes:
+      description: Exact computed minutes (ADR-0009); may carry a fraction. Round to the half hour only for display.
+      type: number
+      minimum: 0
+    MinuteOfDay:
+      x-stage: S3
+      description: A stored time of day, minutes from midnight in the company time zone, on a 15-minute step; 1440 = 24:00 (ADR-0002)
+      type: integer
+      minimum: 0
+      maximum: 1440
+      multipleOf: 15
+    WorkingDays:
+      type: array
+      minItems: 1
+      maxItems: 7
+      uniqueItems: true
+      items: { type: integer, minimum: 1, maximum: 7 }
+    UserRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+    TeamRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 100 }
+    EmployeeRef:
+      type: object
+      required: [id, fullName, team]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string, maxLength: 200 }
+        team:
+          oneOf:
+            - $ref: "#/components/schemas/TeamRef"
+            - type: "null"
+    ProjectType:
+      type: string
+      enum: [client, internal, bench, training, leave]
+    ProjectRef:
+      type: object
+      required: [id, name, type]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 200 }
+        type: { $ref: "#/components/schemas/ProjectType" }
+    WeekMinutes:
+      type: object
+      required: [weekStart, minutes]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date }
+        minutes: { $ref: "#/components/schemas/Minutes" }
+
+    # ── Allocations (S3 shape: interval replaces the rate) ──
+    AllocationSegment:
+      x-stage: S3 (until S3 ships, the resource-scheduling `rateMinutes`/`ratePeriod` segment stays)
+      description: |
+        Effective-dated segment (resource-scheduling ADR-0008). Both minutes are null exactly for
+        leave; otherwise `startsAtMinute < endsAtMinute` and hours per day = their difference
+        (ADR-0002). `RatePeriod`, `WorkRatePeriod` and `rateMinutes` are removed.
+      type: object
+      required: [startsOn, endsOn, startsAtMinute, endsAtMinute]
+      additionalProperties: false
+      properties:
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        startsAtMinute:
+          oneOf:
+            - $ref: "#/components/schemas/MinuteOfDay"
+            - type: "null"
+        endsAtMinute:
+          oneOf:
+            - $ref: "#/components/schemas/MinuteOfDay"
+            - type: "null"
+    Allocation:
+      type: object
+      required: [id, employee, project, away, segments, needsAttention, version, lastChangedBy, lastChangedAt, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        project:
+          description: null when the leave type is redacted to «away»
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean }
+        segments:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        needsAttention: { type: [boolean, "null"] }
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    AllocationCreate:
+      x-stage: S3 (breaking — `rateMinutes`/`ratePeriod` removed)
+      type: object
+      required: [employeeId, projectId, startsOn, endsOn, startsAtMinute, endsAtMinute]
+      additionalProperties: false
+      properties:
+        employeeId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        startsOn: { type: string, format: date, description: Today or later }
+        endsOn: { type: string, format: date }
+        startsAtMinute:
+          $ref: "#/components/schemas/MinuteOfDay"
+          description: Daily start (AC-23)
+        endsAtMinute:
+          $ref: "#/components/schemas/MinuteOfDay"
+          description: Daily end, after the start (AC-24)
+        confirm: { type: boolean, default: false, description: Confirms the overbooking / overlap warning }
+    AllocationChange:
+      x-stage: S1–S3 (S3 breaking — `rateMinutes`/`ratePeriod` removed)
+      description: The terms from today; fields left out keep their value. The two interval fields go together.
+      type: object
+      required: [version]
+      additionalProperties: false
+      dependentRequired:
+        startsAtMinute: [endsAtMinute]
+        endsAtMinute: [startsAtMinute]
+      properties:
+        version: { type: integer, minimum: 1, description: The version the form or the outcome table was read at (AC-17) }
+        startsOn: { type: string, format: date, description: Only while the allocation has not started (AC-14) }
+        endsOn: { type: string, format: date, description: Today or later (AC-14) }
+        startsAtMinute: { $ref: "#/components/schemas/MinuteOfDay" }
+        endsAtMinute: { $ref: "#/components/schemas/MinuteOfDay" }
+        confirm: { type: boolean, default: false }
+    LeaveBooking:
+      description: Unchanged — whole working days, no time interval
+      type: object
+      required: [employeeId, projectId, startsOn, endsOn]
+      additionalProperties: false
+      properties:
+        employeeId: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        confirm: { type: boolean, default: false }
+
+    # ── Board (S1: weeks name their overbooked days) ──
+    CellState:
+      description: Exactly one per week or day cell; a day uses the same rule on its daily figures
+      type: string
+      enum: [free, partly-booked, overbooked, non-working, incomplete-record, needs-attention]
+    BoardCell:
+      x-stage: S1 (`overbookedDays`)
+      description: One resource-week. Overbooked when its hours exceed capacity or it contains an overbooked day (AC-06, AC-07).
+      type: object
+      required: [weekStart, state, allocatedMinutes, capacityMinutes, leaveDays, overbookedDays]
+      additionalProperties: false
+      properties:
+        weekStart: { type: string, format: date }
+        state: { $ref: "#/components/schemas/CellState" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        capacityMinutes:
+          oneOf:
+            - $ref: "#/components/schemas/Minutes"
+            - type: "null"
+        leaveDays: { type: integer, minimum: 0, maximum: 7 }
+        overbookedDays:
+          type: array
+          items: { type: string, format: date }
+    BoardAllocation:
+      description: An allocation bar; `segments` overlapping the window. Reused unchanged by the day view (AC-01 bar, AC-11 details).
+      type: object
+      required: [id, project, away, segments, minutesPerWeek, needsAttention, version, lastChangedBy, lastChangedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        project:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean }
+        segments:
+          type: array
+          items: { $ref: "#/components/schemas/AllocationSegment" }
+        minutesPerWeek:
+          type: array
+          items: { $ref: "#/components/schemas/WeekMinutes" }
+        needsAttention: { type: [boolean, "null"] }
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+    BoardRow:
+      type: object
+      required: [employee, employmentEnd, incomplete, cells, allocations]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        employmentEnd: { type: [string, "null"], format: date }
+        incomplete: { type: boolean }
+        cells:
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/BoardAllocation" }
+    Board:
+      type: object
+      required: [from, to, weeks, rows]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        weeks:
+          type: array
+          items: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/BoardRow" }
+    MySchedule:
+      type: object
+      required: [employee, from, to, weeks, cells, allocations]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        weeks:
+          type: array
+          items: { type: string, format: date }
+        cells:
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/BoardAllocation" }
+
+    # ── Day view (S1) — NEW ──
+    DayCell:
+      description: |
+        One resource-day (scheduling/domain `DayFigures`). «away» and overbooked can hold together:
+        a leave day that also carries work shows away, the work hours and the overbooked state
+        (AC-01). After an employment end hidden from the viewer: capacity 0, nothing allocated,
+        `non-working`, no mark (AC-05).
+      type: object
+      required: [date, state, allocatedMinutes, capacityMinutes, away, timeOverlap]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        state: { $ref: "#/components/schemas/CellState" }
+        allocatedMinutes: { $ref: "#/components/schemas/Minutes" }
+        capacityMinutes:
+          description: Daily capacity; null for an incomplete record; 0 on a weekend, public holiday or non-working day
+          oneOf:
+            - $ref: "#/components/schemas/Minutes"
+            - type: "null"
+        away: { type: boolean, description: A leave day, shown as «away» }
+        timeOverlap:
+          x-stage: S3 (always false before)
+          type: boolean
+          description: The day has a time overlap between two non-leave allocations (AC-25)
+    DayViewRow:
+      type: object
+      required: [employee, employmentEnd, incomplete, days, weeks, allocations]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        employmentEnd:
+          type: [string, "null"]
+          format: date
+          description: null when there is none or the viewer may not see it (AC-05)
+        incomplete: { type: boolean }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/DayCell" }
+        weeks:
+          description: The same week figures as the weekly board (per-week verdicts are never sums of rounded days, QG-1)
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        allocations:
+          description: Bars across the days they cover (AC-01)
+          type: array
+          items: { $ref: "#/components/schemas/BoardAllocation" }
+    DayView:
+      type: object
+      required: [from, to, days, weeks, rows]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date, description: Monday of the first week }
+        to: { type: string, format: date, description: Sunday of the last week }
+        days:
+          type: array
+          minItems: 7
+          maxItems: 28
+          items: { type: string, format: date }
+        weeks:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/DayViewRow" }
+    MyDayView:
+      description: Own day view; the row's own leave type is always shown (AC-12)
+      type: object
+      required: [from, to, days, weeks, row]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        days:
+          type: array
+          minItems: 7
+          maxItems: 28
+          items: { type: string, format: date }
+        weeks:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { type: string, format: date }
+        row: { $ref: "#/components/schemas/DayViewRow" }
+
+    # ── Timeline (S3) — NEW ──
+    TimeSpan:
+      description: |
+        A span of the day in minutes from midnight. Computed spans (working hours, leave filling
+        them, free time) may end off a 15-minute step for part-timers and are shown exactly (AC-27b).
+      type: object
+      required: [startMinute, endMinute]
+      additionalProperties: false
+      properties:
+        startMinute: { type: number, minimum: 0, maximum: 1440 }
+        endMinute: { type: number, minimum: 0, maximum: 1440 }
+    TimelineBlock:
+      description: |
+        An allocation on that day at its time. Leave has no interval of its own and fills the
+        resource's current working hours, labelled «away» unless the viewer may see the type (AC-22).
+      type: object
+      required: [allocationId, project, away, span, minutes, outsideWorkingHours]
+      additionalProperties: false
+      properties:
+        allocationId: { type: string, format: uuid }
+        project:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRef"
+            - type: "null"
+        away: { type: boolean }
+        span: { $ref: "#/components/schemas/TimeSpan" }
+        minutes: { $ref: "#/components/schemas/Minutes" }
+        outsideWorkingHours:
+          description: Part of the block lies outside working hours (AC-26); the web draws that part from `workingHours`
+          type: boolean
+    TimelineRow:
+      type: object
+      required: [employee, employmentEnd, incomplete, day, workingHours, blocks, freeTime, overlaps]
+      additionalProperties: false
+      properties:
+        employee: { $ref: "#/components/schemas/EmployeeRef" }
+        employmentEnd: { type: [string, "null"], format: date }
+        incomplete: { type: boolean }
+        day:
+          description: The day's figure and state, e.g. «6/8» (AC-21)
+          $ref: "#/components/schemas/DayCell"
+        workingHours:
+          description: |
+            Working-day start + daily capacity (AC-27). null on a non-working day or public holiday
+            (non-working all day, AC-22), for an incomplete record, and after an employment end hidden
+            from the viewer (AC-29).
+          oneOf:
+            - $ref: "#/components/schemas/TimeSpan"
+            - type: "null"
+        blocks:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineBlock" }
+        freeTime:
+          description: Parts of the working hours with no block (AC-21)
+          type: array
+          items: { $ref: "#/components/schemas/TimeSpan" }
+        overlaps:
+          description: Time overlaps on that day; leave never takes part (AC-25)
+          type: array
+          items: { $ref: "#/components/schemas/TimeOverlap" }
+    Timeline:
+      type: object
+      required: [date, rows]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineRow" }
+    MyTimeline:
+      type: object
+      required: [date, row]
+      additionalProperties: false
+      properties:
+        date: { type: string, format: date }
+        row: { $ref: "#/components/schemas/TimelineRow" }
+
+    # ── Gesture outcomes (S2) — NEW ──
+    GestureKind:
+      type: string
+      enum: [move, start-edge, end-edge]
+    GestureRefusal:
+      description: Why letting go here would be refused; the same code and rules the drop would answer (AC-14, AC-16)
+      type: object
+      required: [code, rules, lastBookableDate]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          enum: [scheduling.past_not_rewritable, scheduling.outside_employment_period, scheduling.project_closed]
+        rules:
+          type: array
+          items:
+            type: string
+            enum: [starts_before_today, ends_before_today, outside_employment_period, past_project_close_date]
+        lastBookableDate: { type: [string, "null"], format: date }
+    GestureOutcome:
+      description: One reachable position. Exactly one of `refusal` and `impact` is non-null.
+      type: object
+      required: [steps, startsOn, endsOn, weeks, impact, refusal]
+      additionalProperties: false
+      properties:
+        steps:
+          type: integer
+          description: Signed working-day steps from the current position (0 = where it is now)
+        startsOn: { type: string, format: date }
+        endsOn: { type: string, format: date }
+        weeks:
+          description: The resource's figures for each affected week at this position (AC-13, AC-19)
+          type: array
+          items: { $ref: "#/components/schemas/BoardCell" }
+        impact:
+          description: What letting go here would make worse; empty lists = saves without confirmation (AC-08)
+          oneOf:
+            - $ref: "#/components/schemas/AllocationImpact"
+            - type: "null"
+        refusal:
+          oneOf:
+            - $ref: "#/components/schemas/GestureRefusal"
+            - type: "null"
+    GestureOutcomeTable:
+      type: object
+      required: [allocationId, version, kind, from, to, positions]
+      additionalProperties: false
+      properties:
+        allocationId: { type: string, format: uuid }
+        version:
+          type: integer
+          minimum: 1
+          description: The allocation version the table was computed at; the drop sends it back (AC-17)
+        kind: { $ref: "#/components/schemas/GestureKind" }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        positions:
+          type: array
+          items: { $ref: "#/components/schemas/GestureOutcome" }
+
+    # ── org (S3: working-day start) ──
+    EmployeeRecord:
+      x-stage: S3 (`workingDayStartMinute`, `workingDayEndMinute`)
+      type: object
+      required: [id, fullName, userId, team, contractMinutes, workingDays, workingDayStartMinute, workingDayEndMinute, employmentStart, employmentEnd, incomplete, version, lastChangedBy, lastChangedAt, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId: { type: [string, "null"], format: uuid }
+        team:
+          oneOf:
+            - $ref: "#/components/schemas/TeamRef"
+            - type: "null"
+        contractMinutes: { type: [integer, "null"], exclusiveMinimum: 0, maximum: 3600 }
+        workingDays: { $ref: "#/components/schemas/WorkingDays" }
+        workingDayStartMinute:
+          $ref: "#/components/schemas/MinuteOfDay"
+          description: When the working day starts (AC-27); 540 = 09:00
+        workingDayEndMinute:
+          description: Computed, never stored — start + daily capacity, exact even off a 15-minute step (AC-27b); null for an incomplete record
+          oneOf:
+            - $ref: "#/components/schemas/Minutes"
+            - type: "null"
+        employmentStart: { type: [string, "null"], format: date }
+        employmentEnd: { type: [string, "null"], format: date }
+        incomplete: { type: boolean }
+        version: { type: integer, minimum: 1 }
+        lastChangedBy: { $ref: "#/components/schemas/UserRef" }
+        lastChangedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+    EmployeeRecordCreate:
+      type: object
+      required: [fullName]
+      additionalProperties: false
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId: { type: [string, "null"], format: uuid }
+        teamId: { type: [string, "null"], format: uuid }
+        contractMinutes: { type: [integer, "null"], exclusiveMinimum: 0, maximum: 3600 }
+        workingDays: { $ref: "#/components/schemas/WorkingDays" }
+        workingDayStartMinute:
+          $ref: "#/components/schemas/MinuteOfDay"
+          description: Defaults to 540 (09:00) in the org domain (AC-27)
+        employmentStart: { type: [string, "null"], format: date }
+        employmentEnd: { type: [string, "null"], format: date }
+    EmployeeRecordChange:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { type: integer, minimum: 1 }
+        fullName: { type: string, minLength: 1, maxLength: 200 }
+        userId: { type: [string, "null"], format: uuid }
+        teamId: { type: [string, "null"], format: uuid }
+        contractMinutes: { type: [integer, "null"], exclusiveMinimum: 0, maximum: 3600 }
+        workingDays: { $ref: "#/components/schemas/WorkingDays" }
+        workingDayStartMinute: { $ref: "#/components/schemas/MinuteOfDay" }
+        employmentStart: { type: [string, "null"], format: date }
+        employmentEnd: { type: [string, "null"], format: date }
+        confirm: { type: boolean, default: false, description: Confirms the capacity warning (AC-07) }
+    PublicHolidayCreate:
+      description: Unchanged
+      type: object
+      required: [holidayDate, name]
+      additionalProperties: false
+      properties:
+        holidayDate: { type: string, format: date }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        confirm: { type: boolean, default: false, description: Confirms the capacity warning (AC-07) }
+    PublicHoliday:
+      description: Unchanged
+      type: object
+      required: [id, holidayDate, name, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        holidayDate: { type: string, format: date }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        createdAt: { type: string, format: date-time }
+
+  examples:
+    # Placeholder data only (Test User N, Test Project), never real PII.
+    Unauthenticated:
+      value:
+        error: { _tag: Unauthenticated, code: platform.unauthenticated, message: Sign in to continue }
+    ValidationFailed:
+      value:
+        error:
+          _tag: ValidationError
+          code: platform.validation_failed
+          message: The request is not valid
+          details: { issues: [{ path: date, message: Expected a date }] }
+    ForbiddenViewWholeBoard:
+      value:
+        error:
+          _tag: Forbidden
+          code: scheduling.missing_permission
+          message: You lack the permission to view the whole board
+          details: { missingPermissions: ["scheduling:view-whole-board"] }
+    ForbiddenEditAllocations:
+      value:
+        error:
+          _tag: Forbidden
+          code: scheduling.missing_permission
+          message: You lack the permission to edit allocations
+          details: { missingPermissions: ["scheduling:edit-allocations"] }
+    ForbiddenManageEmployeeRecords:
+      value:
+        error:
+          _tag: Forbidden
+          code: org.missing_permission
+          message: You lack the permission to manage employee records
+          details: { missingPermissions: ["org:manage-employee-records"] }
+    ForbiddenManageHolidayList:
+      value:
+        error:
+          _tag: Forbidden
+          code: org.missing_permission
+          message: You lack the permission to manage the holiday list
+          details: { missingPermissions: ["org:manage-holiday-list"] }
+    WindowOutOfRange:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.window_out_of_range
+          message: The board shows at most 12 months back and 52 weeks ahead
+          details: { rules: [window_out_of_range] }
+    DayWindowOutOfRange:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.window_out_of_range
+          message: The day view shows one to four weeks within 12 months back and 52 weeks ahead
+          details: { rules: [window_out_of_range] }
+    NotAResource:
+      value:
+        error:
+          _tag: NotFound
+          code: scheduling.not_a_resource
+          message: You have no schedule to show; someone with the manage-employee-records permission can link you
+    AllocationNotFound:
+      value:
+        error: { _tag: NotFound, code: scheduling.allocation_not_found, message: Allocation 01933b8e-0000-7000-8000-000000000601 not found }
+    SchedulingProjectNotFound:
+      value:
+        error: { _tag: NotFound, code: scheduling.project_not_found, message: Project 01933b8e-0000-7000-8000-000000000501 not found }
+    EmployeeRecordNotFound:
+      value:
+        error: { _tag: NotFound, code: org.employee_record_not_found, message: Employee record 01933b8e-0000-7000-8000-000000000301 not found }
+    SchedulingProjectClosed:
+      value:
+        error:
+          _tag: Conflict
+          code: scheduling.project_closed
+          message: The project is closed and accepts no new, changed or removed allocations
+    PastNotRewritable:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.past_not_rewritable
+          message: Past plans are not rewritten; only today onwards can change
+          details: { rules: [starts_before_today] }
+    OutsideEmploymentPeriod:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.outside_employment_period
+          message: The allocation falls outside the resource's employment period; the last date they can be allocated is 2026-12-15
+          details: { rules: [outside_employment_period], lastBookableDate: "2026-12-15" }
+    InvalidInterval:
+      value:
+        error:
+          _tag: ValidationError
+          code: scheduling.invalid_allocation
+          message: The end must be after the start, and times go in 15-minute steps
+          details: { rules: [interval_end_not_after_start] }
+    InvalidWorkingDayStart:
+      value:
+        error:
+          _tag: ValidationError
+          code: org.invalid_employee_record
+          message: The working day starts on a 15-minute step and must end by 24:00
+          details: { rules: [working_day_ends_after_midnight] }
+    DayOverbookingConfirmationRequired:
+      summary: AC-06 — Wednesday over by 8 h while the week stays at 40/40
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.overbooking_confirmation_required
+          message: The resource will be overbooked on 1 day
+          details:
+            overbookedDays:
+              - { date: "2026-12-02", capacityMinutes: 480, allocatedMinutes: 960, overMinutes: 480 }
+            overbookedWeeks:
+              - { weekStart: "2026-11-30", capacityMinutes: 2400, allocatedMinutes: 2400, overMinutes: 0, overbookedDays: ["2026-12-02"] }
+            workOnLeaveDays: []
+            timeOverlaps: []
+    OverlapConfirmationRequired:
+      summary: AC-25 — booked twice on Tuesday 11:00–12:00
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.overbooking_confirmation_required
+          message: The resource will be booked twice on 1 day
+          details:
+            overbookedDays: []
+            overbookedWeeks: []
+            workOnLeaveDays: []
+            timeOverlaps:
+              - date: "2026-12-01"
+                startMinute: 660
+                endMinute: 720
+                allocations:
+                  - allocationId: 01933b8e-0000-7000-8000-000000000601
+                    project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+                  - allocationId: null
+                    project: { id: 01933b8e-0000-7000-8000-000000000503, name: Test Project 2, type: internal }
+    LeaveConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: scheduling.overbooking_confirmation_required
+          message: 1 work allocation falls on the leave days
+          details:
+            overbookedDays:
+              - { date: "2026-12-03", capacityMinutes: 480, allocatedMinutes: 720, overMinutes: 240 }
+            overbookedWeeks:
+              - { weekStart: "2026-11-30", capacityMinutes: 2400, allocatedMinutes: 2640, overMinutes: 240, overbookedDays: ["2026-12-03"] }
+            workOnLeaveDays:
+              - allocationId: 01933b8e-0000-7000-8000-000000000601
+                project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+                days: ["2026-12-03"]
+            timeOverlaps: []
+    CapacityConfirmationRequired:
+      value:
+        error:
+          _tag: ConfirmationRequired
+          code: org.capacity_confirmation_required
+          message: 1 resource will be overbooked on 1 day
+          details:
+            overbookedDays:
+              - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+                date: "2026-12-07"
+                overMinutes: 480
+            overbookedWeeks:
+              - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+                weekStart: "2026-12-07"
+                overMinutes: 0
+                overbookedDays: ["2026-12-07"]
+    AllocationVersionConflict:
+      value:
+        error:
+          _tag: Conflict
+          code: scheduling.version_conflict
+          message: Test User 2 changed this allocation meanwhile
+          details:
+            current:
+              id: 01933b8e-0000-7000-8000-000000000601
+              employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+              project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+              away: false
+              segments: [{ startsOn: "2026-12-02", endsOn: "2026-12-04", startsAtMinute: 540, endsAtMinute: 780 }]
+              needsAttention: false
+              version: 3
+              lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000102, name: Test User 2 }
+              lastChangedAt: "2026-11-23T10:15:00Z"
+              createdAt: "2026-11-20T09:00:00Z"
+    AllocationCreate:
+      value:
+        employeeId: 01933b8e-0000-7000-8000-000000000301
+        projectId: 01933b8e-0000-7000-8000-000000000501
+        startsOn: "2026-12-01"
+        endsOn: "2026-12-04"
+        startsAtMinute: 540
+        endsAtMinute: 780
+    AllocationDrop:
+      summary: AC-13 — move two working days later
+      value: { version: 2, startsOn: "2026-12-02", endsOn: "2026-12-04" }
+    AllocationIntervalChange:
+      summary: AC-23 — from today, 14:00–16:00
+      value: { version: 2, startsAtMinute: 840, endsAtMinute: 960 }
+    Allocation:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000601
+        employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+        project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+        away: false
+        segments: [{ startsOn: "2026-11-30", endsOn: "2026-12-02", startsAtMinute: 540, endsAtMinute: 780 }]
+        needsAttention: false
+        version: 2
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000101, name: Test User 3 }
+        lastChangedAt: "2026-11-22T12:00:00Z"
+        createdAt: "2026-11-20T09:00:00Z"
+    EmployeeRecord:
+      value:
+        id: 01933b8e-0000-7000-8000-000000000301
+        fullName: Test User 1
+        userId: null
+        team: null
+        contractMinutes: 2400
+        workingDays: [1, 2, 3, 4, 5]
+        workingDayStartMinute: 480
+        workingDayEndMinute: 960
+        employmentStart: "2026-01-05"
+        employmentEnd: null
+        incomplete: false
+        version: 4
+        lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000101, name: Test User 3 }
+        lastChangedAt: "2026-11-22T12:00:00Z"
+        createdAt: "2026-01-05T09:00:00Z"
+    Board:
+      value:
+        from: "2026-11-30"
+        to: "2026-12-06"
+        weeks: ["2026-11-30"]
+        rows:
+          - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            employmentEnd: null
+            incomplete: false
+            cells:
+              - { weekStart: "2026-11-30", state: overbooked, allocatedMinutes: 2400, capacityMinutes: 2400, leaveDays: 0, overbookedDays: ["2026-12-02"] }
+            allocations: []
+    DayView:
+      summary: AC-01 — one week shown for brevity (the default is two)
+      value:
+        from: "2026-11-30"
+        to: "2026-12-06"
+        days: ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06"]
+        weeks: ["2026-11-30"]
+        rows:
+          - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            employmentEnd: null
+            incomplete: false
+            days:
+              - { date: "2026-11-30", state: partly-booked, allocatedMinutes: 240, capacityMinutes: 480, away: false, timeOverlap: false }
+              - { date: "2026-12-01", state: partly-booked, allocatedMinutes: 240, capacityMinutes: 480, away: false, timeOverlap: false }
+              - { date: "2026-12-02", state: partly-booked, allocatedMinutes: 240, capacityMinutes: 480, away: false, timeOverlap: false }
+              - { date: "2026-12-03", state: partly-booked, allocatedMinutes: 480, capacityMinutes: 480, away: true, timeOverlap: false }
+              - { date: "2026-12-04", state: non-working, allocatedMinutes: 0, capacityMinutes: 0, away: false, timeOverlap: false }
+              - { date: "2026-12-05", state: non-working, allocatedMinutes: 0, capacityMinutes: 0, away: false, timeOverlap: false }
+              - { date: "2026-12-06", state: non-working, allocatedMinutes: 0, capacityMinutes: 0, away: false, timeOverlap: false }
+            weeks:
+              - { weekStart: "2026-11-30", state: partly-booked, allocatedMinutes: 1200, capacityMinutes: 1920, leaveDays: 1, overbookedDays: [] }
+            allocations:
+              - id: 01933b8e-0000-7000-8000-000000000601
+                project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+                away: false
+                segments: [{ startsOn: "2026-11-30", endsOn: "2026-12-02", startsAtMinute: 540, endsAtMinute: 780 }]
+                minutesPerWeek: [{ weekStart: "2026-11-30", minutes: 720 }]
+                needsAttention: false
+                version: 2
+                lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000101, name: Test User 3 }
+                lastChangedAt: "2026-11-22T12:00:00Z"
+              - id: 01933b8e-0000-7000-8000-000000000602
+                project: null
+                away: true
+                segments: [{ startsOn: "2026-12-03", endsOn: "2026-12-03", startsAtMinute: null, endsAtMinute: null }]
+                minutesPerWeek: [{ weekStart: "2026-11-30", minutes: 480 }]
+                needsAttention: null
+                version: 1
+                lastChangedBy: { id: 01933b8e-0000-7000-8000-000000000101, name: Test User 3 }
+                lastChangedAt: "2026-11-22T12:00:00Z"
+    MyDayView:
+      value:
+        from: "2026-11-30"
+        to: "2026-12-06"
+        days: ["2026-11-30", "2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05", "2026-12-06"]
+        weeks: ["2026-11-30"]
+        row:
+          employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+          employmentEnd: null
+          incomplete: false
+          days:
+            - { date: "2026-11-30", state: free, allocatedMinutes: 0, capacityMinutes: 480, away: false, timeOverlap: false }
+            - { date: "2026-12-01", state: free, allocatedMinutes: 0, capacityMinutes: 480, away: false, timeOverlap: false }
+            - { date: "2026-12-02", state: free, allocatedMinutes: 0, capacityMinutes: 480, away: false, timeOverlap: false }
+            - { date: "2026-12-03", state: free, allocatedMinutes: 0, capacityMinutes: 480, away: false, timeOverlap: false }
+            - { date: "2026-12-04", state: free, allocatedMinutes: 0, capacityMinutes: 480, away: false, timeOverlap: false }
+            - { date: "2026-12-05", state: non-working, allocatedMinutes: 0, capacityMinutes: 0, away: false, timeOverlap: false }
+            - { date: "2026-12-06", state: non-working, allocatedMinutes: 0, capacityMinutes: 0, away: false, timeOverlap: false }
+          weeks:
+            - { weekStart: "2026-11-30", state: free, allocatedMinutes: 0, capacityMinutes: 2400, leaveDays: 0, overbookedDays: [] }
+          allocations: []
+    Timeline:
+      summary: AC-21 — 09:00–13:00 and 14:00–16:00 within working hours 09:00–17:00
+      value:
+        date: "2026-12-01"
+        rows:
+          - employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+            employmentEnd: null
+            incomplete: false
+            day: { date: "2026-12-01", state: partly-booked, allocatedMinutes: 360, capacityMinutes: 480, away: false, timeOverlap: false }
+            workingHours: { startMinute: 540, endMinute: 1020 }
+            blocks:
+              - allocationId: 01933b8e-0000-7000-8000-000000000601
+                project: { id: 01933b8e-0000-7000-8000-000000000501, name: Test Project 1, type: client }
+                away: false
+                span: { startMinute: 540, endMinute: 780 }
+                minutes: 240
+                outsideWorkingHours: false
+              - allocationId: 01933b8e-0000-7000-8000-000000000603
+                project: { id: 01933b8e-0000-7000-8000-000000000503, name: Test Project 2, type: internal }
+                away: false
+                span: { startMinute: 840, endMinute: 960 }
+                minutes: 120
+                outsideWorkingHours: false
+            freeTime:
+              - { startMinute: 780, endMinute: 840 }
+              - { startMinute: 960, endMinute: 1020 }
+            overlaps: []
+    MyTimeline:
+      value:
+        date: "2026-12-03"
+        row:
+          employee: { id: 01933b8e-0000-7000-8000-000000000301, fullName: Test User 1, team: null }
+          employmentEnd: null
+          incomplete: false
+          day: { date: "2026-12-03", state: partly-booked, allocatedMinutes: 480, capacityMinutes: 480, away: true, timeOverlap: false }
+          workingHours: { startMinute: 540, endMinute: 1020 }
+          blocks:
+            - allocationId: 01933b8e-0000-7000-8000-000000000602
+              project: { id: 01933b8e-0000-7000-8000-000000000502, name: Test Leave, type: leave }
+              away: true
+              span: { startMinute: 540, endMinute: 1020 }
+              minutes: 480
+              outsideWorkingHours: false
+          freeTime: []
+          overlaps: []
+    GestureOutcomeTable:
+      summary: AC-13/AC-14 — move; one step earlier is refused (would start before today)
+      value:
+        allocationId: 01933b8e-0000-7000-8000-000000000601
+        version: 2
+        kind: move
+        from: "2026-11-30"
+        to: "2026-12-13"
+        positions:
+          - steps: -1
+            startsOn: "2026-11-27"
+            endsOn: "2026-12-01"
+            weeks: []
+            impact: null
+            refusal: { code: scheduling.past_not_rewritable, rules: [starts_before_today], lastBookableDate: null }
+          - steps: 2
+            startsOn: "2026-12-02"
+            endsOn: "2026-12-04"
+            weeks:
+              - { weekStart: "2026-11-30", state: partly-booked, allocatedMinutes: 1680, capacityMinutes: 2400, leaveDays: 0, overbookedDays: [] }
+            impact: { overbookedDays: [], overbookedWeeks: [], workOnLeaveDays: [], timeOverlaps: [] }
+            refusal: null

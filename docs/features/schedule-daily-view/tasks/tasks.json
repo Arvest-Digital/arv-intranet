@@ -1,0 +1,700 @@
+{
+  "slug": "schedule-daily-view",
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Judge overbooking per day and per week, with per-day «made worse», in scheduling/domain",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-06",
+        "AC-08"
+      ],
+      "dod": "Rule-table tests in overbooking.test.ts pass for the AC-06 row (Wednesday over by 8 h, week 40/40 overbooked because of Wednesday) and the AC-08 rows (nothing made worse → no confirmation), and pnpm lint + typecheck are clean.",
+      "files_hint": [
+        "modules/scheduling/src/domain/overbooking.ts",
+        "modules/scheduling/src/domain/overbooking.test.ts"
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "Compute day cells, multi-day allocation bars and the per-day free list in scheduling/domain",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-05",
+        "AC-07",
+        "AC-12"
+      ],
+      "dod": "Rule-table tests pass for AC-01 (4/8 on a working day, away on the leave day, holiday and weekend non-working, one bar across the covered days) and AC-07 (8, 8, 16, 8, 0 → Wednesday overbooked, 8 free hours), and lint + typecheck are clean.",
+      "files_hint": [
+        "modules/scheduling/src/domain/daily-figures.ts",
+        "modules/scheduling/src/domain/daily-figures.test.ts",
+        "modules/scheduling/src/domain/free-list.ts",
+        "modules/scheduling/src/domain/free-list.test.ts"
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "Add the stage 1 contract shapes (day view, per-day impact) to @arv/contracts/scheduling and the base contract",
+      "layer": "ports",
+      "deps": [],
+      "acs": [
+        "AC-01",
+        "AC-06",
+        "AC-07"
+      ],
+      "dod": "Contract schema tests decode the openapi.yaml S1 examples for DayView, MyDayView, DayCell, BoardCell.overbookedDays, AllocationImpact.overbookedDays and WeekOver.overbookedDays; the change is additive and lint + typecheck are clean.",
+      "files_hint": [
+        "packages/contracts/src/scheduling/reads.ts",
+        "packages/contracts/src/scheduling/reads.test.ts",
+        "packages/contracts/src/scheduling/writes.ts",
+        "packages/contracts/src/scheduling/errors.ts",
+        "docs/features/resource-scheduling/contracts/openapi.yaml"
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "Warn per day on allocation and leave saves (create, change, leave) and map overbookedDays in the presenter",
+      "layer": "app",
+      "deps": [
+        "T01",
+        "T03"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-08"
+      ],
+      "dod": "An api integration test reproduces AC-06 (409 confirmation naming Wednesday +8 h and the 40/40 week, then saved with confirm: true) and AC-08 (saved without confirmation), and unit tests for create/change/leave pass.",
+      "files_hint": [
+        "modules/scheduling/src/application/allocations/",
+        "modules/scheduling/src/application/leave.ts",
+        "modules/scheduling/src/application/allocations.test.ts",
+        "modules/scheduling/src/application/leave.test.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "apps/api/test/integration/scheduling/"
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "Apply the per-day rule to the weekly board, own schedule, free list and the org/projects host-wired checks",
+      "layer": "app",
+      "deps": [
+        "T01",
+        "T02",
+        "T03"
+      ],
+      "acs": [
+        "AC-07"
+      ],
+      "dod": "Integration tests through the real composition root show a pre-existing daily overload as an overbooked week naming its day on getBoard and getMySchedule, the free list counting 8 free hours for the 8-8-16-8-0 week, and employee-record, holiday and project-close warnings naming the overbooked days (AC-07).",
+      "files_hint": [
+        "modules/scheduling/src/application/board.ts",
+        "modules/scheduling/src/application/my-schedule.ts",
+        "modules/scheduling/src/application/free-list.ts",
+        "modules/scheduling/src/application/capacity-impact-check.ts",
+        "modules/scheduling/src/application/project-closing-hook.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "apps/api/test/integration/composition/ports.test.ts"
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "Serve GET /scheduling/day-view and /scheduling/my-schedule/day-view with redaction applied before the DTO",
+      "layer": "ports",
+      "deps": [
+        "T02",
+        "T03"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-12"
+      ],
+      "dod": "Integration tests return the AC-01 fixture's cells and bars, 400 window_out_of_range for 5 weeks or outside the limits (AC-03), 403 or the own view for a user without view-whole-board (AC-04), and the redaction matrix shows no leave type, leave project, end date or post-end allocation for an unentitled viewer (AC-05, QG-2).",
+      "files_hint": [
+        "modules/scheduling/src/application/day-view.ts",
+        "modules/scheduling/src/application/day-view.test.ts",
+        "modules/scheduling/src/application/my-schedule.ts",
+        "modules/scheduling/src/http/routes.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "modules/scheduling/src/domain/visibility.ts",
+        "apps/api/test/integration/scheduling/day-view.test.ts",
+        "apps/api/test/integration/redaction/matrix.test.ts"
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "Replace hono/logger with a one-line structured request log (route id, status, ms) in the api host",
+      "layer": "wiring",
+      "deps": [],
+      "acs": [],
+      "dod": "A unit test shows one JSON line per request with the Hono route pattern, status and duration, and no query string, name, date or leave type; hono/logger is gone and ARCHITECTURE.md describes the line.",
+      "files_hint": [
+        "apps/api/src/index.ts",
+        "apps/api/src/middleware/request-log.ts",
+        "apps/api/src/middleware/request-log.test.ts",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "Build the day grid components: rows by resource and by project, day cells, multi-day bars, states with icons",
+      "layer": "ui",
+      "deps": [
+        "T03"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-01b",
+        "AC-05"
+      ],
+      "dod": "Component tests render the AC-01 fixture (4/8, away, non-working, one labelled bar, overbooked work-on-leave day), the AC-01b project grouping (per-project totals, leave under one «away» group for unentitled viewers), and every state carries a text label and a lucide icon.",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/day-grid.tsx",
+        "apps/web/app/features/scheduling/components/day-cell.tsx",
+        "apps/web/app/features/scheduling/components/day-bar.tsx",
+        "apps/web/app/features/scheduling/components/day-grid.test.tsx",
+        "apps/web/app/features/scheduling/components/board-legend.tsx",
+        "apps/web/app/features/scheduling/test-data.ts"
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "Add zoom=day to the board route: window toolbar (1–4 weeks, earlier/later), zoom switch keeping filters, out-of-range state",
+      "layer": "ui",
+      "deps": [
+        "T06",
+        "T08"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04"
+      ],
+      "dod": "Route tests show the loader calling getDayView for zoom=day&from&weeks, switching back to weeks starting at the same first week with the same filters (AC-01), no further step offered at a limit (AC-02), the explanation instead of a view for an out-of-range link (AC-03), and the own view offered to a user without view-whole-board (AC-04).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/board.tsx",
+        "apps/web/app/features/scheduling/routes/board.test.ts",
+        "apps/web/app/features/scheduling/components/board-toolbar.tsx",
+        "apps/web/app/features/scheduling/components/board-states.tsx",
+        "apps/web/app/features/scheduling/board.ts",
+        "apps/web/app/features/scheduling/scheduling.server.ts"
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Open the existing forms from the day view: select a day range to prefill, click a bar to edit, read-only details for viewers",
+      "layer": "ui",
+      "deps": [
+        "T09"
+      ],
+      "acs": [
+        "AC-09",
+        "AC-10",
+        "AC-11"
+      ],
+      "dod": "Component tests show that selecting Tuesday–Thursday in one row opens the allocation (or leave) dialog with that resource and those dates (AC-09), clicking a bar opens its edit dialog (AC-10), and a view-only user gets the read-only popover with leave redacted and nothing opens on selection (AC-11).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/day-grid.tsx",
+        "apps/web/app/features/scheduling/components/allocation-popover.tsx",
+        "apps/web/app/features/scheduling/components/allocation-dialog.tsx",
+        "apps/web/app/features/scheduling/components/leave-dialog.tsx",
+        "apps/web/app/features/scheduling/routes/board.tsx",
+        "apps/web/app/features/scheduling/routes/board-actions.ts"
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Add the day zoom to the own schedule (1–4 weeks, two by default, one on a phone, own leave type, read-only)",
+      "layer": "ui",
+      "deps": [
+        "T06",
+        "T08"
+      ],
+      "acs": [
+        "AC-04",
+        "AC-12"
+      ],
+      "dod": "Route and component tests show the own day view with the resource's leave type and overbooked days over 1–4 weeks (two by default, one at 390 px) with no edit affordance (AC-12), and a non-resource told they have no schedule (AC-04).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/my-schedule.tsx",
+        "apps/web/app/features/scheduling/routes/my-schedule.test.ts",
+        "apps/web/app/features/scheduling/components/my-schedule.tsx"
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "Name overbooked days in every confirmation dialog and on the weekly board cells",
+      "layer": "ui",
+      "deps": [
+        "T04",
+        "T05"
+      ],
+      "acs": [
+        "AC-06",
+        "AC-07",
+        "AC-08"
+      ],
+      "dod": "Component tests show the AC-06 warning naming Wednesday +8 h and the week 40/40 with its day, the weekly cell «40/40» in the overbooked state naming Wednesday (AC-07), employee-record and holiday warnings naming days, and no dialog when the action returns saved (AC-08).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/board-cell.tsx",
+        "apps/web/app/features/scheduling/components/allocation-dialog.tsx",
+        "apps/web/app/features/scheduling/components/leave-dialog.tsx",
+        "apps/web/app/features/scheduling/allocation-action.server.ts",
+        "apps/web/app/features/org/components/employee-record-dialog.tsx",
+        "apps/web/app/features/org/components/holiday-add-dialog.tsx"
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "Add stage 1 e2e: day-view spec with an axe audit, and update the weekly board spec for per-day overbooking",
+      "layer": "tests",
+      "deps": [
+        "T09",
+        "T10",
+        "T11",
+        "T12"
+      ],
+      "acs": [
+        "AC-01",
+        "AC-06",
+        "AC-09",
+        "AC-11",
+        "AC-12"
+      ],
+      "dod": "pnpm test:e2e passes day-view.spec.ts (AC-01 view and switch back, AC-06 warn then confirm, AC-09 prefilled form, AC-11 read-only, AC-12 own view) with expectNoAxeViolations on the day view, and board.spec.ts passes with per-day overbooking.",
+      "files_hint": [
+        "e2e/tests/scheduling/day-view.spec.ts",
+        "e2e/tests/scheduling/board.spec.ts"
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "Add the working-day start to EmployeeRecord in org/domain (09:00 default, 15-minute step, ends by 24:00)",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-27",
+        "AC-27b"
+      ],
+      "dod": "Rule-table tests pass: default 540 on a new record, 08:00 accepted giving 08:00–16:00 (AC-27), off-step and 17:00 + 8 h refused with a tagged error, and 09:00 + 6 h 24 min ending at 15:24 accepted (AC-27b).",
+      "files_hint": [
+        "modules/org/src/domain/employee-record.ts",
+        "modules/org/src/domain/employee-record.test.ts",
+        "modules/org/src/domain/errors.ts"
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "Add working-hours.ts and time-overlap.ts (per-day overlaps, «made worse») to scheduling/domain",
+      "layer": "domain",
+      "deps": [],
+      "acs": [
+        "AC-21",
+        "AC-25",
+        "AC-26"
+      ],
+      "dod": "Rule-table tests pass: AC-21 «6/8» with free 13:00–14:00 and 16:00–17:00, AC-25 09:00–13:00 + 11:00–12:00 → overlap 11:00–12:00 warned only when made worse (new overlap or growing overlap time, incl. extending onto new days), leave never overlapping, and AC-26 outside working hours marked with no warning.",
+      "files_hint": [
+        "modules/scheduling/src/domain/working-hours.ts",
+        "modules/scheduling/src/domain/working-hours.test.ts",
+        "modules/scheduling/src/domain/time-overlap.ts",
+        "modules/scheduling/src/domain/time-overlap.test.ts"
+      ]
+    },
+    {
+      "id": "T16",
+      "title": "Promote staged migration 120000: replace the rate with the daily time interval in scheduling storage, domain and contract",
+      "layer": "migration",
+      "deps": [
+        "T04",
+        "T05",
+        "T06",
+        "T12"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24"
+      ],
+      "dod": "The drizzle-generated migration (with the guard DO block prepended) applies cleanly on arv_test, pnpm db:generate then reports no changes and db:status is clean, pnpm test:integration passes, and a unit test decodes a legacy leave history snapshot (rateMinutes null, ratePeriod full-day) as a segment with no interval.",
+      "files_hint": [
+        "docs/features/schedule-daily-view/migrations/20261122120000_alter_allocation_segments_time_interval.up.sql",
+        "docs/features/schedule-daily-view/migrations/20261122120000_alter_allocation_segments_time_interval.down.sql",
+        "modules/scheduling/src/infrastructure/schema.ts",
+        "packages/migrations/drizzle/",
+        "modules/scheduling/src/infrastructure/drizzle-allocation-repository.ts",
+        "modules/scheduling/src/infrastructure/drizzle-history-repository.ts",
+        "modules/scheduling/src/domain/allocation.ts",
+        "modules/scheduling/src/domain/weekly-figures.ts",
+        "packages/contracts/src/scheduling/writes.ts",
+        "packages/contracts/src/scheduling/reads.ts",
+        "packages/db/src/testing/seed-scheduling.ts",
+        "apps/web/app/features/scheduling/components/allocation-dialog.tsx"
+      ]
+    },
+    {
+      "id": "T17",
+      "title": "Promote staged migration 120001: add org.employee_records.working_day_start_minute (one-shot DEFAULT 540, dropped)",
+      "layer": "migration",
+      "deps": [
+        "T14",
+        "T16"
+      ],
+      "acs": [
+        "AC-27"
+      ],
+      "dod": "The drizzle-generated migration, hand-edited to add the column with DEFAULT 540 and then drop the default, applies on a seeded arv_test (existing rows get 540), db:generate reports no changes, the repository round-trips workingDayStartMinute, and pnpm test:integration passes.",
+      "files_hint": [
+        "docs/features/schedule-daily-view/migrations/20261122120001_alter_employee_records_working_day_start.up.sql",
+        "docs/features/schedule-daily-view/migrations/20261122120001_alter_employee_records_working_day_start.down.sql",
+        "modules/org/src/infrastructure/schema.ts",
+        "packages/migrations/drizzle/",
+        "modules/org/src/infrastructure/drizzle-employee-record-repository.ts",
+        "packages/db/src/testing/seed-org.ts"
+      ]
+    },
+    {
+      "id": "T18",
+      "title": "Expose the working-day start through @arv/contracts/org, the employee-record routes and OrgApi employment terms",
+      "layer": "ports",
+      "deps": [
+        "T17"
+      ],
+      "acs": [
+        "AC-27",
+        "AC-27b"
+      ],
+      "dod": "Integration tests show PATCH with 08:00 saving and returning working hours 08:00–16:00 with capacity unchanged (AC-27), 17:00 or an off-step start refused as Invalid with the explanation (AC-27b), a created record starting at 09:00, and OrgApi employment terms carrying the start.",
+      "files_hint": [
+        "packages/contracts/src/org/employee-records.ts",
+        "packages/contracts/src/org/employee-records.test.ts",
+        "modules/org/src/application/employee-records/",
+        "modules/org/src/application/org-api.ts",
+        "modules/org/src/http/employee-record-routes.ts",
+        "modules/org/src/http/presenter.ts",
+        "apps/api/test/integration/org/employee-records.test.ts"
+      ]
+    },
+    {
+      "id": "T19",
+      "title": "Validate the time interval on allocation saves, apply interval changes from today, and add time overlaps to the impact",
+      "layer": "app",
+      "deps": [
+        "T15",
+        "T16"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24",
+        "AC-25",
+        "AC-26"
+      ],
+      "dod": "Integration tests show an off-step or end-not-after-start interval refused as Invalid (AC-24), an interval change on a started allocation creating a segment from today with past days kept (AC-23), the AC-25 overlap returned as timeOverlaps naming both projects and saved after confirm, and the AC-26 17:00–19:00 save with no warning.",
+      "files_hint": [
+        "modules/scheduling/src/application/allocations/",
+        "modules/scheduling/src/application/allocations.test.ts",
+        "modules/scheduling/src/domain/allocation.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "packages/contracts/src/scheduling/writes.ts",
+        "apps/api/test/integration/scheduling/allocations-time.test.ts"
+      ]
+    },
+    {
+      "id": "T20",
+      "title": "Serve GET /scheduling/timeline and /scheduling/my-schedule/timeline, and mark overlaps on day-view cells",
+      "layer": "ports",
+      "deps": [
+        "T15",
+        "T16",
+        "T18"
+      ],
+      "acs": [
+        "AC-21",
+        "AC-22",
+        "AC-25",
+        "AC-29",
+        "AC-30"
+      ],
+      "dod": "Integration tests return the AC-21 fixture (working hours 09:00–17:00, two blocks, 6/8), leave filling working hours as «away» on AC-22's day, 400 for a date outside the limits, 404 not_a_resource on the own timeline for a non-resource, DayCell.timeOverlap set on the AC-25 day, and the redaction matrix shows no blocks or working hours after an end date for an unentitled viewer (AC-29).",
+      "files_hint": [
+        "modules/scheduling/src/application/timeline.ts",
+        "modules/scheduling/src/application/timeline.test.ts",
+        "modules/scheduling/src/application/my-schedule.ts",
+        "modules/scheduling/src/application/day-view.ts",
+        "modules/scheduling/src/http/routes.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "packages/contracts/src/scheduling/reads.ts",
+        "apps/api/test/integration/scheduling/timeline.test.ts",
+        "apps/api/test/integration/redaction/matrix.test.ts"
+      ]
+    },
+    {
+      "id": "T21",
+      "title": "Accept a start and end time per import row and refuse rows with a weekly rate",
+      "layer": "app",
+      "deps": [
+        "T16"
+      ],
+      "acs": [
+        "AC-23"
+      ],
+      "dod": "Import preview and commit tests accept rows with start/end times in 15-minute steps, refuse rate rows and invalid intervals with an explanation, and the import integration test selects starts_at_minute/ends_at_minute instead of the rate columns.",
+      "files_hint": [
+        "modules/scheduling/src/domain/import-rows.ts",
+        "modules/scheduling/src/domain/import-rows.test.ts",
+        "modules/scheduling/src/application/import-preview.ts",
+        "modules/scheduling/src/application/import-commit.ts",
+        "packages/contracts/src/scheduling/imports.ts",
+        "apps/api/test/integration/scheduling/import.test.ts",
+        "apps/web/app/features/scheduling/components/import-page.tsx"
+      ]
+    },
+    {
+      "id": "T22",
+      "title": "Finish the allocation dialog for time of day: 15-minute start/end, hours per day and total, errors, overlaps in the warning",
+      "layer": "ui",
+      "deps": [
+        "T19"
+      ],
+      "acs": [
+        "AC-23",
+        "AC-24",
+        "AC-25"
+      ],
+      "dod": "Component tests show start/end in 15-minute steps with hours per day and total, no rate field (AC-23), the end-after-start and 15-minute messages without saving (AC-24), the confirmation listing the AC-25 overlap with both projects, and the leave dialog asking for no times.",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/allocation-dialog.tsx",
+        "apps/web/app/features/scheduling/components/allocation-dialog.test.tsx",
+        "apps/web/app/features/scheduling/allocation.ts",
+        "apps/web/app/features/scheduling/allocation-action.server.ts"
+      ]
+    },
+    {
+      "id": "T23",
+      "title": "Build the one-day timeline route and components: time axis, blocks, working hours, free time, away, out-of-hours and overlap marks",
+      "layer": "ui",
+      "deps": [
+        "T20"
+      ],
+      "acs": [
+        "AC-21",
+        "AC-22",
+        "AC-26",
+        "AC-29"
+      ],
+      "dod": "Route and component tests render AC-21 (09:00–17:00, blocks 09:00–13:00 and 14:00–16:00, 6/8, free spans, axis at least 08:00–18:00 widened to fit), AC-22 (leave as «away» over working hours, holiday non-working, work on leave overbooked), AC-26 out-of-hours mark, day stepping within limits, and the out-of-range explanation.",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/timeline.tsx",
+        "apps/web/app/features/scheduling/routes/timeline.test.ts",
+        "apps/web/app/features/scheduling/components/timeline-grid.tsx",
+        "apps/web/app/features/scheduling/components/timeline-block.tsx",
+        "apps/web/app/features/scheduling/components/timeline-grid.test.tsx",
+        "apps/web/app/routes.ts"
+      ]
+    },
+    {
+      "id": "T24",
+      "title": "Add the own timeline (vertical list at 390 px) and overlap marks on the day view and own day view",
+      "layer": "ui",
+      "deps": [
+        "T20",
+        "T23"
+      ],
+      "acs": [
+        "AC-25",
+        "AC-30"
+      ],
+      "dod": "Component tests show the own timeline with working hours, timed blocks, own leave type and overlap/overbooking marks and no edit affordance, rendered as a vertical list at 390 px (AC-30), and the day cell showing the overlap mark (AC-25).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/routes/my-schedule.tsx",
+        "apps/web/app/features/scheduling/components/my-schedule.tsx",
+        "apps/web/app/features/scheduling/components/my-timeline-list.tsx",
+        "apps/web/app/features/scheduling/components/day-cell.tsx"
+      ]
+    },
+    {
+      "id": "T25",
+      "title": "Add the working-day start field to the employee record dialog",
+      "layer": "ui",
+      "deps": [
+        "T18"
+      ],
+      "acs": [
+        "AC-27",
+        "AC-27b"
+      ],
+      "dod": "Component tests show the field in 15-minute steps defaulting to 09:00, working hours shown as start + daily capacity exactly (15:24 for 6 h 24 min), and the AC-27b refusal message from the action.",
+      "files_hint": [
+        "apps/web/app/features/org/components/employee-record-dialog.tsx",
+        "apps/web/app/features/org/components/employee-record-dialog.test.tsx",
+        "apps/web/app/features/org/employee-record.ts",
+        "apps/web/app/features/org/employee-record-action.server.ts"
+      ]
+    },
+    {
+      "id": "T26",
+      "title": "Add stage 3 e2e: timeline spec with an axe audit, booking with a time and an overlap warning, working-day start",
+      "layer": "tests",
+      "deps": [
+        "T22",
+        "T23",
+        "T24",
+        "T25"
+      ],
+      "acs": [
+        "AC-21",
+        "AC-25",
+        "AC-27",
+        "AC-30"
+      ],
+      "dod": "pnpm test:e2e passes timeline.spec.ts (AC-21 timeline, AC-25 warn-then-confirm and mark, AC-27 working-day start change reflected, AC-30 own timeline) with expectNoAxeViolations on the timeline.",
+      "files_hint": [
+        "e2e/tests/scheduling/timeline.spec.ts",
+        "e2e/tests/scheduling/day-view.spec.ts"
+      ]
+    },
+    {
+      "id": "T27",
+      "title": "Write the stage 3 release runbook (ADR-0003 guard, QG-4 count check) and fold the S3 delta into the base contract and ARCHITECTURE.md",
+      "layer": "docs",
+      "deps": [
+        "T16",
+        "T17",
+        "T20"
+      ],
+      "acs": [],
+      "dod": "The runbook lists SAD §7 steps 0–5 with the data-model SQL (non-test count guard that stops production, delete test allocations, migrate, deploy api then web, QG-4 counts all 0, re-seed), the base openapi shows the interval-shaped AllocationSegment and timeOverlaps, and ARCHITECTURE.md records the impact list and the new reads.",
+      "files_hint": [
+        "docs/features/schedule-daily-view/release-stage-3.md",
+        "docs/features/resource-scheduling/contracts/openapi.yaml",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "T28",
+      "title": "Decide the drag-and-drop support for the gesture island and record it as an ADR",
+      "layer": "docs",
+      "deps": [],
+      "acs": [],
+      "dod": "An Accepted ADR names the chosen approach (a package with a version that passes pnpm's minimum release age, or native pointer events), its approval, and its alternatives.",
+      "files_hint": [
+        "docs/features/schedule-daily-view/adr/"
+      ]
+    },
+    {
+      "id": "T29",
+      "title": "Compute every reachable move and edge position of a gesture by working days in gesture-outcomes.ts",
+      "layer": "domain",
+      "deps": [
+        "T01",
+        "T15",
+        "T16"
+      ],
+      "acs": [
+        "AC-13",
+        "AC-14",
+        "AC-15",
+        "AC-16",
+        "AC-19"
+      ],
+      "dod": "Rule-table tests pass: AC-13 two-step move skipping weekends and holidays and keeping the working-day count, AC-14 started allocation refused for move/start edge and end edge before today, AC-15 positions carrying days/weeks made worse and overlaps, AC-16 positions past the employment end or on a closed project refused with the reason, and AC-19 end edge keeping the interval and hours per day.",
+      "files_hint": [
+        "modules/scheduling/src/domain/gesture-outcomes.ts",
+        "modules/scheduling/src/domain/gesture-outcomes.test.ts"
+      ]
+    },
+    {
+      "id": "T30",
+      "title": "Serve GET /scheduling/allocations/{id}/gesture-outcomes and harden the gesture drop on PATCH (version, confirm, permission at drop)",
+      "layer": "ports",
+      "deps": [
+        "T29",
+        "T19"
+      ],
+      "acs": [
+        "AC-13",
+        "AC-14",
+        "AC-16",
+        "AC-17",
+        "AC-18"
+      ],
+      "dod": "Integration tests return the outcome table for an editor and 403/404 otherwise (D-1), a drop saved with the history entry (AC-13), past/employment/closed-project drops refused (AC-14, AC-16), two drops with the same version giving one success and one Conflict with current values (AC-17, QS-5), and a drop after the role lost edit-allocations refused (AC-18).",
+      "files_hint": [
+        "modules/scheduling/src/application/gesture-outcomes.ts",
+        "modules/scheduling/src/application/gesture-outcomes.test.ts",
+        "modules/scheduling/src/http/routes.ts",
+        "modules/scheduling/src/http/presenter.ts",
+        "packages/contracts/src/scheduling/reads.ts",
+        "apps/api/test/integration/scheduling/gestures.test.ts",
+        "apps/api/test/integration/redaction/matrix.test.ts"
+      ]
+    },
+    {
+      "id": "T31",
+      "title": "Build the pointer gesture island over the day grid: move and edge drags with a live preview, drop to save, confirm or revert",
+      "layer": "ui",
+      "deps": [
+        "T28",
+        "T30",
+        "T10"
+      ],
+      "acs": [
+        "AC-13",
+        "AC-14",
+        "AC-15",
+        "AC-16",
+        "AC-17",
+        "AC-18",
+        "AC-19"
+      ],
+      "dod": "Component tests show the outcome table fetched once at gesture start, each one-day step updating dates, weekly totals and impacts from it, a drop saving through the action, the confirmation on impact (AC-15), and revert with the server's message on refusal, conflict or lost permission (AC-14, AC-16, AC-17, AC-18); no island renders at 390 px.",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/gesture-island.tsx",
+        "apps/web/app/features/scheduling/components/gesture-preview.tsx",
+        "apps/web/app/features/scheduling/components/gesture-island.test.tsx",
+        "apps/web/app/features/scheduling/routes/board-actions.ts"
+      ]
+    },
+    {
+      "id": "T32",
+      "title": "Add keyboard move and stretch to the gesture island (arrow keys, confirm, Escape to cancel)",
+      "layer": "ui",
+      "deps": [
+        "T31"
+      ],
+      "acs": [
+        "AC-20"
+      ],
+      "dod": "Component tests show focus on a bar, choosing move/start/end, arrow keys stepping by working days with the same preview, Enter saving with the same rules and warnings, and Escape cancelling with nothing changed (AC-20).",
+      "files_hint": [
+        "apps/web/app/features/scheduling/components/gesture-island.tsx",
+        "apps/web/app/features/scheduling/components/gesture-keyboard.test.tsx"
+      ]
+    },
+    {
+      "id": "T33",
+      "title": "Add stage 2 e2e: drag and keyboard specs, a keyboard-only axe run, and the 300 ms preview performance test",
+      "layer": "tests",
+      "deps": [
+        "T32"
+      ],
+      "acs": [
+        "AC-13",
+        "AC-15",
+        "AC-17",
+        "AC-20"
+      ],
+      "dod": "pnpm test:e2e passes gestures.spec.ts (AC-13 move, AC-15 confirm/cancel, AC-17 two sessions, AC-20 keyboard-only with no axe violations) and gestures-perf.spec.ts asserts the preview updates within 300 ms of each arrow-key step on a seeded 100-resource × 4-week board.",
+      "files_hint": [
+        "e2e/tests/scheduling/gestures.spec.ts",
+        "e2e/tests/scheduling/gestures-perf.spec.ts"
+      ]
+    }
+  ]
+}
